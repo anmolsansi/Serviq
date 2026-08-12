@@ -1,23 +1,43 @@
 # Serviq Technology Stack
 
-**Status:** Technology baseline v1.0  
-**Goal:** Zero-dollar-friendly local development with a clear path to production-scale deployment  
+**Status:** Technology baseline v1.1  
+**Scope:** Production V1 and its local-to-cloud scale path  
+**Authority:** This document freezes technology choices. `ARCHITECTURE.md` owns contracts, folder boundaries, schemas, APIs, and deployment behavior. Builders do not add or replace dependencies without an architect-approved ticket or ADR.
 
-## 1. Stack Principles
+## 1. Technology Principles
 
-The Serviq stack is selected around five constraints:
+1. Core local development must run without mandatory paid infrastructure.
+2. Production code must remain cloud-portable even though AWS is the intended first cloud target.
+3. The stack must support a polished TypeScript frontend and Python-heavy AI/backend workloads.
+4. Start with a modular monolith and durable workers. Extract services only when scale, fault isolation, or team ownership justifies it.
+5. Provider-specific AI SDKs stay behind the Serviq LLM gateway adapter.
+6. Every external dependency must have a timeout, failure mode, test double, and observability plan.
+7. Dependencies are pinned by lockfiles. No production build uses floating `latest` tags.
+8. Security patches can advance patch versions without a product decision. Major/minor upgrades require an explicit dependency/architecture review.
 
-1. local development should not require paid infrastructure;
-2. application code should remain cloud-portable;
-3. the platform must support Python-heavy AI/backend development without sacrificing a polished TypeScript frontend;
-4. infrastructure choices must have a credible scale-out path;
-5. provider-specific dependencies must be isolated behind internal abstractions.
+## 2. Baseline Versions
 
-Dependencies must be pinned through lockfiles. Production releases must use reproducible builds and automated dependency/security updates.
+Initial scaffold baseline, verified for the August 2026 planning snapshot:
 
-## 2. Recommended Repository Model
+| Concern | Baseline |
+|---|---|
+| Next.js | 16.2.x Active LTS. Scaffold should use the current patched 16.2 release. |
+| React | 19.2.x |
+| TypeScript | Current stable 5.x supported by the selected Next.js release, exact version locked in `pnpm-lock.yaml`. |
+| Python | 3.14.x. Scaffold baseline 3.14.6 or later security patch in the 3.14 line. |
+| FastAPI | 0.140.x. Scaffold baseline 0.140.13 or later compatible security/fix patch. |
+| Pydantic | 2.x, exact version locked by `uv.lock`. |
+| SQLAlchemy | 2.x, exact version locked by `uv.lock`. |
+| Alembic | Current SQLAlchemy-2-compatible stable release, exact version locked by `uv.lock`. |
+| PostgreSQL | 18.x. Scaffold baseline 18.4 or later security patch in the 18 line. |
+| Keycloak | 26.7.x or later compatible security patch in the selected supported line. |
+| Node.js | Current LTS supported by Next.js 16.2, exact version frozen in `.nvmrc`/toolchain file at scaffold time. |
 
-Serviq will use a monorepo.
+`docs/repo_context.md` becomes the source of truth for the exact versions actually installed after the repository is scaffolded.
+
+## 3. Repository and Package Model
+
+Serviq uses a monorepo.
 
 ```text
 Serviq/
@@ -27,9 +47,8 @@ Serviq/
     platform-console/
   services/
     api/
-    agent/
-    knowledge/
     worker/
+    llm-gateway/
   packages/
     ui/
     contracts/
@@ -48,618 +67,553 @@ Serviq/
   scripts/
 ```
 
-The monorepo gives one review surface for application contracts, infrastructure, docs, frontend, backend, and tests while Serviq is still one product. Logical service boundaries remain explicit so high-throughput components can later be deployed independently.
+Package managers:
 
-## 3. Frontend
+- JavaScript/TypeScript: `pnpm` workspaces with one root lockfile.
+- Python: `uv` with committed lockfile(s) and reproducible environments.
+- Root task entry: Makefile or Taskfile. The first scaffold ticket freezes one and all subsequent tickets reuse it.
 
-### 3.1 Core Framework
+## 4. Frontend Stack
 
-**Next.js + React + TypeScript**
+### 4.1 Core
 
-Used for:
+- Next.js 16.2.x App Router.
+- React 19.2.x.
+- TypeScript strict mode.
+- Server components by default where appropriate.
+- Client components only when browser interactivity requires them.
 
-- client operations console;
-- customer standalone support experience;
-- platform operator console;
-- future embeddable widget build pipeline.
+### 4.2 Data and Forms
 
-### 3.2 UI System
+- TanStack Query for interactive server-state caching and mutations.
+- `react-hook-form` for forms.
+- Zod for browser validation and feature schemas.
+- Server validation remains authoritative. Frontend schemas must mirror the API ticket exactly.
+- No global state library in Production V1 unless a future ticket identifies state that cannot be cleanly owned by a feature or server-data layer.
 
-- Tailwind CSS for utility styling;
-- accessible headless component primitives;
-- Serviq-owned design system in `packages/ui`;
-- Storybook for isolated component states;
-- icon library with consistent visual language;
-- responsive layout from the first implementation.
+### 4.3 Styling and Design System
 
-The product must not become a collection of unstructured copied components. Shared primitives, tokens, forms, tables, dialogs, status indicators, charts, empty states, and permission states belong in the design system.
+- Tailwind CSS.
+- Accessible headless primitives selected during scaffold and frozen in the first frontend ADR.
+- Serviq-owned shared components in `packages/ui`.
+- Design tokens for typography, spacing, radius, elevation, status semantics, and responsive breakpoints.
+- Storybook for shared component documentation and state review.
 
-### 3.3 Client State and Data
+Shared component candidates:
 
-- server-first rendering where appropriate;
-- TanStack Query for client-side server-state caching/mutations where needed;
-- lightweight local state rather than a global store by default;
-- Zod schemas for browser-side validation and shared TypeScript contracts where appropriate.
+```text
+Button
+IconButton
+Input
+Select
+Checkbox
+RadioGroup
+Textarea
+FormField
+Dialog
+Drawer
+Popover
+Tooltip
+Toast
+Tabs
+Table
+Pagination
+Skeleton
+EmptyState
+ErrorState
+PermissionDenied
+StatusBadge
+MetricCard
+Timeline
+SourceCitation
+ConversationMessage
+ActionConfirmationCard
+ApprovalStatusCard
+```
 
-### 3.4 Streaming
+### 4.4 Streaming
 
-- Server-Sent Events as the default mechanism for token/event streaming because customer support is primarily server-to-client streaming;
-- WebSockets reserved for flows that require persistent bidirectional real-time behavior.
+- Server-Sent Events are the default for server-to-customer support updates.
+- WebSockets are not part of V1 unless a later contract proves bidirectional persistent transport is required.
+- SSE event types are frozen in `ARCHITECTURE.md`.
 
-### 3.5 Frontend Testing
+### 4.5 Frontend Quality Tooling
 
-- Vitest for unit/component logic;
-- Testing Library for component behavior;
-- Playwright for end-to-end workflows;
-- accessibility checks integrated into component/e2e suites;
-- visual regression testing introduced for critical design-system and workflow screens.
+- ESLint.
+- TypeScript strict checks.
+- Prettier or the formatter frozen by scaffold. Do not use competing formatters.
+- Vitest.
+- Testing Library.
+- Playwright.
+- automated accessibility checks in critical component/E2E paths.
+- visual regression for shared design-system components and the core support/inbox workflows before portfolio-ready release.
 
-## 4. Backend
+## 5. Backend Stack
 
-### 4.1 Language
+### 5.1 Runtime and Framework
 
-**Python**
+- Python 3.14.x.
+- FastAPI 0.140.x.
+- Pydantic 2.x.
+- Uvicorn-compatible ASGI runtime for local/dev. Production process topology is defined by deployment tickets and benchmark results.
 
-Primary backend language because Serviq contains retrieval, AI orchestration, provider integrations, ingestion, evaluation, and data-processing workloads where the Python ecosystem is strongest.
+### 5.2 Persistence
 
-### 4.2 API Framework
+- SQLAlchemy 2.x.
+- Alembic migrations.
+- PostgreSQL 18.x.
+- PostgreSQL RLS as defense in depth where the connection/request model permits it safely.
+- pgvector extension for V1 vector storage.
+- PostgreSQL full-text search for V1 lexical retrieval.
 
-**FastAPI**
+### 5.3 Backend Module Rule
 
-Used for:
+Every module follows the layering frozen in `ARCHITECTURE.md`:
 
-- REST APIs;
-- OpenAPI contracts;
-- async request handling;
-- streaming endpoints;
-- internal service APIs where HTTP is appropriate.
+```text
+router.py -> service.py -> repository.py -> database
+schemas.py
+models.py
+permissions.py
+```
 
-### 4.3 Validation and Settings
+Business logic does not live in routers or ORM models. Modules do not import another module's repository.
 
-- Pydantic for typed request/domain boundary validation;
-- environment-driven configuration with strongly typed settings;
-- no secret values committed to Git.
+### 5.4 Backend Tooling
 
-### 4.4 Persistence Layer
+- Ruff for lint/format policy.
+- mypy with a strictness profile frozen during scaffold.
+- pytest.
+- pytest-asyncio or the async test approach frozen by scaffold.
+- Testcontainers or Docker-backed real integration dependencies.
+- Hypothesis for selected policy, idempotency, parsing, and state-machine property tests.
+- pre-commit hooks only for fast deterministic checks. CI remains authoritative.
 
-- SQLAlchemy for relational access;
-- Alembic for schema migrations;
-- explicit repositories/data-access boundaries for tenant scoping and testability.
+## 6. Data, Cache, Search, and Storage
 
-### 4.5 Background Jobs
+### 6.1 PostgreSQL
 
-The platform will distinguish short interactive requests from asynchronous jobs.
+Primary source of truth for tenant, identity mapping, configuration, conversations, workflow state, approvals, support state, audit metadata, idempotency, and outbox data.
 
-Initial worker execution can use Python worker processes over the selected event/broker layer. The application must not depend on an in-process background task for work that must survive process failure.
+Database conventions are frozen in `ARCHITECTURE.md` and `database_rules.md`. No ticket invents a table, field, constraint, or index outside those contracts.
 
-Examples:
+### 6.2 pgvector + Full-Text Search
 
-- knowledge crawling;
-- parsing;
-- embedding;
-- indexing;
-- analytics aggregation;
-- webhook delivery;
-- notifications;
-- retry/reconciliation jobs.
+V1 retrieval uses PostgreSQL for both lexical and vector storage so the project can be developed locally at zero infrastructure cost beyond the database container.
 
-## 5. LLM and Agent Layer
+A V1 embedding dimension/model must be frozen in an ADR before creating a production vector index. Until then, the architecture allows non-indexed/dev embedding storage but builders may not guess an index dimension.
 
-### 5.1 Provider Gateway
+A dedicated vector engine or OpenSearch cluster is **not** a V1 dependency. It is introduced only after benchmark evidence shows the retrieval service needs it.
 
-Serviq will expose one internal LLM Gateway contract.
+### 6.3 Valkey-Compatible Cache
 
-Initial external provider targets:
+Used only for rebuildable/ephemeral state:
+
+- rate-limit counters;
+- short-lived session/cache data where the architecture assigns it;
+- hot tenant/agent configuration;
+- exact/semantic response cache metadata;
+- provider health/circuit state;
+- request coalescing/deduplication;
+- short-lived coordination.
+
+Key format:
+
+```text
+serviq:{env}:{tenantId}:{domain}:{id}
+```
+
+Every cache key has a TTL unless a ticket explicitly documents why it does not. Cache loss must not lose a completed business mutation.
+
+### 6.4 Object Storage
+
+- Local: MinIO or another S3-compatible implementation frozen in Compose.
+- AWS: Amazon S3.
+- Access always goes through the Serviq object-storage adapter.
+- Bucket layout, MIME allowlists, file limits, and generated object keys are defined in `ARCHITECTURE.md`.
+
+## 7. Events and Background Work
+
+### 7.1 Broker
+
+Serviq uses Kafka-compatible event semantics for durable domain events and worker queues that require partitioning/consumer groups.
+
+- Local optional profile: Redpanda.
+- AWS scale path: Amazon MSK or another ADR-approved managed Kafka-compatible service.
+
+The event broker is not the transaction source of truth. Transactional services write `outbox_events` in PostgreSQL and an outbox publisher delivers events.
+
+### 7.2 Worker Rules
+
+- Durable work never depends only on FastAPI `BackgroundTasks` or process memory.
+- Jobs are idempotent.
+- Retries are bounded.
+- Dead-letter behavior is explicit.
+- Each job records/derives observable status.
+- External calls do not run inside database transactions.
+
+Exact topics, retry schedules, and idempotency keys are in `ARCHITECTURE.md`.
+
+## 8. Authentication, Authorization, and Secrets
+
+### 8.1 Workforce Identity
+
+- Local/dev OIDC provider: Keycloak 26.7.x.
+- Flow: Authorization Code + PKCE.
+- Access/refresh tokens stay server-side.
+- Browser session uses an opaque/encrypted `HttpOnly` cookie, `Secure` in production, `SameSite=Lax` unless a reviewed channel contract requires otherwise.
+
+No passwords, JWT signing, or session cryptography is hand-rolled by feature code.
+
+### 8.2 Customer Identity
+
+Separate trust domain from workforce identity:
+
+- anonymous session for public support;
+- tenant-signed short-lived assertion for verified customer context in V1;
+- future OIDC/OAuth connectors behind the customer identity adapter.
+
+### 8.3 Authorization
+
+- Serviq capability model.
+- Tenant-scoped roles and object ownership.
+- Server-side guard + service/repository ownership checks.
+- PostgreSQL RLS defense in depth where configured.
+- Deny by default.
+- Platform-operator authorization is separate from tenant roles.
+
+### 8.4 Secrets
+
+Local:
+
+- ignored local secret files/environment values for platform bootstrap secrets;
+- tenant BYOK values stored through the secret adapter, never in tracked fixtures.
+
+Production AWS mapping:
+
+- AWS Secrets Manager and/or Parameter Store after an ADR freezes the exact split.
+
+Rules:
+
+- no secret in client bundles;
+- no secret in logs/traces/test fixtures;
+- provider secret shown only at creation if the UI needs confirmation, then masked;
+- secret rotation and provider-key lifecycle metadata are auditable without storing the secret value in audit events.
+
+## 9. LLM and Agent Stack
+
+### 9.1 Provider-Neutral Gateway
+
+Serviq owns the internal request/response contract. A self-hosted LiteLLM-compatible adapter may implement provider translation, but domain code imports Serviq contracts, not LiteLLM/provider SDK response types.
+
+Initial provider adapters:
 
 - OpenAI;
 - Anthropic;
 - Gemini;
 - OpenRouter.
 
-The initial gateway implementation may use a self-hosted compatibility layer such as LiteLLM, wrapped behind Serviq's own interface so the product is not coupled to that project.
+Capabilities:
 
-The internal gateway contract must support:
-
-- chat/completions-style generation;
-- streaming;
-- structured outputs;
-- embeddings where supported;
+- streaming generation;
+- structured output;
 - model aliases;
-- provider/model routing;
-- fallback;
-- timeout;
-- usage metadata;
-- tenant-scoped BYOK credentials;
-- error normalization.
+- timeout budgets;
+- ordered fallbacks;
+- usage normalization;
+- error normalization;
+- provider-health/circuit state;
+- BYOK credential resolution.
 
-### 5.2 Agent Orchestration
+### 9.2 Agent Runtime
 
-Serviq will implement an explicit domain state machine rather than relying on an unconstrained general-purpose agent loop.
+Serviq implements an explicit state machine owned by the domain. No unconstrained `while model_wants_tool` loop is permitted.
 
-The orchestration layer owns:
+Run controls:
 
-- state transitions;
-- run budgets;
-- retrieval;
-- tool proposals;
-- policy checks;
-- approvals;
-- provider calls;
-- verification;
-- escalation.
+- step budget;
+- model-call budget;
+- tool-call budget;
+- wall-clock budget;
+- token/output budget;
+- retry budget;
+- policy gates;
+- deterministic completion/failure/escalation.
 
-A third-party graph/agent library may be evaluated later, but core business state transitions must remain expressed in Serviq-owned domain contracts.
+### 9.3 Prompt and Model Safety
 
-### 5.3 Prompt and Configuration Versioning
+- System instructions and untrusted user/retrieved/tool data are separated.
+- Retrieved web content is data, never instruction authority.
+- Model-produced structured tool arguments are schema-validated.
+- The model cannot choose arbitrary server URLs, SQL, shell commands, or code execution.
+- Full prompts containing PII are not logged by default.
 
-Prompts and behavioral settings are treated as versioned product configuration, not hard-coded strings scattered through services.
+### 9.4 AI Evaluation
 
-Each agent run stores:
+Versioned evaluation datasets cover:
 
-- agent version;
-- prompt/config version;
-- provider/model alias;
-- tool versions;
-- policy versions;
-- knowledge version identifiers where feasible.
+- grounded answer correctness;
+- citation correctness;
+- unsupported-answer behavior;
+- prompt-injection resistance;
+- tool selection;
+- tool argument correctness;
+- policy compliance;
+- approval/escalation behavior;
+- provider/model regression.
 
-## 6. Primary Database
+CI uses deterministic fake model responses for contract tests. Optional evaluation jobs may use a contributor's own provider key outside required free CI.
 
-### 6.1 PostgreSQL
+## 10. Observability Stack
 
-PostgreSQL is the primary source of truth for:
+### 10.1 Standard
 
-- tenants;
-- users/memberships/RBAC;
-- agent configuration;
-- provider metadata;
-- integrations;
-- conversations/messages;
-- workflow state;
-- approvals;
-- escalations;
-- audit metadata;
-- knowledge metadata;
-- idempotency keys;
-- transactional outbox.
+OpenTelemetry is the instrumentation standard across Python services and supported frontend/server boundaries.
 
-### 6.2 Vector Search
+### 10.2 Local Profile
 
-**pgvector** is the local and initial production vector implementation.
+- OpenTelemetry Collector.
+- Prometheus.
+- Grafana.
+- Loki.
+- Tempo.
 
-Reasons:
+This is an optional Compose profile for developer resource control. Application instrumentation is not optional.
 
-- keeps early operational complexity low;
-- runs in the existing PostgreSQL environment;
-- supports zero-cost local development;
-- lets Serviq validate retrieval requirements before introducing another distributed system.
+### 10.3 Production Rules
 
-The Retrieval Service must hide pgvector-specific queries behind an internal contract. A dedicated vector engine can be introduced later without changing the agent API.
-
-### 6.3 Lexical / Hybrid Search
-
-Initial implementation:
-
-- PostgreSQL full-text search plus pgvector;
-- application-side or query-layer hybrid scoring;
-- optional reranking.
-
-Scale path:
-
-- OpenSearch-compatible dedicated search infrastructure when corpus/query volume justifies it.
-
-## 7. Cache and Ephemeral State
-
-**Redis-compatible storage**
-
-Used for:
-
-- response cache;
-- semantic cache metadata;
-- rate-limit counters;
-- hot tenant/agent configuration;
-- ephemeral conversation/stream coordination;
-- provider health state;
-- short-lived locks when unavoidable;
-- request deduplication/coalescing.
-
-Redis is never the only durable record of a completed business mutation.
-
-## 8. Event Streaming and Queues
-
-### 8.1 Contract
-
-Serviq uses a Kafka-compatible event contract for durable asynchronous workflows at scale.
-
-### 8.2 Local Development
-
-Use a single-node Kafka-compatible broker that runs comfortably in Docker. Redpanda is a practical local default because it provides the required Kafka-style development surface with low setup overhead.
-
-### 8.3 Production Scale Path
-
-- managed Kafka/MSK or equivalent when deployed to AWS;
-- topic partitioning;
-- tenant/conversation partition keys;
-- consumer groups;
-- retry topics;
-- dead-letter topics;
-- schema version discipline.
-
-### 8.4 Reliability Pattern
-
-Transactional services use a database outbox to ensure domain writes and event publication cannot silently diverge.
-
-## 9. Object Storage
-
-### 9.1 Local
-
-**MinIO or another S3-compatible local object store**
-
-Used for:
-
-- uploaded documents;
-- attachments;
-- ingestion artifacts;
-- exports;
-- evaluation artifacts.
-
-### 9.2 AWS Production
-
-**Amazon S3**
-
-Application code talks through an internal object-storage adapter rather than hard-coding S3 semantics throughout domain services.
-
-## 10. Authentication and Identity
-
-### 10.1 Workforce / Client Users
-
-Use an OIDC-compatible identity layer. The local development environment should use an open-source identity provider such as Keycloak so authentication and role flows can be tested without paid SaaS.
-
-### 10.2 End Customers
-
-Customer identity is separate from workforce identity.
-
-Serviq supports:
-
-- anonymous session;
-- tenant-signed short-lived customer token;
-- future customer OIDC/OAuth integration;
-- verified identity escalation for protected actions.
-
-### 10.3 Cloud Evolution
-
-The identity abstraction must permit migration to or integration with managed identity services later without changing authorization domain logic.
-
-## 11. Authorization
-
-- Serviq-owned capability model;
-- tenant-scoped RBAC;
-- PostgreSQL row-level security as defense in depth where applicable;
-- policy checks at service boundaries;
-- object-level checks for conversations/queues/actions;
-- deny by default.
-
-Authentication provider roles are not treated as the sole source of product authorization truth.
-
-## 12. Observability
-
-### 12.1 Instrumentation Standard
-
-**OpenTelemetry**
-
-Used across frontend/backend/service calls where practical for:
-
-- distributed traces;
-- metrics;
-- structured correlation.
-
-### 12.2 Local Observability Stack
-
-- Prometheus for metrics;
-- Grafana for dashboards;
-- Loki for logs;
-- Tempo for traces;
-- OpenTelemetry Collector for collection/export.
-
-This stack remains optional through Docker profiles for low-resource local development, but production code must always include instrumentation hooks.
-
-### 12.3 Application Logging
-
-- structured JSON;
+- structured JSON logs;
 - stable error codes;
-- request/correlation IDs;
-- tenant context;
-- secret and PII redaction.
+- request/trace/correlation IDs;
+- tenant context only where safe;
+- PII/secret redaction;
+- bounded metric cardinality;
+- health/readiness endpoints defined in architecture.
 
-## 13. Security Tooling
+A hosted observability vendor is not a V1 dependency.
 
-Public repository CI should include free/open tooling where practical:
+## 11. Testing Stack
+
+### 11.1 Backend
+
+- pytest unit tests for business logic.
+- real PostgreSQL/Valkey/broker integration tests through Docker/Testcontainers where the ticket requires them.
+- API tests for every route, including exact response shape, validation, 401, 403, 404, and conflict paths.
+- migration up/down tests.
+- tenant-isolation tests.
+- property tests for selected policy/idempotency state.
+
+### 11.2 Frontend
+
+- Vitest.
+- Testing Library using accessible role/label queries.
+- Playwright end-to-end.
+- required loading, empty, error, permission, and success state coverage.
+- form validation/pending/double-submit tests.
+
+### 11.3 Contract Tests
+
+Frozen contracts cover:
+
+- OpenAPI request/response/error shapes;
+- LLM gateway normalized responses/errors;
+- tool schemas;
+- event envelopes;
+- SSE public events;
+- webhook signatures;
+- tenant/customer auth context.
+
+A contract change cannot be merged by silently changing tests. It requires architect change control.
+
+### 11.4 Performance and Scale
+
+k6 scenarios are stored in the repository and report separately:
+
+- non-LLM REST throughput;
+- concurrent SSE clients;
+- message write/read paths;
+- cached deterministic paths;
+- retrieval throughput;
+- worker/event throughput;
+- tool-service mocks;
+- fake-provider agent throughput.
+
+External paid LLM quotas are never used to claim Serviq internal throughput.
+
+## 12. Security Tooling
+
+Public repository CI uses free/open tooling where practical:
 
 - GitHub CodeQL;
-- Gitleaks secret scanning;
+- Gitleaks;
+- Trivy;
 - dependency vulnerability scanning;
-- Trivy for container/filesystem scanning;
-- Semgrep or equivalent SAST rules where useful;
-- SBOM generation for releases;
-- automated license inventory;
-- Dependabot/Renovate-style dependency update automation.
+- Semgrep or equivalent targeted rules;
+- SBOM generation for release artifacts;
+- dependency update automation;
+- license inventory.
 
-Application security requirements include:
+Required application controls:
 
-- SSRF protections for knowledge crawlers;
-- prompt-injection boundaries;
-- attachment validation;
-- server-side authorization;
-- strict CORS configuration;
-- request size limits;
+- SSRF protection for knowledge crawling;
+- strict source URL/domain validation;
+- input validation and output encoding;
+- CORS allowlist;
+- CSRF defense for cookie-authenticated mutations;
+- request/file size limits;
 - rate limiting;
-- secure cookie/token handling;
-- secret redaction;
-- idempotency for mutations.
+- tenant isolation;
+- secure cookies;
+- prompt-injection boundaries;
+- tool allowlists;
+- idempotency;
+- audit for sensitive operations.
 
-## 14. Developer Tooling
+Auth, permissions, encryption, webhooks, public upload surfaces, LLM prompts containing user data, and destructive migrations require premium review.
 
-### 14.1 Python
+## 13. Local Development Profiles
 
-- `uv` for environment/package workflow;
-- Ruff for formatting/linting;
-- mypy for static type checking;
-- pytest for tests;
-- coverage reporting;
-- pre-commit hooks where they improve local feedback.
+`docker compose` is the local platform orchestrator. The exact compose filenames are frozen by the scaffold ticket.
 
-### 14.2 TypeScript
-
-- pnpm workspaces for JS/TS monorepo packages;
-- ESLint;
-- TypeScript strict mode;
-- Prettier or one agreed formatter;
-- Vitest;
-- Playwright.
-
-### 14.3 Task Orchestration
-
-Use a simple root-level task runner such as Make/Task plus workspace scripts. Avoid introducing a heavyweight build system until repository size justifies it.
-
-Representative commands:
-
-```bash
-make setup
-make dev
-make test
-make lint
-make typecheck
-make security
-make e2e
-make load-test
-make down
-```
-
-## 15. Local Runtime
-
-**Docker Compose** is the required local platform orchestrator.
-
-Recommended local services:
+### Core profile
 
 ```text
 client-console
 customer-web
 platform-console
 api
-agent-worker
-knowledge-worker
-general-worker
+worker
 postgres + pgvector
-redis
-kafka-compatible broker
-object storage
-identity provider
-llm gateway
-otel collector
+valkey
+object-storage
+keycloak
+llm-gateway or fake-llm-gateway
+```
+
+### Events profile
+
+```text
+redpanda
+worker consumers that require event topics
+```
+
+### Observability profile
+
+```text
+otel-collector
 prometheus
 grafana
 loki
 tempo
 ```
 
-Use Docker Compose profiles so contributors can start only the subset required for their current work.
+The application must be usable in deterministic demo/test mode without a paid AI key. Real AI behavior requires the contributor's BYOK provider credential.
 
-A fully mocked AI/provider mode must exist so the core application and CI can run without paid API calls.
+## 14. AWS Scale Mapping
 
-## 16. Production Container Platform
-
-### 16.1 Containers
-
-- Docker/OCI images;
-- multi-stage builds;
-- non-root runtime users;
-- small production images;
-- health/readiness endpoints;
-- immutable image tags/digests for releases.
-
-### 16.2 Kubernetes
-
-Kubernetes is the target orchestration layer once the system needs horizontal production scaling.
-
-Expected workloads:
-
-- stateless APIs;
-- streaming gateway;
-- agent workers;
-- knowledge workers;
-- integration/tool workers;
-- scheduled reconciliation jobs.
-
-Stateful production data should prefer managed services rather than self-hosting databases inside the application cluster.
-
-## 17. AWS Production Mapping
-
-Local/open-source components map approximately to:
-
-| Concern | Local | AWS production target |
+| Concern | Local/V1 | AWS scale path |
 |---|---|---|
 | Edge/CDN | local reverse proxy | CloudFront |
-| WAF | local middleware | AWS WAF |
-| Load balancing | reverse proxy | ALB/NLB as appropriate |
-| Containers | Docker Compose | EKS/ECS depending deployment decision |
-| PostgreSQL | local Postgres | RDS/Aurora PostgreSQL |
-| Vector | pgvector | PostgreSQL/managed vector path initially |
-| Cache | local Redis-compatible | ElastiCache-compatible path |
-| Event broker | local Kafka-compatible broker | MSK or equivalent |
-| Object storage | MinIO | S3 |
-| Secrets | local secret files | Secrets Manager / Parameter Store |
-| Observability | OTel + OSS stack | OTel with managed/OSS backend decision |
+| WAF | local request controls | AWS WAF |
+| Load balancing | local proxy | ALB/NLB as workload requires |
+| Containers | Docker Compose | ECS or EKS selected by deployment ADR after measured need |
+| PostgreSQL | local PostgreSQL 18 | RDS/Aurora PostgreSQL-compatible path after compatibility review |
+| Vector | pgvector | pgvector first. Dedicated vector only after retrieval benchmark/ADR. |
+| Cache | Valkey-compatible local | ElastiCache-compatible managed cache |
+| Broker | Redpanda local profile | MSK or ADR-approved Kafka-compatible managed service |
+| Object storage | MinIO/S3-compatible | S3 |
+| Secrets | local secret adapter | Secrets Manager/Parameter Store split by ADR |
+| Observability | OTel + OSS profile | OTel with managed or self-hosted backend chosen by ADR |
 | DNS | local hosts | Route 53 |
+| IaC | none required for local | Terraform |
 
-This table describes architectural mapping, not a commitment to incur AWS costs during development.
+ECS vs EKS is not a builder decision and is not required for Production V1 local completion. It is a later deployment ADR driven by scale and operations requirements.
 
-## 18. Infrastructure as Code
+## 15. CI/CD
 
-**Terraform** will define cloud infrastructure when AWS deployment begins.
+GitHub Actions pull-request gates:
 
-Rules:
-
-- no manually created production-critical resources without IaC representation;
-- environment modules for dev/staging/production;
-- remote state with locking in cloud environments;
-- sensitive outputs protected;
-- plan/apply controlled through CI/CD and review.
-
-Kubernetes resources may use Helm/Kustomize after cluster deployment is introduced.
-
-## 19. CI/CD
-
-**GitHub Actions**
-
-Pull-request checks should include:
-
-1. changed-file detection;
-2. formatting/lint;
-3. type checking;
+1. formatting;
+2. lint;
+3. TypeScript/Python type checks;
 4. unit tests;
-5. backend/frontend integration tests;
-6. tenant-isolation/authorization tests;
-7. dependency/security scans;
-8. secret scan;
-9. container build validation when applicable;
-10. e2e smoke suite for relevant changes;
-11. documentation/link checks;
-12. migration validation.
+5. API/integration tests;
+6. tenant-isolation and permission tests;
+7. contract tests;
+8. migration up/down tests;
+9. secret scan;
+10. dependency/SAST scans;
+11. container build validation for touched services;
+12. affected E2E smoke tests;
+13. docs/link validation.
 
-Main/release workflows later add:
+Release pipeline later adds:
 
-- immutable image builds;
+- immutable image digests;
 - SBOM;
 - artifact signing;
 - staging deployment;
-- smoke tests;
-- controlled production promotion;
-- rollback support.
+- migration preflight;
+- smoke/E2E/security gates;
+- controlled promotion;
+- rollback/runbook linkage.
 
-## 20. Testing Stack
+No production deployment workflow is merged before the target environment and rollback behavior are frozen in a deployment ADR.
 
-### 20.1 Backend
+## 16. Dependency Change Policy
 
-- pytest;
-- Testcontainers or Docker-backed integration dependencies;
-- property-based testing for selected policy/idempotency logic;
-- contract fixtures for external providers/tools;
-- deterministic fake LLM implementation.
+A builder may not add, remove, or replace a dependency unless its ticket names the exact dependency and purpose.
 
-### 20.2 Frontend
+Architect approval/ADR is required when a change introduces or replaces:
 
-- Vitest;
-- Testing Library;
-- Playwright;
-- accessibility automation.
+- auth/session libraries;
+- ORM/migration tools;
+- message brokers;
+- vector/search engines;
+- workflow engines;
+- LLM orchestration frameworks;
+- UI component systems;
+- state-management libraries;
+- cloud-specific SDKs used outside adapters;
+- security/crypto libraries.
 
-### 20.3 Load / Performance
+Security-only patch upgrades within a frozen compatible line may be handled by dependency automation and reviewed normally.
 
-**k6** as the default load-testing tool.
+## 17. Technologies Explicitly Not in Production V1
 
-Scenarios must separately measure:
+The following are not available for builders to introduce without a new ADR and measured need:
 
-- REST API throughput;
-- concurrent streaming clients;
-- conversation creation/message writes;
-- cached deterministic responses;
-- retrieval throughput;
-- agent worker throughput;
-- event broker throughput;
-- tool-service behavior;
-- provider-limited AI flows using controlled mocks.
+- a service mesh;
+- a dedicated vector database;
+- a dedicated OpenSearch cluster;
+- a separate workflow engine such as Temporal;
+- Kubernetes as a mandatory local dependency;
+- a second backend language for core services;
+- GraphQL for V1 APIs;
+- arbitrary agent code execution/sandbox;
+- a global frontend state store;
+- client-side direct calls to OpenAI, Anthropic, Gemini, or OpenRouter;
+- a paid SaaS dependency required for deterministic local development or CI.
 
-External LLM calls should not be used to claim internal platform throughput because provider quotas/costs distort the benchmark.
-
-### 20.4 AI Evaluation
-
-Serviq will maintain versioned evaluation datasets for:
-
-- answer correctness;
-- source grounding;
-- citation correctness;
-- refusal/escalation behavior;
-- tool selection;
-- argument correctness;
-- policy compliance;
-- hallucination detection;
-- regression across agent/model versions.
-
-Evaluation code and expected behavior belong in the repository.
-
-## 21. API Documentation
-
-- OpenAPI is generated from backend contracts;
-- Swagger/ReDoc-style developer view in non-production/internal environments as configured;
-- public API examples in `docs/`;
-- webhook schemas versioned;
-- event schemas versioned;
-- breaking changes require an ADR and migration plan.
-
-## 22. Data Migration and Schema Discipline
-
-- Alembic migrations checked into Git;
-- forward migrations must support rolling deployment when applicable;
-- destructive migrations use expand/migrate/contract pattern;
-- production data migration jobs are observable and restartable;
-- migrations are tested against representative datasets before release.
-
-## 23. Technology Decisions Intentionally Deferred
-
-The following are not frozen until measurements justify them:
-
-- dedicated vector database vendor;
-- dedicated OpenSearch cluster timing;
-- exact Kubernetes vs ECS production choice for first AWS deployment;
-- multi-region database technology;
-- dedicated workflow engine;
-- API gateway vendor;
-- hosted observability vendor;
-- service mesh.
-
-These should be selected through ADRs using measured need, not added preemptively.
-
-## 24. Final Baseline
-
-### Application
+## 18. Final Baseline
 
 ```text
-Frontend:       Next.js + React + TypeScript
-Backend:        Python + FastAPI + Pydantic
-ORM/Migrations: SQLAlchemy + Alembic
-Primary DB:     PostgreSQL
-Vector:         pgvector
-Cache:          Redis-compatible
-Events:         Kafka-compatible broker
-Object storage: S3-compatible local storage -> S3
-Identity:       OIDC-compatible, Keycloak locally
-LLM layer:      Serviq Gateway, initially backed by a self-hosted provider gateway
-Observability:  OpenTelemetry + Prometheus/Grafana/Loki/Tempo
-Testing:        pytest + Vitest + Playwright + k6
-Containers:     Docker + Docker Compose
-Cloud IaC:      Terraform
-Scale target:   Kubernetes-based horizontal deployment when required
-CI/CD:          GitHub Actions
+Frontend:          Next.js 16.2.x + React 19.2 + TypeScript
+Forms:             react-hook-form + Zod
+Server state:      TanStack Query where required
+Styling:           Tailwind + Serviq UI package
+Backend:           Python 3.14.x + FastAPI 0.140.x + Pydantic 2.x
+ORM/Migrations:    SQLAlchemy 2.x + Alembic
+Primary DB:        PostgreSQL 18.x
+Retrieval V1:      PostgreSQL FTS + pgvector
+Cache:             Valkey-compatible
+Events:            Kafka-compatible contract; Redpanda local profile
+Storage:           S3-compatible adapter; MinIO local, S3 cloud
+Auth local:        Keycloak OIDC
+LLM:               Serviq gateway + OpenAI/Anthropic/Gemini/OpenRouter adapters
+Observability:     OpenTelemetry + Prometheus/Grafana/Loki/Tempo local profile
+Tests:             pytest + Vitest + Testing Library + Playwright + k6
+Local runtime:     Docker Compose profiles
+CI/CD:             GitHub Actions
+Cloud IaC:         Terraform when AWS deployment begins
 ```
-
-This baseline is intentionally production-oriented while preserving a practical, no-mandatory-paid-service local development workflow.

@@ -1,37 +1,36 @@
 # Architecture Plan: Serviq — Production V1
 
-**Status:** Architecture baseline v1.1  
+**Status:** Architecture baseline v1.2  
 **Scope:** Production V1 defined by `docs/PRD.md`  
-**Architecture rule:** Builders implement frozen contracts. Contract changes require the procedure in the premium-product-builder contract-change rules and an ADR/CCR before implementation changes.  
-**Scale statement:** The design preserves a path toward millions of concurrent users and a long-term 10M concurrent-connection target. Neither 10M concurrency nor 10M RPS is a verified claim until reproducible tests prove it.
+**Contract change record:** `docs/contract-changes/CCR-001-foundation-hardening.md`  
+**Architecture rule:** Builders implement frozen contracts. Any API, database, event, shared-type, config, file-path, auth, or permission contract change requires architect-owned contract change control before implementation.  
+**Scale statement:** Serviq preserves a path toward millions of concurrent users and a long-term 10M concurrent-connection target. Neither 10M concurrency nor 10M RPS is a verified claim until reproducible load tests prove it.
 
 ## 1. Stack Decisions
 
-The version baseline below is the initial scaffold target. Exact patch versions must be locked in repository lockfiles and recorded in `docs/repo_context.md` after scaffolding. Security patches supersede this table when required.
-
 | Layer | Choice | Reason |
 |---|---|---|
-| Frontend | Next.js 16.2.x Active LTS + React 19.2 + TypeScript strict | Mature React platform, server rendering, route handlers, streaming support, and a strong production ecosystem. |
-| Frontend forms | react-hook-form + Zod | Explicit form state and one schema vocabulary for browser validation. |
-| Frontend server state | TanStack Query where client-side fetching/mutations are required | Keeps server state out of local component state and supports predictable invalidation. |
-| Styling/design system | Tailwind CSS + Serviq-owned accessible primitives in `packages/ui` | Fast local development without coupling product UX to a proprietary component vendor. |
-| Backend language | Python 3.14.x | Strong AI/data ecosystem and mature async/runtime tooling. |
-| API framework | FastAPI 0.140.x + Pydantic 2.x | Typed request boundaries, OpenAPI generation, async I/O, and SSE support. |
-| ORM/migrations | SQLAlchemy 2.x + Alembic | Explicit relational access and production migration discipline. |
-| Primary database | PostgreSQL 18.x | Transactional source of truth, row-level security, full-text search, and native UUIDv7 support. |
-| Vector search | pgvector in PostgreSQL | Keeps V1 operational complexity low while Retrieval Service hides the implementation. |
-| Cache/ephemeral | Valkey 8.x-compatible client/protocol | Open Redis-compatible cache for sessions, counters, cache, and coordination. Never source of truth. |
-| Event broker | Kafka-compatible contract. Redpanda local profile. Managed Kafka/MSK scale path. | Durable asynchronous work, partitioning, consumer groups, retries, and outbox integration. |
-| Object storage | MinIO/S3-compatible local adapter. Amazon S3 production mapping. | Free local storage with cloud-portable object semantics. |
-| Workforce auth | Keycloak 26.7.x OIDC for local/dev. OIDC abstraction for production. | Free standards-based identity with a path to managed identity later. |
-| Workforce session | Authorization Code + PKCE. Server-managed session. `HttpOnly`, `Secure` in production, `SameSite=Lax` cookie. | Keeps access/refresh tokens out of localStorage and browser JavaScript. |
-| LLM gateway | Serviq-owned provider-neutral interface with a self-hosted LiteLLM-compatible gateway adapter | BYOK support across OpenAI, Anthropic, Gemini, and OpenRouter without provider SDK types leaking into domain code. |
-| Observability | OpenTelemetry + Prometheus + Grafana + Loki + Tempo | Free local traces, metrics, and logs with standard instrumentation. |
-| Local orchestration | Docker Compose profiles | One-command local development without paid infrastructure. |
-| Production containers | OCI/Docker images. Kubernetes is the scale target after measured need. | Horizontal stateless scaling and worker separation while avoiding premature cluster dependency during local development. |
-| IaC | Terraform when AWS deployment begins | Reviewable, reproducible infrastructure. |
-| CI/CD | GitHub Actions | Native repository automation for tests, security, artifacts, and release gates. |
-| Load testing | k6 | Reproducible API and concurrent streaming scenarios with machine-readable results. |
+| Frontend | Next.js 16.2.x + React 19.2 + TypeScript strict | Production React stack with SSR, routing, streaming, and mature tooling. |
+| Forms | react-hook-form + Zod | Explicit form state and shared validation vocabulary. |
+| Server state | TanStack Query where interactive client fetching is required | Predictable caching, retries, and invalidation. |
+| Styling | Tailwind CSS + Serviq-owned accessible primitives | Fast implementation without locking product UX to a vendor. |
+| Backend | Python 3.14.x + FastAPI 0.140.x + Pydantic 2.x | Strong async/API and AI ecosystem. |
+| ORM/migrations | SQLAlchemy 2.x + Alembic | Explicit relational access and migration discipline. |
+| Database | PostgreSQL 18.x | Transactional source of truth, RLS, FTS, UUIDv7. |
+| Vector search | pgvector | Zero-cost V1 retrieval infrastructure behind an abstraction. |
+| Cache | Valkey 8.x compatible | Rebuildable cache, rate limits, short-lived coordination. |
+| Broker | Kafka-compatible contract; Redpanda local; MSK-compatible scale path | Durable asynchronous workloads and partitioning. |
+| Object storage | MinIO/S3-compatible local; S3 production mapping | Cloud-portable object semantics. |
+| Workforce auth | Keycloak 26.7.x OIDC locally; OIDC abstraction in product | Standards-based, zero-cost local identity. |
+| LLM gateway | Serviq-owned provider-neutral contract; LiteLLM-compatible adapter permitted | BYOK across OpenAI, Anthropic, Gemini, OpenRouter. |
+| Observability | OpenTelemetry + Prometheus + Grafana + Loki + Tempo | Full local traces, metrics, logs without paid SaaS. |
+| Local orchestration | Docker Compose profiles | Reproducible zero-dollar development. |
+| Production scale target | OCI containers, Kubernetes after measured need | Horizontal scale without making Kubernetes mandatory for local V1. |
+| IaC | Terraform when AWS deployment begins | Reviewable infrastructure changes. |
+| CI/CD | GitHub Actions | Native repository automation. |
+| Load testing | k6 | Reproducible throughput and concurrency tests. |
+
+Exact patch versions are locked by repository lockfiles after scaffolding and recorded in `docs/repo_context.md`.
 
 ## 2. Frontend Architecture
 
@@ -40,23 +39,8 @@ The version baseline below is the initial scaffold target. Exact patch versions 
 ```text
 apps/
   client-console/
-    src/
-      app/
-      features/
-      components/
-      lib/
   customer-web/
-    src/
-      app/
-      features/
-      components/
-      lib/
   platform-console/
-    src/
-      app/
-      features/
-      components/
-      lib/
 packages/
   ui/
   contracts/
@@ -66,15 +50,13 @@ packages/
   testkit/
 ```
 
-- `client-console` contains tenant onboarding, configuration, analytics, conversations, and the human support workspace.
-- `customer-web` contains the standalone customer support experience and the reference implementation used by an embeddable channel later.
-- `platform-console` is a separate Serviq operator surface and never reuses tenant authorization as a substitute for platform authorization.
+- `client-console` contains onboarding, tenant configuration, analytics, conversations, and the Human Support Workspace.
+- `customer-web` is the standalone customer support reference surface and future widget reference implementation.
+- `platform-console` is a separate Serviq operator trust surface.
 
 ### 2.2 Routing
 
-Next.js App Router is used. Feature areas are route groups, but authorization is enforced by the API and session boundary, not by hidden navigation alone.
-
-Representative client routes:
+Client routes:
 
 ```text
 /onboarding
@@ -119,9 +101,9 @@ Platform routes:
 /security
 ```
 
-### 2.3 Feature Folder Contract
+### 2.3 Frontend Module Contract
 
-Every frontend feature follows:
+Every feature uses:
 
 ```text
 src/features/[feature]/
@@ -132,41 +114,25 @@ src/features/[feature]/
   schemas.ts
 ```
 
-Cross-feature imports are prohibited. Shared UI is placed in `packages/ui`. Shared API contracts are generated or mirrored from `packages/contracts` rather than invented by components.
+Cross-feature imports are prohibited. Shared API/domain contracts belong in `packages/contracts`; shared visual primitives belong in `packages/ui`. Components do not invent API shapes.
 
-### 2.4 State and Data Fetching
+### 2.4 State, Forms, and Fetching
 
-- Server data is fetched through server components/route handlers when that improves security or page loading, and through TanStack Query for interactive client-side data.
-- Server data is never copied into `useState` simply to mirror query results.
-- Local UI state stays in components or feature hooks.
-- No global client store is introduced in V1 unless an ADR and ticket name the exact state.
-- Forms use react-hook-form + Zod with validation rules matching server contracts exactly.
-- All client API calls go through the feature `api.ts` and a shared authenticated client. Inline `fetch` in components is prohibited.
+- Server components/route handlers are preferred when they improve security or initial loading.
+- TanStack Query owns interactive server state.
+- Local UI state stays local. No V1 global store without an ADR.
+- Forms use react-hook-form + Zod and server validation remains authoritative.
+- Client API calls go through feature `api.ts` plus the shared authenticated client. Inline ad hoc `fetch` in feature components is prohibited.
 
 ### 2.5 Mandatory UI States
 
-Every data-driven screen implements:
-
-1. loading with skeleton/spinner;
-2. empty with plain-language explanation and next action;
-3. error with safe message and retry where safe;
-4. permission denied where relevant;
-5. success state;
-6. mutation pending and mutation success/failure feedback.
-
-### 2.6 Accessibility and Responsive Rules
-
-- WCAG 2.1 AA practices are the V1 target.
-- Mobile-first layouts. No horizontal page scroll at 375 px.
-- Inputs require labels. Icon buttons require `aria-label`.
-- Dialogs trap focus and close on Escape unless doing so would discard a protected confirmation without warning.
-- Support conversation remains keyboard operable and screen-reader understandable during streaming.
+Every data-driven screen implements loading, empty, error, permission-denied when applicable, success, mutation-pending, mutation-success, and mutation-failure states. No horizontal page scroll at 375 px. All interactive controls are keyboard operable and properly labeled.
 
 ## 3. Backend Architecture
 
-### 3.1 Initial Deployment Shape
+### 3.1 Deployment Shape
 
-V1 starts as a **modular monolith plus durable workers**, not 15 independently deployed microservices. The module seams below are contracts that can be extracted later without changing external behavior.
+Production V1 starts as a **modular monolith plus durable workers**. Logical boundaries are extraction contracts, not a mandate to deploy fifteen microservices on day one.
 
 ```text
 services/
@@ -180,6 +146,7 @@ services/
         auth.py
         tenancy.py
         idempotency.py
+        rate_limits.py
       modules/
         tenants/
         providers/
@@ -192,8 +159,8 @@ services/
         support/
         analytics/
         audit/
+        privacy/
         platform_ops/
-      contracts/
   worker/
     app/
       jobs/
@@ -206,122 +173,166 @@ services/
       schemas/
 ```
 
-Each Python module uses:
+Each domain module follows:
 
 ```text
 router.py -> service.py -> repository.py -> database
-schemas.py        # Pydantic request/response/domain boundary models
-models.py         # SQLAlchemy models
-permissions.py    # named capabilities used by guards/service entry
-errors.py         # module domain errors if needed
+schemas.py
+models.py
+permissions.py
+errors.py
 ```
 
-### 3.2 Layering
+Routers validate transport input. Services own business rules and transactions. Repositories own persistence queries. Modules call exported service interfaces, never another module's repository.
 
-- **Router:** validates path/query/body/header inputs, declares auth, calls one service operation, and maps the result to the API contract.
-- **Service:** owns business rules, transactions, policy orchestration, and domain decisions. No FastAPI request/response objects.
-- **Repository:** owns SQL/ORM queries. No business decisions.
-- Modules call exported service interfaces, never another module's repository.
+### 3.2 Validation and Errors
 
-### 3.3 Validation
+- Unknown request body fields are rejected.
+- Path/query/header/body/upload/model-structured-output values are validated server-side.
+- One global exception layer converts typed domain errors to the Section 5 error envelope.
+- Unexpected exceptions return `INTERNAL_ERROR` without stack traces, secrets, prompts, or provider internals.
+- No external HTTP, model, broker, or tool call runs inside a database transaction.
 
-- Pydantic validates bodies and structured headers.
-- Path/query values are typed and constrained at the router boundary.
-- Unknown body fields are rejected.
-- File name, extension, MIME type, size, source URL, webhook payload, and model-generated structured output are validated server-side.
+### 3.3 Agent Runtime State Machine
 
-### 3.4 Error Handling
+```text
+RECEIVE
+-> AUTH_CONTEXT
+-> REQUEST_CLASSIFICATION
+-> FAST_PATH_CHECK
+-> CONTEXT_PLANNING
+-> RETRIEVAL / TOOL_PROPOSAL / MODEL_REASONING
+-> POLICY_CHECK
+-> CONFIRMATION_OR_APPROVAL (when required)
+-> TOOL_EXECUTION (when required)
+-> RESULT_VERIFICATION
+-> RESPONSE_GENERATION
+-> OUTPUT_GUARDRAIL
+-> RESPOND
+-> COMPLETE
 
-One global exception handler converts typed domain errors to the API error envelope in Section 5. Unexpected exceptions are logged with correlation context and return a generic `INTERNAL_ERROR` response with no internal stack or secret data.
+Any state may transition to ESCALATE or FAIL_SAFE.
+```
 
-### 3.5 Configuration
+### 3.4 Frozen Default Agent Budgets
 
-Configuration is environment-driven and typed. No business/config constants are hardcoded in feature code when they belong to environment or tenant configuration. Secret values are loaded only in server processes and never serialized to clients.
+These are Production V1 defaults. Tenant agent versions may configure stricter values. Raising a ceiling above these defaults requires an authorized AI Manager and must remain within platform hard limits.
+
+| Budget | V1 default | Platform hard limit |
+|---|---:|---:|
+| Maximum agent steps | 12 | 20 |
+| Maximum model calls per run | 4 | 8 |
+| Maximum retrieval calls per run | 3 | 6 |
+| Maximum tool calls per run | 4 | 8 |
+| Maximum mutating tool executions per run | 1 | 2, each independently policy-authorized |
+| Interactive wall-clock budget | 45 s | 90 s |
+| Model request timeout | 20 s | 30 s |
+| Read-only tool timeout | 10 s | 20 s |
+| Mutating tool timeout | 20 s | 30 s |
+| Maximum aggregate model input | 32,000 tokens | 64,000 tokens |
+| Maximum model output per call | 1,500 tokens | 4,000 tokens |
+| Maximum normalized tool output passed to model | 20,000 UTF-8 characters/tool | 40,000 aggregate/run |
+
+Retry rules:
+
+- one automatic retry is allowed for a clearly transient, non-billable-before-completion model transport failure if time budget permits; otherwise route to configured fallback;
+- provider `429` does not loop. Use fallback only when configured and within budget;
+- read-only tools may retry once when the adapter declares the operation retry-safe;
+- a mutating tool is never blindly retried when its external outcome is unknown. It enters reconciliation;
+- budget exhaustion transitions to deterministic fallback or escalation.
 
 ## 4. Database Architecture
 
 ### 4.1 Conventions
 
-- PostgreSQL 18.x.
-- Table/column names are plural/snake_case.
-- Primary keys are UUID with `DEFAULT uuidv7()`.
-- Unless a table is explicitly append-only, every table has `created_at timestamptz NOT NULL DEFAULT now()` and `updated_at timestamptz NOT NULL DEFAULT now()`.
-- Tenant-owned tables have `tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT` and an index beginning with `tenant_id`.
+- PostgreSQL 18.x; snake_case database identifiers.
+- Primary keys: `uuid DEFAULT uuidv7()`.
+- Mutable tables include `created_at timestamptz NOT NULL DEFAULT now()` and `updated_at timestamptz NOT NULL DEFAULT now()`.
+- Tenant-owned tables include `tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT` and an index beginning with `tenant_id`.
+- Money is integer minor units plus ISO currency.
+- Status/type fields use `text` + CHECK constraints in V1.
 - Foreign keys are indexed.
-- Nullable columns are nullable only when the state model requires them.
-- Money is integer cents plus ISO currency code.
-- Status/type values use `text` with CHECK constraints in V1 to reduce enum migration friction.
-- Multi-table writes use a transaction. No external HTTP/LLM call runs inside a database transaction.
+- Multi-table state transitions are transactional and publish through the transactional outbox.
 
 ### 4.2 V1 Tables
 
-The schema below is the architectural contract. Ticket-level migrations may split creation across MASs but may not rename or repurpose fields without contract change control.
+The following is the frozen schema contract. Migrations may split table creation across tickets but may not rename, repurpose, or silently add cross-MAS fields without contract change control.
 
 ```text
 tenants
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   slug text NOT NULL UNIQUE CHECK length 3..63
   display_name text NOT NULL CHECK length 1..120
   status text NOT NULL CHECK active|suspended|deleted
   default_locale text NOT NULL DEFAULT 'en'
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: UNIQUE(slug); (status)
+Indexes: UNIQUE(slug), (status)
 
 users
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   oidc_issuer text NOT NULL
   oidc_subject text NOT NULL
   email text NOT NULL
   display_name text NOT NULL
   status text NOT NULL CHECK active|disabled
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(oidc_issuer, oidc_subject)
 Indexes: (email)
 
 memberships
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   user_id uuid NOT NULL FK users RESTRICT
-  status text NOT NULL CHECK invited|active|suspended
-  invited_by uuid NULL FK users RESTRICT
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
+  status text NOT NULL CHECK active|suspended
+  created_by_invitation_id uuid NULL FK organization_invitations SET NULL
 Constraints: UNIQUE(tenant_id, user_id)
-Indexes: (tenant_id, status); (user_id)
+Indexes: (tenant_id, status), (user_id)
 
 roles
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NULL FK tenants RESTRICT
   key text NOT NULL CHECK length 2..64
   display_name text NOT NULL CHECK length 1..80
   is_system boolean NOT NULL DEFAULT false
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE NULLS NOT DISTINCT(tenant_id, key)
 Indexes: (tenant_id)
 
 role_permissions
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   role_id uuid NOT NULL FK roles CASCADE
   permission_key text NOT NULL CHECK length 2..120
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(role_id, permission_key)
 Indexes: (role_id)
 
 membership_roles
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   membership_id uuid NOT NULL FK memberships CASCADE
   role_id uuid NOT NULL FK roles RESTRICT
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(membership_id, role_id)
-Indexes: (membership_id); (role_id)
+Indexes: (membership_id), (role_id)
+
+organization_invitations
+  id uuid PK
+  tenant_id uuid NOT NULL FK tenants RESTRICT
+  email_normalized text NOT NULL CHECK length 3..320
+  token_hash text NOT NULL UNIQUE
+  status text NOT NULL CHECK pending|accepted|revoked|expired
+  invited_by_user_id uuid NOT NULL FK users RESTRICT
+  accepted_by_user_id uuid NULL FK users RESTRICT
+  expires_at timestamptz NOT NULL
+  accepted_at timestamptz NULL
+  revoked_at timestamptz NULL
+Constraints: token plaintext is never persisted
+Indexes: (tenant_id, status, expires_at), (tenant_id, email_normalized)
+Partial unique index: UNIQUE(tenant_id, email_normalized) WHERE status='pending'
+
+organization_invitation_roles
+  id uuid PK
+  invitation_id uuid NOT NULL FK organization_invitations CASCADE
+  role_id uuid NOT NULL FK roles RESTRICT
+Constraints: UNIQUE(invitation_id, role_id)
+Indexes: (invitation_id), (role_id)
 
 provider_connections
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   provider text NOT NULL CHECK openai|anthropic|gemini|openrouter
   display_name text NOT NULL CHECK length 1..80
@@ -330,37 +341,31 @@ provider_connections
   last_tested_at timestamptz NULL
   last_error_code text NULL
   created_by uuid NOT NULL FK users RESTRICT
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, display_name)
 Indexes: (tenant_id, provider, status)
 
 model_configurations
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   provider_connection_id uuid NOT NULL FK provider_connections RESTRICT
   alias text NOT NULL CHECK length 1..80
   upstream_model text NOT NULL CHECK length 1..160
   purpose text NOT NULL CHECK generation|embedding|rerank
   enabled boolean NOT NULL DEFAULT true
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, alias)
-Indexes: (tenant_id, purpose, enabled); (provider_connection_id)
+Indexes: (tenant_id, purpose, enabled), (provider_connection_id)
 
 agents
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   name text NOT NULL CHECK length 1..100
   status text NOT NULL CHECK active|archived
   created_by uuid NOT NULL FK users RESTRICT
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, name)
 Indexes: (tenant_id, status)
 
 agent_versions
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   agent_id uuid NOT NULL FK agents RESTRICT
   version integer NOT NULL CHECK version > 0
@@ -369,25 +374,21 @@ agent_versions
   config_schema_version integer NOT NULL DEFAULT 1
   published_by uuid NULL FK users RESTRICT
   published_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(agent_id, version)
 Indexes: (tenant_id, agent_id, status)
 
 agent_deployments
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   agent_id uuid NOT NULL FK agents RESTRICT
   agent_version_id uuid NOT NULL FK agent_versions RESTRICT
   channel text NOT NULL CHECK customer_web
   status text NOT NULL CHECK active|paused
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, channel)
-Indexes: (tenant_id, status); (agent_version_id)
+Indexes: (tenant_id, status), (agent_version_id)
 
 knowledge_sources
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   source_type text NOT NULL CHECK url|sitemap|pdf|markdown|text
   name text NOT NULL CHECK length 1..160
@@ -399,13 +400,11 @@ knowledge_sources
   last_synced_at timestamptz NULL
   last_error_code text NULL
   created_by uuid NOT NULL FK users RESTRICT
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: URL/sitemap requires source_uri; file types require object_key
-Indexes: (tenant_id, status); (tenant_id, source_type)
+Indexes: (tenant_id, status), (tenant_id, source_type)
 
 knowledge_documents
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   source_id uuid NOT NULL FK knowledge_sources RESTRICT
   canonical_uri text NULL
@@ -414,13 +413,11 @@ knowledge_documents
   document_version integer NOT NULL
   status text NOT NULL CHECK active|deprecated|failed
   fetched_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(source_id, canonical_uri, document_version)
-Indexes: (tenant_id, source_id, status); (content_hash)
+Indexes: (tenant_id, source_id, status), (content_hash)
 
 knowledge_chunks
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   document_id uuid NOT NULL FK knowledge_documents CASCADE
   ordinal integer NOT NULL CHECK ordinal >= 0
@@ -430,38 +427,33 @@ knowledge_chunks
   embedding vector NULL
   embedding_model_alias text NULL
   tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(document_id, ordinal)
-Indexes: (tenant_id, document_id); GIN(tsv); vector index is added only after one V1 embedding dimension is frozen by ADR
+Indexes: (tenant_id, document_id), GIN(tsv); vector index only after embedding profile ADR
 
 customers
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   external_ref text NULL
   display_name text NULL CHECK length <= 120
   email text NULL
-  status text NOT NULL CHECK active|blocked
+  status text NOT NULL CHECK active|blocked|deleted
   metadata jsonb NOT NULL DEFAULT '{}'
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Constraints: UNIQUE NULLS NOT DISTINCT(tenant_id, external_ref)
-Indexes: (tenant_id, email); (tenant_id, status)
+  deleted_at timestamptz NULL
+Indexes: (tenant_id, email), (tenant_id, status)
+Partial unique index: UNIQUE(tenant_id, external_ref) WHERE external_ref IS NOT NULL
 
 customer_identities
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   customer_id uuid NOT NULL FK customers CASCADE
   issuer text NOT NULL
   subject text NOT NULL
   assurance_level text NOT NULL CHECK anonymous|verified
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, issuer, subject)
 Indexes: (tenant_id, customer_id)
 
 conversations
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   customer_id uuid NULL FK customers RESTRICT
   agent_deployment_id uuid NOT NULL FK agent_deployments RESTRICT
@@ -469,12 +461,11 @@ conversations
   channel text NOT NULL CHECK customer_web
   current_owner_type text NOT NULL CHECK ai|human
   last_message_at timestamptz NOT NULL DEFAULT now()
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: (tenant_id, status, last_message_at DESC); (tenant_id, customer_id, last_message_at DESC)
+  resolved_at timestamptz NULL
+Indexes: (tenant_id, status, last_message_at DESC), (tenant_id, customer_id, last_message_at DESC)
 
 messages
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   conversation_id uuid NOT NULL FK conversations CASCADE
   sequence bigint NOT NULL CHECK sequence > 0
@@ -484,13 +475,11 @@ messages
   content_type text NOT NULL CHECK text|status|action_card
   content text NOT NULL DEFAULT ''
   metadata jsonb NOT NULL DEFAULT '{}'
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(conversation_id, sequence)
 Indexes: (tenant_id, conversation_id, sequence)
 
 agent_runs
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   conversation_id uuid NOT NULL FK conversations CASCADE
   trigger_message_id uuid NOT NULL FK messages RESTRICT
@@ -504,12 +493,10 @@ agent_runs
   completed_at timestamptz NULL
   failure_code text NULL
   correlation_id text NOT NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: (tenant_id, conversation_id, created_at DESC); (tenant_id, status, created_at)
+Indexes: (tenant_id, conversation_id, created_at DESC), (tenant_id, status, created_at)
 
 agent_steps
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   agent_run_id uuid NOT NULL FK agent_runs CASCADE
   ordinal integer NOT NULL CHECK ordinal >= 0
@@ -519,25 +506,21 @@ agent_steps
   output_summary jsonb NOT NULL DEFAULT '{}'
   started_at timestamptz NOT NULL DEFAULT now()
   completed_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(agent_run_id, ordinal)
 Indexes: (tenant_id, agent_run_id, ordinal)
 
 retrieval_runs
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
-  agent_run_id uuid NOT NULL FK agent_runs CASCADE
+  agent_run_id uuid NULL FK agent_runs CASCADE
   query_text text NOT NULL
   top_k integer NOT NULL CHECK top_k BETWEEN 1 AND 50
   status text NOT NULL CHECK completed|failed
   duration_ms integer NOT NULL CHECK duration_ms >= 0
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Indexes: (tenant_id, agent_run_id, created_at)
 
 retrieval_results
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   retrieval_run_id uuid NOT NULL FK retrieval_runs CASCADE
   chunk_id uuid NOT NULL FK knowledge_chunks RESTRICT
@@ -545,61 +528,51 @@ retrieval_results
   lexical_score double precision NULL
   vector_score double precision NULL
   final_score double precision NOT NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Constraints: UNIQUE(retrieval_run_id, rank); UNIQUE(retrieval_run_id, chunk_id)
+Constraints: UNIQUE(retrieval_run_id, rank), UNIQUE(retrieval_run_id, chunk_id)
 Indexes: (tenant_id, retrieval_run_id, rank)
 
 tools
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   key text NOT NULL CHECK length 2..120
   display_name text NOT NULL CHECK length 1..120
   status text NOT NULL CHECK active|disabled
   risk_class text NOT NULL CHECK read_only|low|medium|high
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, key)
 Indexes: (tenant_id, status)
 
 tool_versions
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   tool_id uuid NOT NULL FK tools RESTRICT
   version integer NOT NULL CHECK version > 0
   input_schema jsonb NOT NULL
   output_schema jsonb NOT NULL
   implementation_key text NOT NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tool_id, version)
 Indexes: (tenant_id, tool_id, version DESC)
 
 policies
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   key text NOT NULL CHECK length 2..120
   display_name text NOT NULL CHECK length 1..120
   status text NOT NULL CHECK active|disabled
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, key)
 Indexes: (tenant_id, status)
 
 policy_versions
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   policy_id uuid NOT NULL FK policies RESTRICT
   version integer NOT NULL CHECK version > 0
   rules jsonb NOT NULL
   created_by uuid NOT NULL FK users RESTRICT
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(policy_id, version)
 Indexes: (tenant_id, policy_id, version DESC)
 
 tool_executions
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   agent_run_id uuid NOT NULL FK agent_runs RESTRICT
   tool_version_id uuid NOT NULL FK tool_versions RESTRICT
@@ -612,26 +585,22 @@ tool_executions
   failure_code text NULL
   started_at timestamptz NULL
   completed_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, idempotency_key)
-Indexes: (tenant_id, agent_run_id, created_at); (tenant_id, status, created_at)
+Indexes: (tenant_id, agent_run_id, created_at), (tenant_id, status, created_at)
 
 action_confirmations
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   tool_execution_id uuid NOT NULL FK tool_executions RESTRICT
   customer_id uuid NULL FK customers RESTRICT
   status text NOT NULL CHECK pending|confirmed|declined|expired
   expires_at timestamptz NOT NULL
   decided_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tool_execution_id)
 Indexes: (tenant_id, status, expires_at)
 
 approvals
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   tool_execution_id uuid NOT NULL FK tool_executions RESTRICT
   status text NOT NULL CHECK pending|approved|rejected|expired
@@ -641,24 +610,20 @@ approvals
   reason text NOT NULL DEFAULT ''
   expires_at timestamptz NOT NULL
   decided_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tool_execution_id)
-Indexes: (tenant_id, status, expires_at); (tenant_id, approver_user_id, status)
+Indexes: (tenant_id, status, expires_at), (tenant_id, approver_user_id, status)
 
 support_queues
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   name text NOT NULL CHECK length 1..100
   status text NOT NULL CHECK active|disabled
-  sla_first_response_minutes integer NOT NULL CHECK > 0
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
+  sla_first_response_minutes integer NOT NULL CHECK sla_first_response_minutes > 0
 Constraints: UNIQUE(tenant_id, name)
 Indexes: (tenant_id, status)
 
 escalations
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   conversation_id uuid NOT NULL FK conversations RESTRICT
   queue_id uuid NOT NULL FK support_queues RESTRICT
@@ -670,45 +635,37 @@ escalations
   first_response_due_at timestamptz NOT NULL
   resolved_at timestamptz NULL
   resolution_code text NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: (tenant_id, queue_id, status, priority, created_at); (tenant_id, assigned_user_id, status)
+Indexes: (tenant_id, queue_id, status, priority, created_at), (tenant_id, assigned_user_id, status)
 
 internal_notes
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   conversation_id uuid NOT NULL FK conversations CASCADE
   author_user_id uuid NOT NULL FK users RESTRICT
   content text NOT NULL CHECK length BETWEEN 1 AND 10000
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Indexes: (tenant_id, conversation_id, created_at)
 
 feedback
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   conversation_id uuid NOT NULL FK conversations CASCADE
   customer_id uuid NULL FK customers RESTRICT
   rating smallint NOT NULL CHECK rating BETWEEN 1 AND 5
   comment text NULL CHECK length <= 2000
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: (tenant_id, created_at); (tenant_id, conversation_id)
+Indexes: (tenant_id, created_at), (tenant_id, conversation_id)
 
 usage_events
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   event_type text NOT NULL
   dimensions jsonb NOT NULL DEFAULT '{}'
   quantity bigint NOT NULL DEFAULT 1
   amount_microusd bigint NULL CHECK amount_microusd >= 0
   occurred_at timestamptz NOT NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Indexes: (tenant_id, event_type, occurred_at)
 
 audit_events
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NULL FK tenants RESTRICT
   actor_type text NOT NULL CHECK customer|tenant_user|service|platform_operator
   actor_id text NOT NULL
@@ -719,12 +676,10 @@ audit_events
   metadata jsonb NOT NULL DEFAULT '{}'
   correlation_id text NOT NULL
   occurred_at timestamptz NOT NULL DEFAULT now()
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: (tenant_id, occurred_at DESC); (tenant_id, action, occurred_at DESC); (correlation_id)
+Indexes: (tenant_id, occurred_at DESC), (tenant_id, action, occurred_at DESC), (correlation_id)
 
 idempotency_keys
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   scope text NOT NULL
   idempotency_key text NOT NULL
@@ -733,13 +688,11 @@ idempotency_keys
   response_body jsonb NULL
   state text NOT NULL CHECK in_progress|completed|failed
   expires_at timestamptz NOT NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(tenant_id, scope, idempotency_key)
 Indexes: (tenant_id, expires_at)
 
 outbox_events
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NULL FK tenants RESTRICT
   event_type text NOT NULL
   schema_version integer NOT NULL DEFAULT 1
@@ -752,23 +705,20 @@ outbox_events
   attempts integer NOT NULL DEFAULT 0
   next_attempt_at timestamptz NOT NULL DEFAULT now()
   published_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
-Indexes: (status, next_attempt_at); (tenant_id, aggregate_type, aggregate_id)
+Indexes: (status, next_attempt_at), (tenant_id, aggregate_type, aggregate_id)
 
 webhook_endpoints
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   url text NOT NULL
   secret_ref text NOT NULL
   status text NOT NULL CHECK active|disabled
   event_types text[] NOT NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
+  last_validated_at timestamptz NOT NULL
 Indexes: (tenant_id, status)
 
 webhook_deliveries
-  id uuid PK DEFAULT uuidv7()
+  id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
   webhook_endpoint_id uuid NOT NULL FK webhook_endpoints RESTRICT
   event_id uuid NOT NULL FK outbox_events RESTRICT
@@ -777,49 +727,128 @@ webhook_deliveries
   last_status_code integer NULL
   next_attempt_at timestamptz NOT NULL DEFAULT now()
   delivered_at timestamptz NULL
-  created_at timestamptz NOT NULL DEFAULT now()
-  updated_at timestamptz NOT NULL DEFAULT now()
 Constraints: UNIQUE(webhook_endpoint_id, event_id)
 Indexes: (tenant_id, status, next_attempt_at)
+
+platform_feature_flags
+  id uuid PK
+  flag_key text NOT NULL CHECK length 2..120
+  scope_type text NOT NULL CHECK global|tenant
+  scope_id text NOT NULL DEFAULT '*'
+  enabled boolean NOT NULL
+  config jsonb NOT NULL DEFAULT '{}'
+  revision bigint NOT NULL DEFAULT 1
+  updated_by_operator_id text NOT NULL
+Constraints: UNIQUE(flag_key, scope_type, scope_id)
+Indexes: (scope_type, scope_id), (flag_key)
+
+rate_limit_policies
+  id uuid PK
+  limit_key text NOT NULL CHECK length 2..120
+  scope_type text NOT NULL CHECK global|tenant|provider
+  scope_id text NOT NULL DEFAULT '*'
+  route_group text NOT NULL
+  actor_dimension text NOT NULL CHECK ip|session|customer|tenant_user|tenant|provider_connection|platform_operator
+  window_seconds integer NOT NULL CHECK window_seconds BETWEEN 1 AND 86400
+  max_requests integer NOT NULL CHECK max_requests > 0
+  concurrency_limit integer NULL CHECK concurrency_limit > 0
+  enabled boolean NOT NULL DEFAULT true
+  revision bigint NOT NULL DEFAULT 1
+  updated_by_operator_id text NOT NULL
+Constraints: UNIQUE(limit_key, scope_type, scope_id)
+Indexes: (scope_type, scope_id, enabled), (route_group, enabled)
+
+data_subject_requests
+  id uuid PK
+  tenant_id uuid NOT NULL FK tenants RESTRICT
+  customer_id uuid NOT NULL FK customers RESTRICT
+  request_type text NOT NULL CHECK export|delete
+  status text NOT NULL CHECK pending|processing|completed|failed|cancelled
+  requested_at timestamptz NOT NULL DEFAULT now()
+  verified_at timestamptz NULL
+  completed_at timestamptz NULL
+  export_object_key text NULL
+  export_expires_at timestamptz NULL
+  failure_code text NULL
+Indexes: (tenant_id, customer_id, requested_at DESC), (tenant_id, status, requested_at)
 ```
 
-### 4.3 Row-Level Security
+### 4.3 Tenant Isolation
 
-V1 uses application-enforced tenant filtering **plus PostgreSQL RLS as defense in depth** for tenant-owned tables where the connection model supports it safely. The request transaction sets a trusted tenant context from authenticated server state. No client-supplied tenant ID is trusted as authorization.
+Application-enforced tenant filtering is mandatory. PostgreSQL RLS is defense in depth where the connection model can set trusted request tenant context safely. No client-supplied tenant ID is authorization. Tenant context is included in relational records, object keys, cache keys, vector/search filters, event envelopes, tool context, and audit records.
 
-### 4.4 Migration Rules
+### 4.4 Authoritative Ownership for Feature Flags and Rate Limits
 
-- One migration per ticket unless the ticket explicitly defines an expand/migrate/contract sequence.
-- Every migration has a tested rollback.
-- Destructive changes use expand/migrate/contract and require premium review.
-- Large index builds use concurrent strategies when supported and necessary.
+This closes the previous storage ambiguity.
+
+- `platform_feature_flags` in PostgreSQL is the authoritative source for global and tenant-scoped platform flags.
+- `rate_limit_policies` in PostgreSQL is the authoritative source for configurable platform rate-limit policy.
+- Valkey is a derived cache only, with a maximum 60-second TTL plus explicit invalidation after updates. Cache loss never changes the authoritative policy.
+- Updates are allowed only through MAS-12 Platform Operations and always create audit events.
+- Runtime rate counters live in Valkey. Losing counters may temporarily reduce enforcement precision, so the gateway applies conservative in-process emergency limits until Valkey recovers.
+- Configuration reads fail safe: missing or invalid policy uses the frozen built-in default in Section 5.4, never unlimited access.
+
+### 4.5 Privacy, Retention, Export, and Deletion Lifecycle
+
+Production V1 freezes the following defaults. Retention is measured from the relevant terminal time, normally `resolved_at`, `completed_at`, or creation time when no terminal state exists.
+
+| Data class | Default retention | Expiry behavior |
+|---|---:|---|
+| Customer conversation message content | 90 days after conversation resolution | Delete content and customer-visible metadata not required for audit. |
+| Open/unresolved conversation content | While open, then 90 days after resolution | Same as above. |
+| Agent step input/output summaries | 30 days after run completion | Delete summaries; retain aggregate usage/audit metadata. |
+| Retrieval query text/results | 30 days after run completion | Delete query/result records that contain customer text; knowledge source metadata remains. |
+| Normalized tool output containing customer data | 30 days after tool completion unless required by unresolved case | Delete customer-bearing payload; retain outcome/status/audit reference. |
+| Escalation handoff content and internal notes | 180 days after resolution | Delete narrative content; retain non-content outcome metrics. |
+| Feedback comment | 90 days | Delete comment; aggregate rating may remain anonymized. |
+| Usage/analytics events | 400 days | Delete or aggregate/anonymize. |
+| Audit events | 400 days minimum | Retain security/business-action record with pseudonymous actor/resource references. Raw secrets/content prohibited. |
+| Idempotency records | 24 hours after expiry | Delete. |
+| Published outbox events | 7 days | Delete after publication/reconciliation window. |
+| Webhook delivery payload metadata | 30 days | Delete delivery detail; aggregate metrics remain. |
+| Dead-letter payloads | 14 days unless actively investigated | Delete after investigation window. |
+| Application logs | 30 days production default | Delete by log backend lifecycle. |
+| Distributed traces | 7 days production default | Delete by tracing backend lifecycle. |
+| Metrics | 90 days production default | Downsample/expire according to backend. |
+| Provider secret value | Until provider connection deletion/rotation | Delete immediately from secret store on confirmed removal; retain non-secret audit metadata 400 days. |
+| Knowledge raw/normalized objects | While source active + 30 days after source deletion | Hard-delete after recovery window. |
+| Export artifacts | 7 days after generation; signed download max 24 h | Hard-delete object automatically. |
+
+Customer export/delete workflow:
+
+1. Request is created in `data_subject_requests` only after customer identity verification or an authorized tenant workflow.
+2. Export is generated asynchronously from tenant-owned customer data only. Export links use short-lived signed URLs, maximum 24 hours.
+3. Export request target completion: within 7 days in V1.
+4. Delete request target completion: within 7 days after verification.
+5. Delete removes or irreversibly anonymizes direct customer profile fields, customer identity mappings, message content, retrievable customer-bearing step/retrieval/tool payloads, feedback comments, and export artifacts.
+6. Audit records required for security and action accountability are retained for their normal retention period but customer identifiers are replaced with a stable one-way pseudonymous reference that cannot be used to rehydrate deleted profile data.
+7. Analytics may retain non-identifying aggregate counts after deletion.
+8. Production backups use a maximum 30-day retention. Deleted records are not surgically modified inside immutable backups; they expire naturally. Any backup restore procedure must replay the deletion queue before restored data is exposed to users.
+9. Customer deletion does not delete tenant-owned public knowledge or workforce records.
+10. No legal-hold product UI exists in Production V1. Introducing legal-hold behavior requires a Product Decision and architecture change.
 
 ## 5. API Architecture
 
 ### 5.1 Base Contract
 
 - Base path: `/api/v1`.
-- Resource names: plural, kebab-case.
-- JSON request/response uses camelCase. Database remains snake_case.
-- All list endpoints use `page`, `pageSize`, `sortBy`, `sortOrder`. Default `page=1`, `pageSize=25`, max `pageSize=100`. Unknown query fields return 400.
-- Protected mutation endpoints that may be retried require `Idempotency-Key` when specified below.
+- JSON uses camelCase. Database uses snake_case.
+- Lists use `page`, `pageSize`, `sortBy`, `sortOrder`; default `page=1`, `pageSize=25`, max `100`.
+- Retriable protected mutations require `Idempotency-Key` where specified by endpoint contract.
 
-Success envelope:
+Success:
 
 ```json
 { "data": {}, "meta": {} }
 ```
 
-List envelope:
+List:
 
 ```json
-{
-  "data": [],
-  "meta": { "page": 1, "pageSize": 25, "total": 0, "totalPages": 0 }
-}
+{ "data": [], "meta": { "page": 1, "pageSize": 25, "total": 0, "totalPages": 0 } }
 ```
 
-Error envelope:
+Error:
 
 ```json
 {
@@ -831,24 +860,9 @@ Error envelope:
 }
 ```
 
-`fields` appears only for validation errors. Error codes are stable `SCREAMING_SNAKE_CASE`.
+Standard statuses: 200, 201, 204, 400, 401, 403, 404, 409, 422, 429, 500, and normalized 502/503/504 only when dependency status is part of the endpoint contract.
 
-Standard statuses:
-
-- `200` read/update/action success.
-- `201` create success.
-- `204` successful delete/archive with no body.
-- `400` malformed or unsupported query/header.
-- `401` unauthenticated.
-- `403` authenticated but missing permission.
-- `404` missing resource or resource existence must not be leaked.
-- `409` conflict/duplicate/state conflict.
-- `422` field validation.
-- `429` rate limited.
-- `500` unexpected safe generic response.
-- `502/503/504` normalized dependency unavailable/bad gateway/timeout only where the endpoint contract explicitly exposes dependency status instead of creating a domain failure state.
-
-### 5.2 Endpoint Inventory by MAS
+### 5.2 Endpoint Inventory
 
 **MAS-1 Tenant & Workforce Access**
 
@@ -860,145 +874,149 @@ POST   /api/v1/organizations
 GET    /api/v1/organizations/{organizationId}
 PATCH  /api/v1/organizations/{organizationId}
 GET    /api/v1/organizations/{organizationId}/members
-POST   /api/v1/organizations/{organizationId}/invitations
 PATCH  /api/v1/organizations/{organizationId}/members/{membershipId}
 DELETE /api/v1/organizations/{organizationId}/members/{membershipId}
 GET    /api/v1/organizations/{organizationId}/roles
+GET    /api/v1/organizations/{organizationId}/invitations
+POST   /api/v1/organizations/{organizationId}/invitations
+DELETE /api/v1/organizations/{organizationId}/invitations/{invitationId}
+POST   /api/v1/invitations/accept
 ```
 
-**MAS-2 AI Provider Gateway & BYOK**
+Invitation create body:
 
-```text
-GET    /api/v1/providers
-POST   /api/v1/providers
-GET    /api/v1/providers/{providerConnectionId}
-PATCH  /api/v1/providers/{providerConnectionId}
-DELETE /api/v1/providers/{providerConnectionId}
-POST   /api/v1/providers/{providerConnectionId}/test
-GET    /api/v1/models
-POST   /api/v1/models
-PATCH  /api/v1/models/{modelConfigurationId}
-DELETE /api/v1/models/{modelConfigurationId}
+```json
+{ "email": "user@example.com", "roleIds": ["uuid"] }
 ```
 
-**MAS-3 Knowledge Source Lifecycle**
+Create response returns invitation metadata plus a one-time `inviteUrl`. The plaintext token is never persisted and is never returned again by list/read APIs. Invitation expiry default is 7 days. Accept requires an authenticated workforce user whose normalized verified email matches the invitation email. Acceptance creates/activates membership and assigned roles transactionally, marks invitation `accepted`, and writes audit/outbox records. Revocation marks a pending invitation `revoked`; expired tokens cannot be accepted.
+
+**MAS-2 Provider Gateway/BYOK**
 
 ```text
-GET    /api/v1/knowledge-sources
-POST   /api/v1/knowledge-sources
-GET    /api/v1/knowledge-sources/{sourceId}
-PATCH  /api/v1/knowledge-sources/{sourceId}
-POST   /api/v1/knowledge-sources/{sourceId}/sync
-POST   /api/v1/knowledge-sources/{sourceId}/disable
-GET    /api/v1/knowledge-documents
-GET    /api/v1/knowledge-documents/{documentId}
+GET/POST              /api/v1/providers
+GET/PATCH/DELETE      /api/v1/providers/{providerConnectionId}
+POST                  /api/v1/providers/{providerConnectionId}/test
+GET/POST              /api/v1/models
+PATCH/DELETE           /api/v1/models/{modelConfigurationId}
 ```
 
-**MAS-4 Retrieval & Grounding**
+**MAS-3 Knowledge**
 
 ```text
-POST   /api/v1/retrieval-queries
-GET    /api/v1/retrieval-runs/{retrievalRunId}
+GET/POST              /api/v1/knowledge-sources
+GET/PATCH              /api/v1/knowledge-sources/{sourceId}
+POST                   /api/v1/knowledge-sources/{sourceId}/sync
+POST                   /api/v1/knowledge-sources/{sourceId}/disable
+GET                    /api/v1/knowledge-documents
+GET                    /api/v1/knowledge-documents/{documentId}
 ```
 
-**MAS-5 Customer Conversation Experience**
+**MAS-4 Retrieval**
 
 ```text
-POST   /api/v1/customer/conversations
-GET    /api/v1/customer/conversations/{conversationId}
-POST   /api/v1/customer/conversations/{conversationId}/messages
-GET    /api/v1/customer/conversations/{conversationId}/events
-POST   /api/v1/customer/conversations/{conversationId}/human-request
-POST   /api/v1/customer/conversations/{conversationId}/feedback
+POST                   /api/v1/retrieval-queries
+GET                    /api/v1/retrieval-runs/{retrievalRunId}
 ```
 
-**MAS-6 Agent Runtime & Routing / MAS-10 Agent Configuration**
+**MAS-5 Customer Conversation**
 
 ```text
-GET    /api/v1/agents
-POST   /api/v1/agents
-GET    /api/v1/agents/{agentId}
-PATCH  /api/v1/agents/{agentId}
-GET    /api/v1/agents/{agentId}/versions
-POST   /api/v1/agents/{agentId}/versions
-GET    /api/v1/agent-versions/{agentVersionId}
-POST   /api/v1/agent-versions/{agentVersionId}/evaluate
-POST   /api/v1/agent-versions/{agentVersionId}/publish
-POST   /api/v1/agent-versions/{agentVersionId}/rollback
+POST                   /api/v1/customer/conversations
+GET                    /api/v1/customer/conversations/{conversationId}
+POST                   /api/v1/customer/conversations/{conversationId}/messages
+GET                    /api/v1/customer/conversations/{conversationId}/events
+POST                   /api/v1/customer/conversations/{conversationId}/human-request
+POST                   /api/v1/customer/conversations/{conversationId}/feedback
 ```
 
-**MAS-7 Customer Context & Tool Execution**
+**MAS-6/MAS-10 Agent Configuration**
 
 ```text
-GET    /api/v1/tools
-GET    /api/v1/tools/{toolId}
-POST   /api/v1/tools/{toolId}/test
-GET    /api/v1/tool-executions/{toolExecutionId}
+GET/POST               /api/v1/agents
+GET/PATCH              /api/v1/agents/{agentId}
+GET                    /api/v1/agents/{agentId}/versions
+POST                   /api/v1/agents/{agentId}/versions
+GET                    /api/v1/agent-versions/{agentVersionId}
+POST                   /api/v1/agent-versions/{agentVersionId}/evaluate
+POST                   /api/v1/agent-versions/{agentVersionId}/publish
+POST                   /api/v1/agent-versions/{agentVersionId}/rollback
 ```
 
-Direct production tool mutation endpoints are internal. Customer mutations are initiated through conversation/action contracts so the model cannot bypass policy.
-
-**MAS-8 Policy, Confirmation & Approval**
+**MAS-7 Tools**
 
 ```text
-GET    /api/v1/policies
-POST   /api/v1/policies
-GET    /api/v1/policies/{policyId}
-POST   /api/v1/policies/{policyId}/versions
-POST   /api/v1/customer/action-confirmations/{confirmationId}/confirm
-POST   /api/v1/customer/action-confirmations/{confirmationId}/decline
-GET    /api/v1/approvals
-GET    /api/v1/approvals/{approvalId}
-POST   /api/v1/approvals/{approvalId}/approve
-POST   /api/v1/approvals/{approvalId}/reject
+GET                    /api/v1/tools
+GET                    /api/v1/tools/{toolId}
+POST                   /api/v1/tools/{toolId}/test
+GET                    /api/v1/tool-executions/{toolExecutionId}
 ```
 
-**MAS-9 Human Support & Escalation**
+Direct production tool mutation endpoints remain internal; customer mutations originate through the agent/action contract so policy cannot be bypassed.
+
+**MAS-8 Policy/Confirmation/Approval**
 
 ```text
-GET    /api/v1/support-queues
-GET    /api/v1/escalations
-GET    /api/v1/escalations/{escalationId}
-POST   /api/v1/escalations/{escalationId}/assign
-POST   /api/v1/escalations/{escalationId}/reassign
-POST   /api/v1/escalations/{escalationId}/resolve
-POST   /api/v1/escalations/{escalationId}/reopen
-POST   /api/v1/conversations/{conversationId}/messages
-POST   /api/v1/conversations/{conversationId}/internal-notes
+GET/POST               /api/v1/policies
+GET                    /api/v1/policies/{policyId}
+POST                   /api/v1/policies/{policyId}/versions
+POST                   /api/v1/customer/action-confirmations/{confirmationId}/confirm
+POST                   /api/v1/customer/action-confirmations/{confirmationId}/decline
+GET                    /api/v1/approvals
+GET                    /api/v1/approvals/{approvalId}
+POST                   /api/v1/approvals/{approvalId}/approve
+POST                   /api/v1/approvals/{approvalId}/reject
 ```
 
-**MAS-11 Analytics & Audit**
+**MAS-9 Human Support**
 
 ```text
-GET    /api/v1/analytics/overview
-GET    /api/v1/analytics/providers
-GET    /api/v1/analytics/tools
-GET    /api/v1/analytics/retrieval
-GET    /api/v1/audit-events
-GET    /api/v1/audit-events/{auditEventId}
+GET                    /api/v1/support-queues
+GET                    /api/v1/escalations
+GET                    /api/v1/escalations/{escalationId}
+POST                   /api/v1/escalations/{escalationId}/assign
+POST                   /api/v1/escalations/{escalationId}/reassign
+POST                   /api/v1/escalations/{escalationId}/resolve
+POST                   /api/v1/escalations/{escalationId}/reopen
+POST                   /api/v1/conversations/{conversationId}/messages
+POST                   /api/v1/conversations/{conversationId}/internal-notes
+```
+
+**MAS-11 Analytics/Audit/Privacy**
+
+```text
+GET                    /api/v1/analytics/overview
+GET                    /api/v1/analytics/providers
+GET                    /api/v1/analytics/tools
+GET                    /api/v1/analytics/retrieval
+GET                    /api/v1/audit-events
+GET                    /api/v1/audit-events/{auditEventId}
+POST                   /api/v1/customer/privacy/export
+POST                   /api/v1/customer/privacy/delete
+GET                    /api/v1/customer/privacy/requests/{requestId}
 ```
 
 **MAS-12 Platform Operations**
 
 ```text
-GET    /api/v1/platform/tenants
-GET    /api/v1/platform/tenants/{tenantId}
-GET    /api/v1/platform/health
-GET    /api/v1/platform/providers
-GET    /api/v1/platform/queues
-GET    /api/v1/platform/jobs
-GET    /api/v1/platform/dead-letters
-GET    /api/v1/platform/feature-flags
-PATCH  /api/v1/platform/feature-flags/{flagKey}
-GET    /api/v1/platform/rate-limits
-PATCH  /api/v1/platform/rate-limits/{limitKey}
-GET    /api/v1/platform/usage
-GET    /api/v1/platform/security-events
+GET                    /api/v1/platform/tenants
+GET                    /api/v1/platform/tenants/{tenantId}
+GET                    /api/v1/platform/health
+GET                    /api/v1/platform/providers
+GET                    /api/v1/platform/queues
+GET                    /api/v1/platform/jobs
+GET                    /api/v1/platform/dead-letters
+GET                    /api/v1/platform/feature-flags
+PATCH                  /api/v1/platform/feature-flags/{flagKey}
+GET                    /api/v1/platform/rate-limits
+PATCH                  /api/v1/platform/rate-limits/{limitKey}
+GET                    /api/v1/platform/usage
+GET                    /api/v1/platform/security-events
 ```
 
 ### 5.3 SSE Contract
 
-`GET /api/v1/customer/conversations/{conversationId}/events` uses `text/event-stream` and emits only customer-safe event types:
+`GET /api/v1/customer/conversations/{conversationId}/events` returns `text/event-stream` with only:
 
 ```text
 message.delta
@@ -1011,76 +1029,92 @@ conversation.resolved
 error.recoverable
 ```
 
-SSE payload:
+Payload:
 
 ```json
 {
   "eventId": "evt_...",
-  "conversationId": "...",
+  "conversationId": "uuid",
   "type": "message.delta",
   "occurredAt": "ISO-8601",
   "data": {}
 }
 ```
 
-Internal chain-of-thought, raw prompts, secrets, policy internals, and unrestricted tool output are never sent through this stream.
+Internal reasoning, raw prompts, secrets, unrestricted tool output, evidence scores, and policy internals are prohibited from customer streams.
+
+### 5.4 Frozen Production V1 Rate-Limit Defaults
+
+The authoritative configurable representation is `rate_limit_policies`. These built-in defaults are used if the configuration store is missing or invalid. Limits are enforced at the edge/API boundary and can also be reinforced inside expensive services.
+
+| Limit key | Dimension | Default |
+|---|---|---:|
+| `auth.login` | IP + normalized login identifier | 10 attempts / 15 min |
+| `customer.conversation.create.ip` | IP | 20 / min |
+| `customer.conversation.create.customer` | verified customer | 60 / min |
+| `customer.message.session` | anonymous/verified session | 30 / min |
+| `customer.message.customer` | verified customer | 60 / min |
+| `customer.message.ip` | IP | 300 / min, burst 60/10s |
+| `provider.test.user` | tenant user | 10 / min |
+| `provider.test.connection` | provider connection | 30 / hour |
+| `provider.call.concurrent.connection` | provider connection | 20 concurrent unless provider/account configuration is lower |
+| `knowledge.upload.user` | tenant user | 30 / hour |
+| `knowledge.sync.tenant` | tenant | 60 / hour, max 5 concurrent |
+| `agent.evaluate.user` | tenant user | 20 / min |
+| `agent.evaluate.tenant` | tenant | 100 / hour |
+| `privacy.export.customer` | customer | 3 / 24 h |
+| `privacy.delete.customer` | customer | 2 / 24 h |
+| `webhook.config.user` | tenant user | 30 / min |
+| `platform.control.operator` | platform operator | 60 / min |
+
+429 response includes `Retry-After` and stable error code `RATE_LIMITED`. Rate-limit keys never include raw email, API key, token, or other secret. Login identifiers are normalized and keyed through a server-side one-way digest.
 
 ## 6. Auth & Permissions
 
-### 6.1 Workforce Authentication Flow
+### 6.1 Workforce Authentication
 
-1. User opens a workforce application.
-2. Unauthenticated request redirects to Keycloak OIDC Authorization Code + PKCE.
-3. After callback, the server establishes a Serviq session. Access/refresh tokens remain server-side.
-4. Browser receives an opaque/encrypted session cookie with `HttpOnly`, `SameSite=Lax`, `Secure` in production, and bounded expiry.
-5. API request resolves session and OIDC identity server-side.
-6. `users` and `memberships` map identity to tenant membership.
-7. Tenant selection is taken from authenticated server state or an explicitly validated organization route, never trusted from an arbitrary header alone.
-8. Permission guard resolves named capabilities from membership roles.
-9. Repository/service queries include tenant ownership. Unauthorized resource existence may return 404 where the API contract requires non-disclosure.
+1. Unauthenticated workforce user is redirected to OIDC Authorization Code + PKCE.
+2. Callback establishes a server-managed Serviq session; provider access/refresh tokens stay server-side.
+3. Browser receives opaque/encrypted `HttpOnly`, `SameSite=Lax`, `Secure` in production cookie.
+4. API resolves user and membership from trusted session state.
+5. Tenant route context is validated against membership; arbitrary tenant headers are never trusted.
+6. Capability guard checks required permission.
+7. Service/repository layer enforces tenant/object ownership.
 
-### 6.2 Customer Identity Flow
+### 6.2 Customer Identity
 
-- Anonymous session is allowed only for tenant-configured public support behavior.
-- Protected customer data/actions require a tenant-signed short-lived assertion or configured identity integration.
-- Customer assertion contains tenant, issuer, subject, expiration, and assurance level. Signature and audience are validated server-side.
-- Customer identity is mapped to a tenant-scoped `customer_identities` record before protected tool access.
+Anonymous support is allowed only where tenant channel policy permits it. Protected customer data/actions require a tenant-signed short-lived assertion or configured identity integration. Assertion validates tenant, issuer, subject, audience, expiry, signature, and assurance level before mapping to `customer_identities`.
 
-### 6.3 Permission Enforcement
+### 6.3 Platform Operators
 
-- Navigation visibility is convenience only.
-- Every protected API declares required capability.
-- Object ownership is checked in database/service queries.
-- Platform-operator permissions use a separate operator identity realm/claim and cannot be granted through tenant role APIs.
-- Role/action matrix is the PRD Section 8 contract.
+Platform operators use a separate trust boundary and cannot receive operator permissions through tenant role APIs. Every tenant-detail access by an operator is audited with reason/context where the operation contract requires it.
 
 ### 6.4 Premium Review Required
 
-Authentication flows, permission middleware, customer identity assertions, platform-operator tenant access, session cookie behavior, and RLS policies require premium-model security review before merge.
+Auth/session flows, invitation token handling, permission middleware, customer identity assertions, RLS policies, rate limiting, privacy deletion, platform-operator tenant access, and secret management require premium security review before merge.
 
 ## 7. Background Jobs
 
-All jobs are durable, idempotent, observable, and bounded. Topic names below are contracts.
-
-| Job | Trigger/topic | Retry policy | Idempotency key |
+| Job | Trigger/topic | Retry | Idempotency |
 |---|---|---|---|
-| Publish outbox | DB poll `outbox_events` | continuous, exponential on broker failure, never drop | `outbox_event.id` |
-| Knowledge sync | `serviq.knowledge.sync.v1` | 3 retries at 30s, 5m, 30m, then DLQ | `tenantId:sourceId:syncVersion` |
-| Document parse | `serviq.knowledge.parse.v1` | 3 retries at 30s, 5m, 30m, then DLQ | `documentId:documentVersion` |
-| Chunk/embed/index | `serviq.knowledge.index.v1` | 3 retries at 1m, 10m, 30m, then DLQ | `documentId:documentVersion:embeddingProfile` |
-| Analytics projection | `serviq.analytics.events.v1` | 5 retries with exponential backoff, then DLQ | source event ID |
-| Webhook delivery | `serviq.webhooks.delivery.v1` | 8 retries with exponential backoff and jitter, capped at 24h, then dead-letter | `webhookEndpointId:eventId` |
-| Notification | `serviq.notifications.v1` | 5 retries, then DLQ | notification command ID |
-| Tool reconciliation | `serviq.tools.reconcile.v1` | 5 retries up to 30m, then human escalation | `toolExecutionId` |
-| Approval expiry | scheduled scan every minute | safe repeat, no retry count needed | `approvalId:expiresAt` |
-| Confirmation expiry | scheduled scan every minute | safe repeat, no retry count needed | `confirmationId:expiresAt` |
-| Dead-letter replay | explicit platform-operator action | one replay command at a time, original idempotency preserved | original event/job ID + replay sequence |
+| Outbox publish | DB poll | continuous exponential on broker failure | `outbox_event.id` |
+| Knowledge sync | `serviq.knowledge.sync.v1` | 30s, 5m, 30m then DLQ | `tenantId:sourceId:syncVersion` |
+| Document parse | `serviq.knowledge.parse.v1` | 30s, 5m, 30m then DLQ | `documentId:documentVersion` |
+| Chunk/embed/index | `serviq.knowledge.index.v1` | 1m, 10m, 30m then DLQ | document/version/profile |
+| Analytics projection | `serviq.analytics.events.v1` | 5 exponential retries then DLQ | source event ID |
+| Webhook delivery | `serviq.webhooks.delivery.v1` | 8 exponential+jitter retries, max 24h | endpoint:event |
+| Notification | `serviq.notifications.v1` | 5 retries then DLQ | command ID |
+| Tool reconciliation | `serviq.tools.reconcile.v1` | 5 retries up to 30m then escalation | toolExecutionId |
+| Approval expiry | minute scheduler | repeat-safe | approvalId:expiresAt |
+| Confirmation expiry | minute scheduler | repeat-safe | confirmationId:expiresAt |
+| Privacy export | `serviq.privacy.export.v1` | 3 retries then failed | requestId |
+| Privacy delete | `serviq.privacy.delete.v1` | 3 retries; partial progress resumable | requestId |
+| Retention purge | daily scheduler | repeat-safe | class:cutoffDate |
+| Dead-letter replay | explicit operator action | one replay command | original ID + replay sequence |
 
-Retry topics use `.retry` and `.dlq` suffixes. Consumers tolerate unknown additive payload fields and reject unsupported schema versions explicitly.
+All durable jobs are idempotent, observable, bounded, and survive process failure.
 
 ## 8. File Storage
-
-### 8.1 Object Layout
 
 Local bucket: `serviq-local-objects`. Cloud convention: `serviq-{environment}-objects`.
 
@@ -1091,124 +1125,98 @@ tenants/{tenantId}/exports/{exportId}
 tenants/{tenantId}/evaluation/{evaluationRunId}
 ```
 
-User-supplied filenames are metadata only and are never used as storage keys.
+User filenames are metadata only, never object keys.
 
-### 8.2 V1 Allowed Knowledge Uploads
+Allowed knowledge uploads:
 
-| Type | Extensions | MIME allowlist | Max size |
+| Type | Extensions | MIME | Max |
 |---|---|---|---:|
 | PDF | `.pdf` | `application/pdf` | 25 MiB |
 | Markdown | `.md`, `.markdown` | `text/markdown`, `text/plain` | 5 MiB |
-| Plain text | `.txt` | `text/plain` | 5 MiB |
+| Text | `.txt` | `text/plain` | 5 MiB |
 
-Both extension and MIME must pass. File signature/content sanity is checked before parsing. Files are treated as untrusted content and are never executed.
+Extension, MIME, and content sanity must pass. Files are treated as untrusted data and never executed.
 
-`Needs Product Decision: End-customer attachments are not architected or enabled until the PRD open question is resolved.`
+`Needs Product Decision: End-customer attachments remain disabled until PRD Section 16 resolves their V1 scope.`
 
 ## 9. Integrations
 
 ### 9.1 LLM Providers
 
-**Purpose:** generation and, where configured, embedding/rerank models.  
-**Access:** server-side BYOK secret reference.  
-**Providers:** OpenAI, Anthropic, Gemini, OpenRouter.  
-**Failure behavior:** explicit timeout, normalized provider error, circuit breaker, tenant-configured fallback if run budget permits, then deterministic/degraded response or escalation.  
-**Rate behavior:** per-tenant and per-provider concurrency/token budgets. Provider `429` never creates an unbounded retry loop.
+OpenAI, Anthropic, Gemini, and OpenRouter are accessed only through the Serviq gateway. Credentials are server-side BYOK secret references. Calls use explicit timeouts, normalized errors, provider health/circuit state, and ordered fallback if configured and within run budget.
 
 ### 9.2 Keycloak OIDC
 
-**Purpose:** workforce authentication in local/dev.  
-**Auth:** OIDC Authorization Code + PKCE.  
-**Failure behavior:** fail closed. Invalid/expired session returns 401. Identity provider outage does not bypass session validation.
+Local/dev workforce identity. Authorization Code + PKCE. Identity outage never bypasses validation or authorization.
 
 ### 9.3 Public Knowledge Fetcher
 
-**Purpose:** retrieve approved public support pages/manifests.  
-**Auth:** public HTTP only in V1 unless a future connector contract adds credentials.  
-**Security:** HTTPS by default. Resolve DNS and reject loopback, link-local, private, metadata, and prohibited address ranges. Re-check redirects. Enforce response size/time limits, content-type allowlist, and tenant-configured domain allowlist.  
-**Failure behavior:** source sync becomes `failed` with safe error code and retry control.  
-**Crawl behavior:** obey access controls, configured request rate, and source ownership/terms. Never bypass authentication, robots/access restrictions, or anti-bot controls.
+HTTPS by default. Before each fetch and after every redirect, resolve and reject loopback, link-local, RFC1918/private, metadata, multicast, reserved, and prohibited IPv4/IPv6 targets. Apply domain allowlist, response-size limit, content-type allowlist, timeout, crawl rate, and access/terms restrictions. Never bypass authentication or anti-bot/access controls.
 
 ### 9.4 Synthetic Demo Operational Adapter
 
-**Purpose:** provide realistic private customer/order/status/action data for the public-company demo without using real PII or proprietary systems.  
-**Auth:** internal service capability only.  
-**Failure behavior:** deterministic testable errors, timeout simulation, ambiguous-mutation simulation for reconciliation tests.  
-**Contract:** exact tool set is frozen after the two demo-domain Product Decisions in PRD Section 16 are resolved.
+Provides synthetic private customer/order/status/action data. Exact tools remain blocked by the PRD demo-domain Product Decisions. Adapter must support deterministic errors, timeout simulation, and ambiguous-mutation simulation for reconciliation tests.
 
-### 9.5 Outbound Tenant Webhooks
+### 9.5 Outbound Tenant Webhooks — Frozen SSRF/Egress Contract
 
-**Purpose:** emit selected tenant events.  
-**Auth:** HMAC signature using tenant endpoint secret.  
-**Failure behavior:** acknowledge event creation synchronously, deliver asynchronously, duplicate-safe, bounded retry, dead-letter after exhaustion.  
-**Security:** webhook signature implementation requires premium review.
+This closes the previous webhook SSRF gap.
+
+**Endpoint creation/update validation**
+
+- Production V1 accepts `https://` only.
+- URL username/password syntax is rejected.
+- URL fragments are rejected.
+- Production V1 allows port 443 only. Additional ports require an architecture change.
+- DNS is resolved server-side. Reject loopback, link-local, RFC1918/private, carrier-grade NAT, metadata, multicast, documentation/reserved, and non-routable IPv4/IPv6 ranges.
+- Hostnames resolving to any prohibited address are rejected.
+- Validation success stores `last_validated_at`, not a trusted forever-resolved IP.
+
+**Delivery-time protection**
+
+- DNS is resolved again immediately before every delivery attempt to prevent DNS-rebinding bypass.
+- The connected peer address must be public and must match an allowed result of the just-performed resolution.
+- HTTP redirects are disabled for webhook delivery.
+- Connect timeout: 5 seconds. Total request timeout: 10 seconds.
+- Response body read limit: 64 KiB. Larger bodies are truncated/discarded and never passed to the model.
+- Outbound proxy/environment settings must not allow tenants to bypass target validation.
+- HMAC signature secret remains server-side. Signature includes event ID, timestamp, and raw request body; receiver replay window target is 5 minutes.
+- Delivery is asynchronous, duplicate-safe, bounded, and dead-lettered after retry exhaustion.
+
+**Local development exception**
+
+Local Docker profile may allow explicit `http://host.docker.internal:<configured-dev-port>` only when `SERVIQ_ENV=local` and an explicit development allowlist is set. This exception is impossible in staging/production configuration validation.
+
+Webhook URL validation, delivery egress controls, and HMAC implementation require premium security review.
 
 ## 10. Observability
 
 ### 10.1 Logging
 
-Structured JSON fields:
-
-```text
-timestamp
-level
-service
-requestId
-traceId
-spanId
-tenantId (when safe)
-userId/customerId (pseudonymous ID only when needed)
-route/job/event
-errorCode
-message
-```
-
-Never log passwords, tokens, cookies, API keys, OTPs, full payment data, raw LLM prompts containing PII, or unrestricted tool output. Prompt/content capture is off by default and may only be enabled through a redacted evaluation/debug mode designed in a dedicated ticket.
+Structured JSON fields: timestamp, level, service, requestId, traceId, spanId, tenantId when safe, pseudonymous actor ID when necessary, route/job/event, errorCode, message. Never log passwords, tokens, cookies, API keys, raw customer secrets, full prompts containing PII, or unrestricted tool output.
 
 ### 10.2 Metrics
 
-Minimum metrics:
-
-- request count/rate, p50/p95/p99 latency, error rate;
-- active SSE connections;
-- DB pool saturation and query latency;
-- cache hit/miss and rate-limit decisions;
-- topic lag, consumer failures, dead-letter count;
-- agent run duration, step count, model calls, tool calls;
-- retrieval duration and result counts;
-- provider latency, error, rate-limit, token/usage estimates;
-- tool outcome and ambiguous-state count;
-- escalation, containment/resolution, feedback;
-- knowledge sync/index backlog.
-
-Tenant labels on high-volume metrics must use cardinality controls. Per-tenant detailed analytics belong in the event/data layer, not unbounded metrics labels.
+Minimum metrics include request rate/latency/error, SSE connections, DB pool saturation, cache hit/miss, rate-limit decisions, queue lag, dead letters, agent duration/steps/model/tool calls, retrieval latency/results, provider latency/errors/429s, tool outcomes/unknown state, escalation/resolution, knowledge backlog, webhook delivery failures, privacy request age, and purge failures.
 
 ### 10.3 Tracing
 
-One distributed trace covers ingress -> auth/tenant resolution -> conversation persistence -> agent -> retrieval/provider/policy/tool -> response -> durable event publication. Secrets and raw sensitive content are excluded from spans.
+One distributed trace covers ingress -> auth/tenant -> persistence -> agent -> retrieval/provider/policy/tool -> response -> outbox/audit. Secrets and raw sensitive content are excluded.
 
-### 10.4 Health Endpoints
+### 10.4 Health
 
 ```text
-GET /health/live   -> process liveness only
-GET /health/ready  -> required dependency readiness for that process
-GET /health/info   -> build/version metadata, protected or internal-only in production
+GET /health/live
+GET /health/ready
+GET /health/info
 ```
 
-Readiness never performs expensive provider calls.
+Readiness checks required infrastructure for that process but never performs expensive provider calls.
 
 ## 11. Deployment Assumptions
 
-### 11.1 Environments
+Environments: `local`, `test`, `staging`, `production`.
 
-- `local`: Docker Compose, deterministic mocks available, no paid dependency required.
-- `test`: ephemeral CI dependencies and fake external providers.
-- `staging`: production-like configuration with synthetic data.
-- `production`: cloud deployment after infrastructure ADRs and load/security gates.
-
-### 11.2 Required Configuration Names
-
-Exact secrets are not committed. Initial environment/config contract:
+Required initial environment names:
 
 ```text
 SERVIQ_ENV
@@ -1230,13 +1238,12 @@ LLM_GATEWAY_URL
 LLM_GATEWAY_INTERNAL_TOKEN
 OTEL_EXPORTER_OTLP_ENDPOINT
 LOG_LEVEL
+SERVIQ_LOCAL_WEBHOOK_ALLOWLIST
 ```
 
-Provider BYOK keys are tenant secrets stored through the secret adapter, not static environment variables per tenant.
+`SERVIQ_LOCAL_WEBHOOK_ALLOWLIST` is ignored/rejected outside `local`.
 
-### 11.3 Local Startup
-
-The root repository must expose documented commands equivalent to:
+Root commands must be equivalent to:
 
 ```text
 make setup
@@ -1250,29 +1257,17 @@ make load-test
 make down
 ```
 
-Docker Compose profiles allow minimal core startup and optional broker/observability profiles. CI runs a deterministic fake LLM so tests do not require paid calls.
-
-### 11.4 CI Expectations
-
-Pull requests run formatting, lint, type checks, unit, integration, API, tenant-isolation, migration up/down, contract tests, dependency scan, secret scan, SAST, container validation where applicable, E2E smoke tests for affected surfaces, and docs/link checks.
+CI runs deterministic fake LLM/tool providers and does not require paid external calls.
 
 ## 12. System Boundaries & Contracts
 
-The contracts below are architect-owned. Tickets may add validation detail without changing field names/meaning. Any change to these contracts requires contract-change control.
-
-### CONTRACT C-1 [MAS-1 Tenant/Auth Context -> all tenant MASs]
-
-**Direction:** request guard supplies trusted context to services.  
-**In-memory type:**
+### CONTRACT C-1 — Trusted Auth/Tenant Context
 
 ```json
 {
   "requestId": "string",
   "tenantId": "uuid",
-  "actor": {
-    "type": "tenant_user|customer|service|platform_operator",
-    "id": "string"
-  },
+  "actor": { "type": "tenant_user|customer|service|platform_operator", "id": "string" },
   "userId": "uuid|null",
   "customerId": "uuid|null",
   "permissions": ["string"],
@@ -1280,13 +1275,11 @@ The contracts below are architect-owned. Tickets may add validation detail witho
 }
 ```
 
-**Errors:** missing identity 401, missing tenant permission 403, inaccessible object 404 where non-disclosure applies.  
-**Owner:** MAS-1.
+Owner: MAS-1. Missing identity 401, missing permission 403, inaccessible object 404 where non-disclosure applies.
 
-### CONTRACT C-2 [MAS-5 Conversation -> MAS-6 Agent Runtime]
+### CONTRACT C-2 — Conversation -> Agent Runtime
 
-**Direction:** persisted customer message requests an agent run through outbox/event.  
-**Event:** `agent.run.requested` on `serviq.agent.runs.v1`.
+Event `agent.run.requested` on `serviq.agent.runs.v1`:
 
 ```json
 {
@@ -1301,320 +1294,157 @@ The contracts below are architect-owned. Tickets may add validation detail witho
 }
 ```
 
-**Error behavior:** duplicate event is ignored by `eventId`/run uniqueness. Missing/retired agent version moves event to failed/DLQ and conversation receives recoverable error or escalation according to deployment policy.  
-**Owner:** MAS-5 for event creation, MAS-6 for consumption behavior.
+Owner: MAS-5 produces; MAS-6 consumes idempotently.
 
-### CONTRACT C-3 [MAS-6 Agent Runtime <-> MAS-4 Retrieval]
-
-**Direction:** synchronous internal service call.
+### CONTRACT C-3 — Agent <-> Retrieval
 
 Request:
 
 ```json
-{
-  "tenantId": "uuid",
-  "query": "string 1..4000",
-  "accessScope": "customer|internal",
-  "topK": "integer 1..20",
-  "sourceIds": ["uuid"],
-  "knowledgeVersion": "integer|null"
-}
+{ "tenantId": "uuid", "query": "string 1..4000", "accessScope": "customer|internal", "topK": 10, "sourceIds": ["uuid"], "knowledgeVersion": null }
 ```
 
-Response:
+Response contains ranked `chunkId`, `documentId`, `sourceId`, `content`, `score`, citation title/URI/location, and `retrievalRunId`. Errors: `RETRIEVAL_UNAVAILABLE`, `INVALID_RETRIEVAL_QUERY`. Owner: MAS-4.
+
+### CONTRACT C-4 — Agent <-> LLM Gateway
+
+Request includes tenantId, modelAlias, purpose, messages, responseSchema, maxOutputTokens, timeoutMs, stream, correlationId. Response normalizes content/structured output, provider, upstream model, usage, finish reason, request ID. Errors: `PROVIDER_RATE_LIMITED`, `PROVIDER_TIMEOUT`, `PROVIDER_UNAVAILABLE`, `PROVIDER_INVALID_REQUEST`, `PROVIDER_AUTH_FAILED`. Owner: MAS-2.
+
+### CONTRACT C-5 — Agent -> Tool Proposal
+
+```json
+{ "tenantId": "uuid", "agentRunId": "uuid", "toolKey": "string", "toolVersion": 1, "arguments": {}, "customerId": "uuid|null", "correlationId": "string" }
+```
+
+Arguments validate against frozen JSON Schema. Unknown fields fail `TOOL_ARGUMENT_VALIDATION_FAILED`. Owner: MAS-7.
+
+### CONTRACT C-6 — Tool -> Policy
+
+Input includes toolExecutionId, tool/risk, customer assurance, arguments, context. Response:
+
+```json
+{ "decision": "allow|deny|require_confirmation|require_human_approval", "policyVersionId": "uuid", "reasonCode": "string", "confirmationExpiresAt": "iso8601|null", "approvalExpiresAt": "iso8601|null" }
+```
+
+Missing mutation policy means deny. Owner: MAS-8.
+
+### CONTRACT C-7 — Approval -> Human Support
+
+Event `approval.requested` on `serviq.support.approvals.v1` includes approvalId, conversationId, toolExecutionId, riskClass, reasonCode, expiresAt, correlationId. MAS-9 displays/assigns; MAS-8 alone changes decision state.
+
+### CONTRACT C-8 — Agent -> Escalation
+
+Command includes tenantId, conversationId, optional agentRunId, reasonCode, priority, evidenceChunkIds, toolExecutionIds, recommendedNextAction. Response returns escalationId, queueId, status. Owner: MAS-9.
+
+### CONTRACT C-9 — Knowledge -> Retrieval Index
+
+Event `knowledge.document.indexed` on `serviq.knowledge.events.v1` includes tenantId, sourceId, documentId, documentVersion, contentHash, chunkCount, embeddingModelAlias, correlationId. Owner: MAS-3.
+
+### CONTRACT C-10 — All MASs -> Audit
+
+Event `audit.event.recorded` on `serviq.audit.events.v1` includes eventId, schemaVersion, tenantId nullable, actor, action, resource, outcome, allow-listed metadata, correlationId, occurredAt. No secrets. Owner: MAS-11 persistence/query.
+
+### CONTRACT C-11 — All MASs -> Analytics
+
+Event `usage.recorded` on `serviq.analytics.events.v1` includes eventId, tenantId, eventType, quantity, amountMicrousd nullable, dimensions, occurredAt. Analytics failures never block customer response.
+
+### CONTRACT C-12 — Customer SSE
+
+Only Section 5.3 public event types may reach the customer. Owner: MAS-5.
+
+### CONTRACT C-13 — Organization Invitation
+
+Create request:
+
+```json
+{ "email": "string <=320", "roleIds": ["uuid"] }
+```
+
+Create response:
 
 ```json
 {
-  "results": [
-    {
-      "chunkId": "uuid",
-      "documentId": "uuid",
-      "sourceId": "uuid",
-      "content": "string",
-      "score": "number",
-      "citation": { "title": "string", "uri": "string|null", "location": "string|null" }
-    }
-  ],
-  "retrievalRunId": "uuid"
+  "data": {
+    "id": "uuid",
+    "email": "normalized@example.com",
+    "roleIds": ["uuid"],
+    "status": "pending",
+    "expiresAt": "iso8601",
+    "inviteUrl": "string"
+  },
+  "meta": {}
 }
 ```
 
-**Errors:** typed `RETRIEVAL_UNAVAILABLE`, `INVALID_RETRIEVAL_QUERY`. No fallback to another tenant or disabled source.  
-**Owner:** MAS-4.
+`inviteUrl` is returned once. Database stores only token hash. Acceptance body is `{ "token": "string" }`; authenticated verified email must match. Owner: MAS-1.
 
-### CONTRACT C-4 [MAS-6 Agent Runtime <-> MAS-2 LLM Gateway]
+### CONTRACT C-14 — Platform Feature/Rate Configuration
 
-Request:
+Authoritative database: `platform_feature_flags`, `rate_limit_policies`. Runtime cache: Valkey derived cache max TTL 60s. Every write increments `revision`, invalidates cache, emits audit event. Owner: MAS-12. All consumers treat missing/invalid config as frozen default rather than unlimited.
 
-```json
-{
-  "tenantId": "uuid",
-  "modelAlias": "string",
-  "purpose": "classification|generation|evaluation",
-  "messages": [{ "role": "system|user|assistant", "content": "string" }],
-  "responseSchema": {},
-  "maxOutputTokens": "integer",
-  "timeoutMs": "integer",
-  "stream": "boolean",
-  "correlationId": "string"
-}
-```
+### CONTRACT C-15 — Privacy Request
 
-Non-stream response:
-
-```json
-{
-  "content": "string|null",
-  "structured": {},
-  "provider": "openai|anthropic|gemini|openrouter",
-  "upstreamModel": "string",
-  "usage": { "inputTokens": "integer|null", "outputTokens": "integer|null" },
-  "finishReason": "string",
-  "requestId": "string|null"
-}
-```
-
-**Errors:** normalized `PROVIDER_RATE_LIMITED`, `PROVIDER_TIMEOUT`, `PROVIDER_UNAVAILABLE`, `PROVIDER_INVALID_REQUEST`, `PROVIDER_AUTH_FAILED`. The gateway never returns a raw provider key or raw provider exception to callers.  
-**Owner:** MAS-2.
-
-### CONTRACT C-5 [MAS-6 Agent Runtime -> MAS-7 Tool Proposal]
-
-```json
-{
-  "tenantId": "uuid",
-  "agentRunId": "uuid",
-  "toolKey": "string",
-  "toolVersion": "integer",
-  "arguments": {},
-  "customerId": "uuid|null",
-  "correlationId": "string"
-}
-```
-
-Tool arguments are validated against the frozen JSON Schema in `tool_versions.input_schema`. Unknown fields are rejected. Invalid model output becomes `TOOL_ARGUMENT_VALIDATION_FAILED` and cannot execute.  
-**Owner:** MAS-7.
-
-### CONTRACT C-6 [MAS-7 Tool -> MAS-8 Policy Decision]
-
-Request:
-
-```json
-{
-  "tenantId": "uuid",
-  "toolExecutionId": "uuid",
-  "toolKey": "string",
-  "toolRiskClass": "read_only|low|medium|high",
-  "customerId": "uuid|null",
-  "customerAssuranceLevel": "anonymous|verified",
-  "arguments": {},
-  "context": {}
-}
-```
-
-Response:
-
-```json
-{
-  "decision": "allow|deny|require_confirmation|require_human_approval",
-  "policyVersionId": "uuid",
-  "reasonCode": "string",
-  "confirmationExpiresAt": "iso8601|null",
-  "approvalExpiresAt": "iso8601|null"
-}
-```
-
-**Rule:** missing policy for mutation returns `deny`, never implicit allow.  
-**Owner:** MAS-8.
-
-### CONTRACT C-7 [MAS-8 Approval -> MAS-9 Human Support]
-
-**Event:** `approval.requested` on `serviq.support.approvals.v1`.
-
-```json
-{
-  "eventId": "uuid",
-  "tenantId": "uuid",
-  "approvalId": "uuid",
-  "conversationId": "uuid",
-  "toolExecutionId": "uuid",
-  "riskClass": "low|medium|high",
-  "reasonCode": "string",
-  "expiresAt": "iso8601",
-  "correlationId": "string"
-}
-```
-
-MAS-9 may assign/display the approval. Only MAS-8 changes approval decision state.  
-**Owner:** MAS-8.
-
-### CONTRACT C-8 [MAS-6 Agent Runtime -> MAS-9 Escalation]
-
-Request/service command:
-
-```json
-{
-  "tenantId": "uuid",
-  "conversationId": "uuid",
-  "agentRunId": "uuid|null",
-  "reasonCode": "customer_requested|low_evidence|policy_required|tool_failed|auth_required|budget_exhausted|system_failure",
-  "priority": "low|normal|high|urgent",
-  "evidenceChunkIds": ["uuid"],
-  "toolExecutionIds": ["uuid"],
-  "recommendedNextAction": "string"
-}
-```
-
-Response:
-
-```json
-{ "escalationId": "uuid", "queueId": "uuid", "status": "open|assigned" }
-```
-
-Creating the escalation updates conversation ownership/state in the same domain transaction/outbox sequence.  
-**Owner:** MAS-9.
-
-### CONTRACT C-9 [MAS-3 Knowledge Lifecycle -> MAS-4 Retrieval Index]
-
-**Event:** `knowledge.document.indexed` on `serviq.knowledge.events.v1`.
-
-```json
-{
-  "eventId": "uuid",
-  "tenantId": "uuid",
-  "sourceId": "uuid",
-  "documentId": "uuid",
-  "documentVersion": "integer",
-  "contentHash": "string",
-  "chunkCount": "integer",
-  "embeddingModelAlias": "string|null",
-  "correlationId": "string"
-}
-```
-
-Retrieval may serve only document versions whose source/document state is active/ready according to the transactionally stored source of truth.  
-**Owner:** MAS-3.
-
-### CONTRACT C-10 [All MASs -> MAS-11 Audit]
-
-**Event:** `audit.event.recorded` on `serviq.audit.events.v1`.
-
-```json
-{
-  "eventId": "uuid",
-  "schemaVersion": 1,
-  "tenantId": "uuid|null",
-  "actor": { "type": "customer|tenant_user|service|platform_operator", "id": "string" },
-  "action": "string",
-  "resource": { "type": "string", "id": "string" },
-  "outcome": "success|denied|failed",
-  "metadata": {},
-  "correlationId": "string",
-  "occurredAt": "iso8601"
-}
-```
-
-`metadata` must be explicitly allow-listed by event producer and must not contain secret values.  
-**Owner:** MAS-11 owns persistence/query. Producer owns accurate action/resource/outcome.
-
-### CONTRACT C-11 [All MASs -> MAS-11 Usage/Analytics]
-
-**Event:** `usage.recorded` on `serviq.analytics.events.v1`.
-
-```json
-{
-  "eventId": "uuid",
-  "tenantId": "uuid",
-  "eventType": "string",
-  "quantity": "integer",
-  "amountMicrousd": "integer|null",
-  "dimensions": {},
-  "occurredAt": "iso8601"
-}
-```
-
-Analytics failures never block the customer response path. Durable source domain state remains authoritative.  
-**Owner:** MAS-11.
-
-### CONTRACT C-12 [Customer SSE <- MAS-5/MAS-9]
-
-Only the public event types in Section 5.3 may reach customers. Every event is filtered through customer visibility rules before serialization. Internal notes, evidence scores, raw policy rules, provider metadata, and tool internals are prohibited.  
-**Owner:** MAS-5.
+Export/delete request is tenant/customer scoped and requires verified identity. Async job uses `data_subject_requests.id` as idempotency key. Export artifact max lifetime 7 days, signed URL max 24h. Delete follows Section 4.5 and cannot delete/rewrite immutable audit history beyond pseudonymization rules. Owner: MAS-11 Privacy module.
 
 ## 13. Parallelization Map
 
-### Phase 0 — Repository Foundation
+### Phase 0 — Foundation
 
-**Blocking:** scaffold monorepo, Docker Compose, base CI, shared API/error contracts, database/migration harness, auth skeleton, `docs/repo_context.md`.  
-**Owner:** MAS-13.  
-No implementation ticket may invent file paths before the repo audit is created.
+Repository scaffold, Docker Compose, CI/security baseline, shared API/error contracts, migration harness, auth skeleton, rate-limit middleware skeleton, observability, and `docs/repo_context.md`.
 
 ### Phase 1 — Parallel Foundations
 
-Can run in parallel after Phase 0 contracts:
-
-- MAS-1 Tenant & Workforce Access.
-- MAS-2 Provider Gateway/BYOK using mocked tenant context until MAS-1 integration.
-- MAS-3 Knowledge Source Lifecycle.
-- MAS-5 Customer Conversation persistence/stream shell.
-- MAS-11 Audit event persistence/projector.
+- MAS-1 Tenant/Auth/Invitations.
+- MAS-2 Provider/BYOK against mocked tenant context.
+- MAS-3 Knowledge lifecycle.
+- MAS-5 Conversation persistence/stream shell.
+- MAS-11 Audit/privacy persistence foundation.
+- MAS-12 Feature/rate configuration persistence may start after MAS-1 platform identity stub.
 
 ### Phase 2 — Intelligence and Governance
 
-- MAS-4 depends on MAS-3 schema/contracts.
-- MAS-6 depends on MAS-2, MAS-4, and MAS-5 contracts, but can start against mocks.
-- MAS-7 depends on MAS-1 and the selected demo-domain Product Decision.
-- MAS-8 depends on MAS-7 tool schemas and MAS-1 authorization.
+- MAS-4 after MAS-3 contract.
+- MAS-6 against MAS-2/MAS-4/MAS-5 mocks/contracts.
+- MAS-7 after selected demo Product Decision.
+- MAS-8 after MAS-7 schemas and MAS-1 auth.
 
-### Phase 3 — Human and Management Surfaces
+### Phase 3 — Human and Management
 
-- MAS-9 depends on MAS-5, MAS-6, MAS-8.
-- MAS-10 can build frontend slices in parallel against frozen API mocks, then integrate as each MAS endpoint becomes available.
-- MAS-11 analytics projections expand as source events stabilize.
+- MAS-9 after MAS-5/MAS-6/MAS-8.
+- MAS-10 builds against frozen API mocks then integrates.
+- MAS-11 analytics expands as source events stabilize.
 
-### Phase 4 — Platform Operations and Hardening
+### Phase 4 — Operations and Hardening
 
 - MAS-12 consumes health/audit/queue/provider contracts.
-- MAS-13 runs security, E2E, failure, migration, contract drift, and load gates across all integrated MASs.
-
-### Integration Order
-
-```text
-MAS-13 scaffold
-  -> MAS-1 tenant/auth contract
-  -> MAS-2 + MAS-3 + MAS-5 + MAS-11 foundations
-  -> MAS-4 retrieval
-  -> MAS-6 agent
-  -> MAS-7 tools
-  -> MAS-8 policy/approval
-  -> MAS-9 support
-  -> MAS-10 full client integration
-  -> MAS-12 platform operations
-  -> MAS-13 release hardening/load evidence
-```
+- MAS-13 performs security, contract drift, migration, privacy, failure, E2E, and load gates.
 
 ## 14. Risk Register
 
 | Area | Risk | Required handling |
 |---|---|---|
-| Workforce authentication/session | Credential/session flaws expose tenants | **Premium review required.** Use OIDC standard flow, no localStorage tokens, explicit route guards, auth failure tests. |
-| Tenant authorization/RLS | Cross-tenant leakage is a critical breach | **Premium review required.** Tenant-scoped queries, RLS defense in depth, adversarial permission tests. |
-| Customer identity assertions | Forged customer identity exposes private records | **Premium review required.** Signed short-lived assertions, audience/issuer/expiry checks, assurance-level policy. |
-| BYOK secret storage | Provider keys can create billing/security exposure | **Premium review required.** Secret adapter, encryption-at-rest design, one-time/masked display, redacted logs. |
-| Public web ingestion | SSRF, malware, prompt injection, copyright/terms risk | **Premium review required.** Network address checks, redirect re-checks, domain controls, content limits, untrusted-content boundary, legal/source manifest policy. |
-| LLM prompts with user/retrieved data | Prompt injection or PII leakage | **Premium review required.** Separate instructions/data, minimize context, validate structured output, redact logs. |
-| Tool mutations | Duplicate or unauthorized customer-impacting actions | **Premium review required.** Typed tools, policy before execution, idempotency, reconciliation, human approval for configured risk. |
-| Webhook signatures | Signature bug enables forged callbacks or leaks | **Premium review required.** Standard HMAC construction, replay window, constant-time compare, exact signing contract. |
-| Database migrations | Live lock/data loss/schema drift | **Premium review required** for destructive or large-table changes. Expand/migrate/contract, tested rollback. |
-| Kafka/event concurrency | Duplicate/out-of-order processing | Idempotent consumers, aggregate partition keys, outbox, sequence/version checks where order matters. |
-| Semantic/vector retrieval | Index dimension/model drift | Freeze V1 embedding profile in an ADR before vector index creation. Store model alias with chunks. Reindex through versioned job. |
-| Observability cardinality/PII | Metrics cost/exposure and sensitive logs | Limit labels, pseudonymous IDs, default redaction, no raw prompts/secrets. |
-| 10M concurrency objective | Premature distributed complexity and false claims | Keep stateless contracts and scale seams, but introduce sharding/multi-region only from measured bottlenecks. Publish measured load evidence separately. |
-| Local developer resource use | Full stack too heavy for contributors | Compose profiles and deterministic mocks. Broker/observability profiles are optional until a ticket requires them. |
+| Workforce auth/session | Session compromise exposes tenant data | Premium review; OIDC standard flow; no browser token storage; auth failure tests. |
+| Invitations | Token leakage or email mismatch grants membership | Hash tokens, one-time return, short expiry, verified-email match, revoke path, premium review. |
+| Tenant authorization/RLS | Cross-tenant leakage | Premium review; tenant-scoped queries, RLS defense, adversarial isolation tests. |
+| Customer identity | Forged assertion exposes private records | Premium review; signed short-lived assertions, issuer/audience/expiry checks. |
+| BYOK secrets | Key exposure creates billing/security risk | Secret adapter, encryption, masking, redaction, premium review. |
+| Public ingestion | SSRF, malware, prompt injection, legal/source issues | Network checks, redirect re-check, content limits, untrusted boundary, premium review. |
+| Outbound webhooks | SSRF/DNS rebinding or forged callbacks | HTTPS/443 only, resolve each delivery, peer-IP validation, no redirects, HMAC, premium review. |
+| Rate limiting | Bypass or accidental tenant-wide denial | Frozen defaults, authoritative DB config, derived cache, conservative fallback, premium review. |
+| Privacy deletion | Partial deletion leaves PII or destroys required audit | Resumable idempotent purge, pseudonymized audit, backup replay procedure, premium review. |
+| LLM user/retrieved data | Prompt injection or PII leakage | Separate instructions/data, minimize context, validate structured output, no raw prompt logs. |
+| Tool mutations | Duplicate or unauthorized side effects | Policy first, idempotency, reconciliation, approval, premium review. |
+| Migrations | Data loss/schema drift | Expand/migrate/contract, tested rollback, premium review for destructive/large changes. |
+| Event concurrency | Duplicate/out-of-order processing | Outbox, idempotent consumers, partition keys, version/sequence checks. |
+| Vector retrieval | Dimension/model drift | Freeze embedding profile ADR before production vector index. |
+| Observability | PII/cardinality leakage | Redaction, pseudonymous IDs, bounded labels, retention defaults. |
+| 10M concurrency target | Premature complexity/false claims | Preserve seams, scale from measured bottlenecks, publish reproducible benchmarks. |
+| Local resource use | Full stack too heavy | Compose profiles and deterministic mocks. |
 
 ### Architecture Decisions Still Blocked by Product Decisions
 
-- `Needs Product Decision: Select the first real public-company support corpus before freezing demo tool schemas and knowledge-source fixtures.`
-- `Needs Product Decision: Select the matching synthetic operational domain/tool set before MAS-7 tickets are written.`
-- `Needs Product Decision: Resolve end-customer attachment scope before any customer upload endpoint, storage path, validation rule, or UI is created.`
+- `Needs Product Decision: Select the first real public-company support corpus before freezing demo tool schemas and fixtures.`
+- `Needs Product Decision: Select the matching synthetic private-data/tool domain before MAS-7 implementation tickets are written.`
+- `Needs Product Decision: Resolve end-customer attachment scope before any customer upload endpoint, object path, validation rule, or UI is created.`
 
-These blocked areas must not be guessed by a builder.
+Builders must not guess these three product decisions.

@@ -1,348 +1,566 @@
 # Serviq Product Specification
 
-**Status:** Draft v1.0 for architecture freeze  
+**Status:** Product charter v1.1  
 **Product:** Serviq  
 **Category:** Multi-tenant AI customer operations platform  
-**Primary deployment mode:** Local-first development, cloud-ready production architecture  
-**Initial demo domain:** Real public customer-support documentation with synthetic private operational data  
+**Development posture:** Local-first and zero-dollar-friendly, with an explicit cloud scale path  
+**Primary product promise:** Connect approved company knowledge, customer context, controlled business tools, AI reasoning, and human support in one governed platform.
 
-## 1. Product Definition
+## 1. Document Purpose and Authority
 
-Serviq is a production-grade AI customer operations platform that sits between a business and its customers. It combines company knowledge, customer context, business tools, policy controls, AI reasoning, and human support workflows so customer requests can be answered or resolved safely at scale.
+This document defines the long-term Serviq product and the boundaries that should remain true as the implementation evolves.
 
-Serviq is not a generic chatbot. It is an operational layer that can:
+The document hierarchy is:
 
-- answer grounded support questions from approved company knowledge;
-- retrieve customer-specific context such as orders, subscriptions, tickets, and account state;
-- execute approved business actions through tools and integrations;
-- require customer confirmation or staff approval for sensitive actions;
-- escalate uncertain or restricted cases to human support with a complete handoff package;
-- provide business operators with configuration, analytics, observability, auditability, and governance.
+1. `PRD.md` defines the exact Production V1 product scope and open product decisions.
+2. `ARCHITECTURE.md` defines implementation architecture, database/API/event contracts, failure behavior, security boundaries, and build sequencing.
+3. `TECH_STACK.md` freezes technology and dependency choices.
+4. This Product Specification defines the durable product model, surfaces, workflows, quality principles, and future direction.
 
-## 2. Product Goals
+When documents conflict, builders stop and report `Needs Architect Decision` rather than choosing one.
 
-1. Support both business-operator and end-customer workflows from one platform.
-2. Be multi-tenant from the first production design.
-3. Remain provider-agnostic across OpenAI, Anthropic, Gemini, OpenRouter, and future providers through a model gateway.
-4. Support bring-your-own-key provider configuration.
-5. Run locally with free/open-source infrastructure wherever practical.
-6. Preserve a clear path to AWS deployment without coupling application code to AWS-specific services.
-7. Design for horizontal scaling and an eventual target of millions of concurrent users.
-8. Treat security, testing, observability, failure recovery, and auditability as product requirements, not post-launch additions.
-9. Provide a portfolio-quality frontend across customer, client, human-agent, and platform-operator experiences.
-10. Demonstrate realistic support behavior using public documentation from a real company while using synthetic private customer/order/payment data.
+## 2. Product Definition
 
-## 3. Non-Goals
+Serviq is an AI customer operations platform that sits between a business and its customers. It is designed to do more than generate answers. Serviq combines:
 
-Serviq v1 architecture will not claim verified support for 10 million requests per second or 10 million concurrent users until benchmark evidence exists. The architecture will be designed for progressive scaling and independently measured capacity.
+- approved company knowledge;
+- verified customer/account context;
+- typed business tools and integrations;
+- policy and approval controls;
+- bounded AI reasoning;
+- human support workflows;
+- analytics, evaluation, observability, and audit history.
 
-Serviq will not:
+A customer should be able to ask a question, request account-specific information, or request an allowed business action. Serviq determines which evidence and tools are required, verifies the request against business policy, completes the action when authorized, and hands the case to a human when confidence, permissions, risk, or system health require it.
 
-- impersonate or claim affiliation with a company whose public documentation is used for demonstration;
-- store or redistribute large copyrighted knowledge corpora in the repository without permission;
-- allow an LLM to bypass policy checks and directly mutate business data;
-- expose provider API keys to browsers or end customers;
-- make high-impact irreversible decisions without configurable guardrails and approval controls.
+The business should be able to configure this behavior without editing Serviq source code.
 
-## 4. Primary Personas
+## 3. Product Positioning
 
-### 4.1 End Customer
+Serviq is not positioned as:
 
-A customer of a Serviq client. They ask questions, receive grounded answers, perform permitted account actions, confirm sensitive operations, view status, and request or receive human support.
+- a generic chatbot UI;
+- a thin wrapper around one LLM provider;
+- a RAG demo that only answers FAQs;
+- a model with direct database access;
+- an autonomous agent allowed to take unrestricted business actions;
+- a single-company hard-coded application.
 
-### 4.2 Tenant Owner
+Serviq is positioned as the **AI operations layer between customers and businesses**.
 
-The business owner or primary administrator for a Serviq organization. Controls organization-wide settings, billing/metering visibility, team membership, security, integrations, AI configuration, and deployment policy.
+The reusable product value is the governed platform. A client engagement should primarily configure and integrate Serviq for the client's data, systems, policies, channels, and brand rather than rebuilding the platform from scratch.
 
-### 4.3 Tenant Administrator
+## 4. Core Product Surfaces
 
-Configures teams, roles, integrations, knowledge sources, agent settings, approval policies, and organization configuration.
+Serviq has three primary product surfaces and one support channel surface.
 
-### 4.4 Support Manager
+### 4.1 Customer Experience
 
-Owns human support operations, queues, routing, escalations, SLAs, quality review, and support analytics.
+Used by the business's end customer.
 
-### 4.5 Support Agent
+Core responsibilities:
 
-Handles escalated conversations, reviews AI investigation context, approves or rejects controlled actions, communicates with customers, and resolves cases.
+- start/resume support conversations;
+- receive streamed answers;
+- view source citations when the tenant enables them;
+- complete customer confirmations;
+- see pending approval or escalation status;
+- transition to a human support agent without repeating context;
+- provide feedback;
+- view relevant conversation history allowed by the channel policy.
 
-### 4.6 Knowledge Manager
+The initial reference channel is web support. Additional channels are future adapters and must reuse the same conversation, policy, tool, and escalation contracts.
 
-Owns help-center sources, documents, synchronization, metadata, content versions, indexing quality, and retrieval validation.
+### 4.2 Client Operations Console
 
-### 4.7 AI Configuration Manager
+Used by the company deploying Serviq.
 
-Controls model providers, routing policies, prompts, agent behavior, tools, guardrails, confidence thresholds, evaluation suites, and rollout settings.
+Core areas:
 
-### 4.8 Analyst / Auditor
+```text
+Onboarding
+Overview
+Conversations
+Support Inbox
+Customers
+Knowledge
+AI Agents
+Models & Providers
+Tools & Integrations
+Policies & Approvals
+Analytics
+Audit Logs
+Team & Access
+Developer / Webhooks
+Settings
+```
 
-Views analytics, evaluation results, traces, audit events, support outcomes, and operational reports without receiving unrestricted configuration permissions.
+The console is not an administrative afterthought. It is the control plane that lets a company operate Serviq safely without code changes.
 
-### 4.9 Serviq Platform Operator
+### 4.3 Human Support Workspace
 
-Operates the multi-tenant Serviq platform itself. Manages platform health, tenant-level incidents, feature flags, abuse controls, provider health, global rate limits, queues, and system-wide observability.
+The human support workspace lives inside the client console but is treated as its own workflow because its latency, information density, permissions, and reliability needs differ from configuration screens.
 
-## 5. Client Workflow
+A human agent receives:
 
-The client workflow is the business-facing application used by the company deploying Serviq.
+- customer identity/context permitted by role;
+- full customer-visible conversation history;
+- AI-generated handoff summary;
+- retrieved evidence and provenance;
+- prior tool execution history;
+- policy decisions;
+- failed attempts and system errors;
+- pending approvals;
+- escalation reason and priority;
+- recommended next action.
 
-### 5.1 Organization Onboarding
+The workspace supports assignment, reassign, takeover, internal notes, allowed tools, approvals, response composition, resolution, and reopen behavior.
 
-1. Create organization.
-2. Configure organization identity and support domain.
-3. Invite team members.
-4. Assign roles and permissions.
-5. Configure one or more LLM providers using BYOK.
-6. Configure default model and fallback model policy.
-7. Add knowledge sources.
-8. Configure business integrations and tools.
-9. Define action policies and approval requirements.
-10. Run evaluation/test conversations in a sandbox.
-11. Publish an agent configuration version.
-12. Deploy customer-facing channel.
+### 4.4 Serviq Platform Console
 
-### 5.2 Knowledge Management
+Used only by Serviq platform operators.
 
-The business can:
+Core areas:
 
-- add websites, help centers, individual URLs, PDFs, documents, and structured knowledge sources;
-- trigger or schedule synchronization;
-- view crawl/sync/index status;
-- inspect parsed documents and chunks;
-- attach metadata and access scope;
-- mark content active, deprecated, or draft;
-- review retrieval quality;
-- version and roll back indexed knowledge;
-- prevent restricted content from being visible to customers.
+```text
+Tenants
+System Health
+Provider Health
+Queues / Jobs
+Dead Letters
+Incidents
+Feature Flags
+Rate / Abuse Controls
+Platform Usage
+Security / Audit Events
+Deployments
+```
 
-### 5.3 Agent Configuration
+Tenant roles can never grant platform-operator permissions.
 
-The business can configure:
+## 5. User and Client Workflow Model
 
-- agent name and identity;
-- supported languages;
-- tone and response policy;
-- primary and fallback providers/models;
-- retrieval behavior;
-- tool permissions;
-- maximum run steps;
-- timeout and cost budgets;
-- escalation thresholds;
-- source citation policy;
-- confirmation requirements;
-- human approval requirements;
-- model routing rules;
-- feature flags and staged rollout.
+Serviq intentionally separates the **client workflow** from the **end-customer workflow**.
 
-All published configurations are versioned and auditable.
+### 5.1 Client Workflow
 
-### 5.4 Human Support Workflow
+A business should be able to:
 
-1. AI creates an escalation when required.
-2. Escalation enters a queue based on tenant routing rules.
-3. Human agent sees customer, conversation summary, relevant records, retrieved sources, attempted actions, reason for escalation, and recommended next step.
-4. Human agent can continue the conversation, approve/reject pending actions, invoke allowed tools, reassign, add internal notes, or resolve.
-5. Resolution data feeds analytics and future evaluation sets.
+1. create or receive a Serviq organization;
+2. invite workforce users and assign roles;
+3. connect one or more supported LLM providers using BYOK;
+4. register approved knowledge sources;
+5. configure business tools/integrations;
+6. configure action policies, confirmations, and approval rules;
+7. create a draft agent configuration;
+8. test draft behavior against sandbox/evaluation cases;
+9. publish a version;
+10. deploy the customer support channel;
+11. operate escalations and approvals;
+12. monitor quality, usage, latency, failures, and audit history;
+13. roll back configuration when a new version performs poorly.
 
-### 5.5 Analytics Workflow
+### 5.2 End-Customer Workflow
 
-Business operators can inspect:
+An end customer should be able to:
+
+1. open support;
+2. send a question or request;
+3. receive a grounded response or status;
+4. complete identity verification when protected data/action requires it;
+5. confirm a sensitive action when required;
+6. wait for or receive human approval when required;
+7. see the result of an allowed action;
+8. request a human at any time allowed by policy;
+9. continue seamlessly when a human joins;
+10. provide feedback.
+
+### 5.3 Example Request Classes
+
+Serviq classifies operational requests into product-level categories:
+
+- **Deterministic:** known structured lookup or configured response.
+- **Knowledge:** answer grounded in approved knowledge.
+- **Transactional:** typed tool action against customer/business state.
+- **Reasoning:** requires multiple evidence sources, state, and policies.
+- **Escalation-first:** policy or risk prevents autonomous resolution.
+
+The architecture may optimize these differently, but the customer sees one coherent support experience.
+
+## 6. Roles
+
+### 6.1 Tenant Roles
+
+- Tenant Owner.
+- Tenant Administrator.
+- Support Manager.
+- Support Agent.
+- Knowledge Manager.
+- AI Configuration Manager.
+- Analyst/Auditor.
+
+A user may belong to multiple tenants and may hold more than one role/capability where the tenant permission model allows it.
+
+The detailed Production V1 action matrix is authoritative in `PRD.md`.
+
+### 6.2 End Customer
+
+End customers are not workforce roles. Their permissions are derived from:
+
+- tenant/channel policy;
+- customer identity assurance;
+- ownership of the requested data;
+- tool/action policy;
+- confirmation/approval state.
+
+### 6.3 Serviq Platform Operator
+
+Platform operators use a separate trust boundary. Platform access is auditable and should be limited to the minimum tenant/customer detail required for an incident or support operation.
+
+## 7. Knowledge Product Model
+
+A tenant can connect approved knowledge without committing the source corpus into the Serviq repository.
+
+Knowledge lifecycle:
+
+```text
+Source registered
+-> fetch/upload accepted
+-> parse/normalize
+-> document version created
+-> chunk/index
+-> retrieval validation
+-> ready
+-> re-sync/version
+-> deprecate/disable
+```
+
+Product requirements:
+
+- preserve source provenance;
+- show sync/index state;
+- show failures and retry actions;
+- support customer-visible vs internal access scope;
+- keep versions so configuration/evaluation can identify which knowledge was used;
+- never silently serve disabled or deprecated content;
+- make retrieval quality inspectable by authorized users;
+- treat all fetched/retrieved content as untrusted data for prompt-injection purposes.
+
+## 8. AI Provider and Agent Product Model
+
+### 8.1 BYOK
+
+Serviq supports provider connections supplied by the tenant. Production V1 targets:
+
+- OpenAI;
+- Anthropic;
+- Gemini;
+- OpenRouter.
+
+A stored key is server-side only, masked after creation, testable, auditable by lifecycle event, and replaceable without changing business code.
+
+### 8.2 Provider Independence
+
+Business workflows depend on model aliases and Serviq gateway contracts, not direct provider SDK types. A tenant may configure primary and fallback models subject to budget and safety policy.
+
+### 8.3 Agent Versioning
+
+Agent behavior is versioned configuration. A published version is immutable and records, directly or by reference:
+
+- response/system behavior;
+- model aliases/routing policy;
+- run budgets;
+- retrieval policy;
+- allowed tools;
+- policy references;
+- citation behavior;
+- escalation rules;
+- evaluation gate settings.
+
+Every conversation/agent run can be traced back to the version it used.
+
+## 9. Tools, Policies, and Business Actions
+
+### 9.1 Typed Tool Model
+
+Tools are explicit named capabilities with versioned input/output schemas. Examples for a commerce-like client may include status lookup, eligibility check, cancellation, refund request, or ticket creation. The actual first demo tool set is blocked by the Product Decision in `PRD.md`.
+
+The model may propose a tool and arguments. It cannot directly mutate business data.
+
+### 9.2 Policy Before Action
+
+Every protected mutation follows:
+
+```text
+Tool proposal
+-> schema validation
+-> identity/ownership context
+-> policy decision
+-> optional customer confirmation
+-> optional human approval
+-> idempotent execution
+-> result verification/reconciliation
+-> audit
+-> customer response
+```
+
+Policy outcomes are:
+
+- allow;
+- deny;
+- require customer confirmation;
+- require human approval.
+
+Missing policy for a mutation is deny-by-default.
+
+### 9.3 Human Control
+
+A tenant can mark tools or risk classes as human-only. High-risk or ambiguous outcomes must not be retried blindly or hidden from support staff.
+
+## 10. Human Escalation Product Model
+
+Escalation is a first-class successful product path, not an AI failure afterthought.
+
+Serviq may escalate because:
+
+- the customer requests a human;
+- protected identity cannot be established;
+- evidence is insufficient or conflicting;
+- tenant policy requires a human;
+- a tool fails repeatedly within its bounded policy;
+- a tool outcome is ambiguous and requires reconciliation;
+- agent run budget is exhausted;
+- a system/provider dependency cannot support a safe response.
+
+The handoff package is persisted and visible to the support workspace. The customer should not need to repeat information already present in the conversation and verified context.
+
+## 11. Analytics, Evaluation, and Audit
+
+### 11.1 Operational Analytics
+
+Serviq should measure, with clear definitions:
 
 - conversation volume;
-- AI resolution rate;
-- escalation rate;
-- containment rate;
-- first-response latency;
-- time to resolution;
-- tool success/failure rate;
-- provider latency/error rate;
-- retrieval quality;
-- model usage and estimated cost;
-- cache hit rates;
-- customer feedback and CSAT;
-- unresolved and reopened cases;
-- policy-triggered blocks;
-- tenant-specific SLOs.
+- AI containment/resolution;
+- escalation;
+- first response and total resolution latency;
+- provider health/latency/error;
+- tool outcomes;
+- retrieval outcomes;
+- cache effectiveness;
+- customer feedback/CSAT;
+- estimated model usage/cost;
+- unresolved/reopened cases;
+- ingestion failures/backlog.
 
-## 6. End-Customer Workflow
+Measured infrastructure capacity must be separated from LLM-provider latency and quotas.
 
-### 6.1 Standard Question
+### 11.2 AI Evaluation
 
-1. Customer sends a message.
-2. Serviq identifies tenant, channel, session, and authenticated customer context when available.
-3. Request is classified.
-4. Serviq checks deterministic handlers and caches.
-5. If knowledge is required, retrieval runs against tenant-approved sources.
-6. The agent generates a grounded answer.
-7. Output guardrails verify the response.
-8. Response is streamed to the customer with citations when configured.
+Serviq uses versioned evaluation cases for grounding, citations, unsupported-answer behavior, tool selection, arguments, policy compliance, prompt-injection behavior, escalation, and model/config regressions.
 
-### 6.2 Account-Specific Request
+A tenant should be able to test draft configuration before publishing.
 
-1. Customer asks about an order/account/subscription/payment.
-2. Serviq verifies identity and authorization requirements.
-3. Agent requests the minimum required tool data.
-4. Policy engine validates tool access.
-5. Tool executes through the integration layer.
-6. Result returns to the agent.
-7. Customer receives a response based on verified system data.
+### 11.3 Audit
 
-### 6.3 Sensitive Action
+Security-sensitive and customer-impacting actions produce queryable audit records. Audit covers at minimum:
 
-Example: cancellation, refund, account mutation.
+- role/access changes;
+- provider/integration secret lifecycle metadata;
+- agent publish/rollback;
+- policy changes;
+- protected tool actions;
+- confirmation/approval decisions;
+- escalation assignment/resolution;
+- platform-operator tenant access.
 
-1. Agent determines desired action.
-2. Policy engine evaluates tenant rules, customer state, action amount/risk, and approval requirements.
-3. Serviq may request customer confirmation.
-4. Serviq may request human approval.
-5. Approved action executes using an idempotency key.
-6. Result is persisted and audited.
-7. Customer receives completion or failure status.
+Audit records never contain raw secrets.
 
-### 6.4 Escalation
+## 12. Multi-Tenancy and Isolation
 
-Serviq escalates when:
+Multi-tenancy is part of the product contract, not only a database detail.
 
-- confidence is below policy threshold;
-- required knowledge is missing or conflicting;
-- a restricted action requires a human;
-- authentication cannot be completed;
-- repeated tool failures occur;
-- the user requests a human;
-- abuse/safety rules trigger;
-- the conversation exceeds configured limits.
+Tenant context applies to:
 
-The handoff package includes conversation summary, customer context, retrieved evidence, tool history, policy decisions, pending approvals, error state, and recommended next action.
+- relational data;
+- retrieval/search;
+- cache keys;
+- object storage;
+- events/jobs;
+- model/provider configuration;
+- tool execution;
+- analytics/audit;
+- authorization;
+- observability where tenant dimensions are safe.
 
-## 7. User-Facing Applications
+Default product mode is logical multi-tenancy with strong application and database controls.
 
-### 7.1 Customer Experience
+Future enterprise isolation may include:
 
-- embeddable chat widget;
-- standalone support page;
-- streaming responses;
-- citations/source links;
-- conversation history;
-- action confirmations;
-- upload support when tenant enables it;
-- handoff state and queue messaging;
-- feedback/CSAT;
-- accessibility and responsive design.
+- dedicated database/schema;
+- dedicated encryption key;
+- dedicated region;
+- dedicated worker pools;
+- dedicated deployment.
 
-### 7.2 Client Operations Console
+Those stronger isolation modes should not require rewriting business workflows.
 
-- overview dashboard;
-- conversations;
-- human support inbox;
-- customer lookup;
-- knowledge management;
-- integrations;
-- tools and action policies;
-- AI/model configuration;
-- prompt/config version history;
-- evaluation playground;
-- analytics;
-- audit logs;
-- team and RBAC;
-- API keys/webhooks;
-- security settings;
-- environment settings.
+## 13. Security and Trust Principles
 
-### 7.3 Serviq Platform Console
+1. **Server authorization is mandatory.** UI hiding is not access control.
+2. **Least privilege.** Users, services, tools, and platform operators receive only required capabilities.
+3. **Secrets stay server-side.** Provider keys and integration credentials never enter client bundles or logs.
+4. **Untrusted input stays untrusted.** User text, public web content, retrieved chunks, files, tool output, and model output all require validation/containment.
+5. **No arbitrary model execution.** LLM output never becomes shell, SQL, `eval`, unrestricted URL fetch, or unreviewed code execution.
+6. **Policy before mutation.** Model reasoning is not authorization.
+7. **Idempotency for retried side effects.** Duplicate messages/events cannot silently duplicate business actions.
+8. **Fail closed for identity and permission errors.** Dependency failure never grants extra access.
+9. **Sensitive actions are traceable.** Correlation, policy, tool, outcome, and actor context must be auditable.
+10. **Public ingestion is bounded.** Crawlers must defend against SSRF, unsafe redirects, excessive responses, and access-control bypass.
 
-- tenants;
-- system health;
-- provider health;
-- global queue state;
-- incident controls;
-- feature flags;
-- abuse/rate-limit controls;
-- platform usage;
-- failed jobs and dead-letter queues;
-- deployment/version visibility;
-- global audit and security events.
+## 14. Reliability and Failure Behavior
 
-## 8. Role and Permission Model
+The product must expose understandable degraded states instead of looping or fabricating certainty.
 
-Permissions are capability-based and tenant-scoped. A user may have multiple roles.
+- Provider failure may use a configured fallback within budget.
+- Retrieval failure must not cause unsupported answers when grounding is required.
+- Tool mutation failure must reconcile ambiguous state before retry.
+- Queue/worker overload must apply backpressure and prioritize critical customer/action flows over analytics.
+- Cache failure falls back to authoritative data with rate protection.
+- Repeated or unsafe failures escalate to a human.
 
-| Capability | Owner | Admin | Support Manager | Support Agent | Knowledge Manager | AI Manager | Analyst/Auditor |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Organization settings | Yes | Yes | No | No | No | No | Read |
-| Manage members/RBAC | Yes | Yes | No | No | No | No | Read |
-| Manage knowledge | Yes | Yes | Read | Read | Yes | Read | Read |
-| Configure models/providers | Yes | Yes | No | No | No | Yes | Read |
-| Configure tools/policies | Yes | Yes | Read | No | No | Yes | Read |
-| View conversations | Yes | Yes | Yes | Assigned/queue | Read | Read | Read |
-| Resolve escalations | Yes | Yes | Yes | Yes | No | No | No |
-| Approve restricted actions | Policy | Policy | Policy | Policy | No | Policy | No |
-| View analytics | Yes | Yes | Yes | Limited | Limited | Yes | Yes |
-| View audit logs | Yes | Yes | Limited | Own actions | Limited | Limited | Yes |
-| Manage tenant API keys | Yes | Yes | No | No | No | Limited | No |
+External dependency errors are translated into stable Serviq states and safe customer-facing messages.
 
-Serviq platform-operator permissions are separate from tenant permissions and must never be granted through tenant role management.
+## 15. Scale Model
 
-## 9. Demo Data Strategy
+Serviq distinguishes these capacity dimensions:
 
-Serviq's initial portfolio demonstration will use a real company's publicly available customer-support documentation, with a clear non-affiliation disclaimer. Private operational data will be synthetic.
+- registered users;
+- monthly active users;
+- concurrently connected clients;
+- active conversations;
+- API requests per second;
+- agent runs per second;
+- model calls per second;
+- tool calls per second;
+- event throughput;
+- retrieval throughput.
 
-The demo corpus must be ingested through a source manifest or ingestion pipeline rather than committing a wholesale copy of third-party documentation into Git.
+The long-term architecture target includes a path toward **10 million concurrent customer connections**, but this is not a current verified capacity claim.
 
-Synthetic data may include:
+**10 million requests per second is a separate hyperscale research target.** It would require extensive edge caching, partitioned data systems, large infrastructure spend, and a workload where only a small fraction of requests invoke expensive AI inference.
 
-- customer profiles;
-- orders;
-- delivery events;
-- products;
-- payment states;
-- refunds;
-- support tickets;
-- account state;
-- tool responses.
+Published scale claims must include:
 
-This preserves realism while avoiding use of real customer PII or proprietary operational records.
+- workload/scenario;
+- infrastructure configuration;
+- dataset size;
+- connection count/RPS;
+- p50/p95/p99 latency;
+- error rate;
+- test duration;
+- version/commit;
+- whether provider calls were mocked or real.
 
-## 10. Product Quality Requirements
+## 16. Local-First and Zero-Dollar Development
 
-Every production feature must include, as applicable:
+A contributor should be able to develop the core platform locally with free/open-source infrastructure.
 
-- authorization rules;
+Required properties:
+
+- Docker Compose profiles;
+- PostgreSQL/pgvector;
+- Valkey-compatible cache;
+- local object storage;
+- local OIDC provider;
+- deterministic/fake LLM mode;
+- optional local broker profile;
+- optional local observability profile;
+- no paid API required for CI or deterministic core flows.
+
+Real provider behavior uses the contributor's BYOK credential. AWS deployment is an evolution path, not a prerequisite for building Serviq.
+
+## 17. Public Demo Strategy
+
+The portfolio demonstration uses a **real company's publicly available support documentation** and synthetic private operational data.
+
+Serviq must not claim affiliation, endorsement, partnership, or access to the selected company's private systems.
+
+The demo approach is:
+
+```text
+Real public support documentation
++ source manifest/provenance
++ synthetic customers/private records/tool responses
++ Serviq customer workflow
++ Serviq client/support workflow
+```
+
+Repository rules:
+
+- do not commit a wholesale copy of a third-party help center;
+- preserve source provenance;
+- respect access controls, crawl limits, terms, and copyright constraints;
+- do not scrape authenticated/private content;
+- use synthetic customer, order, payment, refund, delivery, and ticket data;
+- include a clear non-affiliation disclaimer in the demo/README once the company is selected.
+
+`Needs Product Decision: The first public-company corpus is not frozen. See PRD Section 16.`
+
+## 18. Product Quality Bar
+
+Serviq features are built iteratively, but quality is not deferred to a later hardening phase.
+
+A production feature is incomplete when an applicable item is missing:
+
+- exact acceptance criteria;
+- success/loading/empty/error/permission UX;
+- server validation;
+- authentication/authorization behavior;
 - tenant isolation;
-- input validation;
-- structured errors;
-- idempotency for mutations;
-- audit events;
-- metrics and traces;
-- tests;
-- rate limits;
+- API/schema/event contract;
+- idempotency for retried side effects;
 - failure/degraded behavior;
-- documented API contract;
-- migration/rollback plan for schema or configuration changes.
+- audit behavior for sensitive actions;
+- logs/metrics/traces;
+- automated tests;
+- migration/rollback plan for schema changes;
+- security review requirements;
+- performance impact;
+- documentation.
 
-## 11. Product Success Criteria
+The repository's premium-product-builder quality bar and domain rules are the implementation gate.
 
-Serviq is considered product-complete only when a new tenant can:
+## 19. Release Model
 
-1. onboard without source-code changes;
-2. connect a model provider using BYOK;
-3. ingest approved knowledge;
-4. configure an agent;
-5. connect or simulate business tools;
-6. publish a customer-facing support experience;
-7. resolve deterministic, retrieval, and tool-backed support requests;
-8. escalate complex cases to human support;
-9. audit every sensitive decision and action;
-10. inspect operational and AI-quality analytics;
-11. run locally from documented setup;
-12. pass CI, security, integration, end-to-end, and baseline performance tests.
+Serviq is not treated as a throwaway MVP. Production V1 is the smallest end-to-end release that preserves the complete architecture and safety model.
 
-## 12. Product Principles
+Production V1 intentionally limits channels, integrations, and infrastructure complexity while still requiring:
 
-1. **Evidence before generation.** Prefer verified business data and approved knowledge over model memory.
-2. **Policy before action.** The model proposes; Serviq authorizes and executes.
-3. **Human control for uncertainty.** Low confidence and high-risk cases degrade safely to humans.
-4. **Tenant isolation everywhere.** Tenant context is part of every data, cache, event, retrieval, and authorization boundary.
-5. **Provider independence.** Business workflows must not depend on one model vendor.
-6. **Observable by default.** Every agent run must be traceable from ingress to final response.
-7. **Scale through statelessness and asynchronous work.** Interactive APIs remain horizontally scalable and heavy work is pushed to bounded worker systems.
-8. **No unverified scale claims.** Capacity claims must reference repeatable benchmarks and infrastructure configuration.
+- tenant/workforce access;
+- BYOK provider gateway;
+- approved knowledge ingestion and retrieval;
+- customer support conversation;
+- bounded agent runtime;
+- typed tools with protected mutation;
+- policy, confirmation, and human approval;
+- human escalation/takeover;
+- client operations console;
+- analytics and audit;
+- platform operations foundation;
+- CI, tests, security, observability, and load-test evidence.
+
+V2+ adds channels, integrations, multilingual capability, hosted SaaS/billing, advanced enterprise isolation, and multi-region scale without weakening the V1 contracts.
+
+## 20. Product Principles
+
+1. **Evidence before generation.** Prefer verified business state and approved knowledge over model memory.
+2. **Policy before action.** The model proposes. Serviq authorizes and executes.
+3. **Human control for uncertainty.** Escalation is a supported outcome.
+4. **Tenant isolation everywhere.** Tenant context is a first-class boundary.
+5. **Provider independence.** Business workflows do not depend on one model vendor.
+6. **Observable by default.** Important flows can be traced from ingress to outcome.
+7. **Explicit contracts over hidden coupling.** APIs, events, schemas, and shared types are architect-owned.
+8. **Scale through measured bottlenecks.** Preserve horizontal seams, but add distributed complexity only when evidence requires it.
+9. **No unverified scale claims.** Benchmarks and assumptions accompany every capacity statement.
+10. **Production quality from the first feature.** Iteration controls scope, not engineering rigor.

@@ -1,0 +1,103 @@
+name: Build 4K design assets
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-4k-designs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  upscale-designs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install image tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow opencv-contrib-python-headless
+
+      - name: Download EDSR super-resolution model
+        shell: bash
+        run: |
+          mkdir -p .cache
+          curl --location --fail --retry 3 \
+            "https://raw.githubusercontent.com/Saafke/EDSR_Tensorflow/master/models/EDSR_x4.pb" \
+            --output .cache/EDSR_x4.pb \
+            || rm -f .cache/EDSR_x4.pb
+
+      - name: Generate 4K PNG design assets
+        run: python scripts/upscale_designs.py
+
+      - name: Verify dimensions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          expected = (3840, 2160)
+          assets = sorted(Path("docs/design").glob("*-4k.png"))
+          if len(assets) != 3:
+              raise SystemExit(f"Expected 3 4K design assets, found {len(assets)}")
+
+          for asset in assets:
+              with Image.open(asset) as image:
+                  if image.size != expected:
+                      raise SystemExit(f"{asset} is {image.size}, expected {expected}")
+                  print(f"OK: {asset} = {image.size[0]}x{image.size[1]}")
+          PY
+
+      - name: Replace low-resolution previews
+        shell: bash
+        run: |
+          rm -f docs/design/serviq-client-portal.webp
+          rm -f docs/design/serviq-customer-experience.webp
+          rm -f docs/design/serviq-platform-operator.webp
+
+          cat > docs/design/README.md <<'EOF'
+          # Serviq Design Mockups
+
+          This directory contains the approved high-resolution Serviq product design mockups for the three primary experiences.
+
+          | Design | Resolution |
+          | --- | --- |
+          | `serviq-client-portal-4k.png` | 3840 × 2160 |
+          | `serviq-customer-experience-4k.png` | 3840 × 2160 |
+          | `serviq-platform-operator-4k.png` | 3840 × 2160 |
+
+          ## Experiences
+
+          - **Client Portal** — organization administrators and support teams.
+          - **Customer Experience** — end-user support journeys and embedded support.
+          - **Platform Operator Console** — Serviq superadmin and platform operations.
+
+          These 4K PNG assets replace the earlier compressed WebP previews and are the approved visual direction for frontend implementation.
+          EOF
+
+      - name: Commit 4K assets
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/design
+          if git diff --cached --quiet; then
+            echo "No design asset changes to commit."
+            exit 0
+          fi
+          git commit -m "docs: replace compressed mockups with 4K PNG assets [skip ci]"
+          git push

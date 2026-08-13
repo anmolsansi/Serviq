@@ -1,0 +1,111 @@
+name: Validate OPE-254 and OPE-255
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-frontends:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.15.0
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint customer-web
+        run: pnpm --filter @serviq/customer-web lint
+
+      - name: Typecheck customer-web
+        run: pnpm --filter @serviq/customer-web typecheck
+
+      - name: Build customer-web
+        run: pnpm --filter @serviq/customer-web build
+
+      - name: Lint platform-console
+        run: pnpm --filter @serviq/platform-console lint
+
+      - name: Typecheck platform-console
+        run: pnpm --filter @serviq/platform-console typecheck
+
+      - name: Build platform-console
+        run: pnpm --filter @serviq/platform-console build
+
+      - name: Install browser QA dependency
+        run: python -m pip install selenium==4.35.0
+
+      - name: Browser QA customer-web at desktop and mobile widths
+        shell: bash
+        run: |
+          pnpm --filter @serviq/customer-web exec next start -H 127.0.0.1 -p 3000 >/tmp/customer-web.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID || true' EXIT
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then break; fi
+            sleep 1
+          done
+          python - <<'PY'
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          options = Options()
+          options.add_argument('--headless=new')
+          options.add_argument('--no-sandbox')
+          options.add_argument('--disable-dev-shm-usage')
+          options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
+
+          driver = webdriver.Chrome(options=options)
+          try:
+              for width, height in [(1280, 800), (375, 812)]:
+                  driver.set_window_size(width, height)
+                  driver.get('http://127.0.0.1:3000')
+                  assert 'Customer Support' in driver.page_source
+                  severe = [entry for entry in driver.get_log('browser') if entry.get('level') == 'SEVERE']
+                  assert not severe, severe
+          finally:
+              driver.quit()
+          PY
+
+      - name: Browser QA platform-console at desktop and mobile widths
+        shell: bash
+        run: |
+          pnpm --filter @serviq/platform-console exec next start -H 127.0.0.1 -p 3001 >/tmp/platform-console.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID || true' EXIT
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3001 >/dev/null; then break; fi
+            sleep 1
+          done
+          python - <<'PY'
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+
+          options = Options()
+          options.add_argument('--headless=new')
+          options.add_argument('--no-sandbox')
+          options.add_argument('--disable-dev-shm-usage')
+          options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
+
+          driver = webdriver.Chrome(options=options)
+          try:
+              for width, height in [(1280, 800), (375, 812)]:
+                  driver.set_window_size(width, height)
+                  driver.get('http://127.0.0.1:3001')
+                  assert 'Platform Console' in driver.page_source
+                  severe = [entry for entry in driver.get_log('browser') if entry.get('level') == 'SEVERE']
+                  assert not severe, severe
+          finally:
+              driver.quit()
+          PY

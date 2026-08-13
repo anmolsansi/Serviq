@@ -1293,11 +1293,13 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-252 — Root monorepo toolchain
 
-**What changed:** root workspace manifest, pnpm workspace definition, Node version configuration, Git ignore rules, and editor rules were added.
+**What changed:** Serviq now has the root files that make the repository behave like one organized JavaScript/TypeScript workspace: `package.json`, `pnpm-workspace.yaml`, `.nvmrc`, `.gitignore`, and `.editorconfig`. PR #10 merged exactly those five foundation files into `main`.
 
-**Why:** every future frontend application now starts from the same project rules instead of creating its own incompatible setup.
+**Why:** without these shared rules, each frontend application could choose different package-management, Node, folder, formatting, and ignore conventions. The root toolchain gives later tickets one predictable foundation while deliberately leaving Python services outside the JavaScript workspace.
 
-**Status:** source/configuration created; runtime workspace checks still need to be executed before Done.
+**Validation completed:** the root JSON and YAML syntax were checked, workspace globs were verified as exactly `apps/*` and `packages/*`, `.env` and common secret/generated/local-runtime files were verified as ignored, and the Node/editor settings were manually checked. No application scaffold, backend service, Docker configuration, or CI workflow was added by OPE-252.
+
+**Status:** **Completed.** PR #10 is merged, GitHub issue #3 is closed, and Linear OPE-252 is Done.
 
 ## OPE-253 — Client Console scaffold
 
@@ -1317,16 +1319,32 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-254 — Customer Web scaffold
 
-**What changed:** the end-customer Next.js application shell was created.
+**What changed:** Serviq now has a dedicated end-customer web application at `apps/customer-web`. It is a Next.js App Router application using React, strict TypeScript, Tailwind CSS, ESLint, and app-local `dev`, `build`, `lint`, and `typecheck` commands. The root page intentionally stays simple and identifies the surface as **Serviq Customer Support**. PR #12 merged the scaffold. During final browser QA, the first validation run found one severe browser-console entry: the browser requested a favicon that did not exist and received a 404. PR #17 added a tiny app-local Serviq icon so the scaffold has a clean browser load without introducing any customer feature logic.
 
-**Why:** the public support experience needs a security, UX, and deployment boundary separate from business administration.
+**Why:** the public support experience has a very different audience and security model from the internal Client Console. Customers will eventually ask questions, receive answers, confirm actions, and request human help here. Keeping that experience in its own application reduces the chance of accidentally mixing employee/admin code with public customer code and allows future customer work to optimize independently for mobile, accessibility, streaming, and embeddability.
 
-**Status:** scaffold created; lint/typecheck/build validation still required before Done.
+**How it works in plain language:** Next.js provides the web-application frame, React provides reusable screen components, strict TypeScript catches many incorrect assumptions before runtime, Tailwind provides the styling pipeline, and ESLint checks common code-quality problems. At this stage the app has no database, no AI call, no authentication, and no business action. It is the tested shell those later capabilities will plug into.
+
+**What this improves:** future customer-channel tickets can work on conversation behavior instead of rebuilding frontend setup. The separate package also creates a clearer public trust boundary and gives CI/deployment tooling one exact package name: `@serviq/customer-web`.
+
+**Validation completed:** temporary validation PR #16 tested the current merged implementation on Node.js 24.18.0 with pnpm 10.15.0. Dependency installation succeeded. `pnpm --filter @serviq/customer-web lint`, `typecheck`, and `build` all passed. The production build was then opened in headless Chrome at 1280x800 and 375x812. The expected Customer Support content rendered at both widths and no severe browser-console errors remained after PR #17 added the app icon. The validation-only PR was closed without merge and its branch was reset to `main`, so the temporary workflow was not added to the product codebase.
+
+**Scope intentionally not added:** OPE-254 does not add chat UI, customer authentication, tenant routing, SSE/streaming, customer identity, API calls, order/refund logic, or the shared design system. Those remain future tickets.
+
+**Status:** **Completed.** PRs #12 and #17 are merged, GitHub issue #5 is closed as completed, all required automated checks and browser QA passed, and Linear OPE-254 is Done.
 
 ## OPE-255 — Platform Console scaffold
 
-**What changed:** the Serviq-operator Next.js application shell was created.
+**What changed:** Serviq now has a dedicated platform-operator application at `apps/platform-console`. It uses the same Next.js App Router, React, strict TypeScript, Tailwind CSS, and ESLint foundation as the other web surfaces, but it is a physically separate package named `@serviq/platform-console`. PR #13 merged the scaffold, and PR #18 added the minimal app-local Serviq icon used during clean browser QA.
 
-**Why:** global platform administration is a privileged trust boundary that must not be mixed with tenant/client interfaces.
+**Why:** the people operating Serviq itself will eventually see capabilities that ordinary customers and tenant employees must never receive, such as global service health, provider health, queue lag, failed jobs, incident information, feature flags, abuse controls, global rate limits, and cross-tenant operational diagnostics. Creating this separate application before those features exist gives the privileged surface its own security and deployment boundary from the beginning.
 
-**Status:** scaffold created; lint/typecheck/build validation still required before Done.
+**How it works in plain language:** the current Platform Console is intentionally only the frame of a control room, not the control room itself. Next.js organizes the application, React will provide reusable operator-interface pieces, strict TypeScript catches many invalid data assumptions early, Tailwind prepares styling, and ESLint checks source quality. There is no fake operator login or fake green health dashboard because those would imply security and monitoring capabilities that have not yet been implemented.
+
+**What this improves:** future platform-operations tickets have one clearly owned application instead of adding privileged routes to the tenant-facing Client Console. This lowers accidental exposure risk and makes later operator authentication, authorization, auditing, and network restrictions easier to review independently.
+
+**Validation completed:** temporary validation PR #16 tested the merged Platform Console using Node.js 24.18.0 and pnpm 10.15.0. `pnpm --filter @serviq/platform-console lint`, `typecheck`, and `build` all passed. The production build was then opened in headless Chrome at 1280x800 and 375x812. The expected Platform Console content rendered at both widths with no severe browser-console errors. The validation workflow was temporary and was not merged into `main`.
+
+**Scope intentionally not added:** OPE-255 does not add platform-operator authentication, navigation, tenant lookup, real system-health data, provider-health APIs, queue/job controls, feature flags, rate-limit editing, incident management, cross-tenant access, or backend API calls.
+
+**Status:** **Completed.** PRs #13 and #18 are merged, GitHub issue #6 is closed as completed, all required automated checks and browser QA passed, and Linear OPE-255 is Done.

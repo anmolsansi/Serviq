@@ -28,5 +28,9 @@ services:
       retries: 12
       start_period: 5s
 
+  object-storage:
+    image: chrislusf/seaweedfs:4.41
+    command: ["mini", "-dir=/data"]
+
 volumes:
   serviq_postgres_data:

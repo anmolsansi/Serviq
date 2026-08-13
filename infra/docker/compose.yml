@@ -19,6 +19,8 @@ services:
 
   valkey:
     image: valkey/valkey:8.1.9-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
 
 volumes:
   serviq_postgres_data:

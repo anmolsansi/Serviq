@@ -17,5 +17,16 @@ services:
       retries: 12
       start_period: 10s
 
+  valkey:
+    image: valkey/valkey:8.1.9-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
 volumes:
   serviq_postgres_data:

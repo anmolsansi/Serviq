@@ -33,6 +33,29 @@ services:
       timeout: 5s
       retries: 24
       start_period: 20s
+  valkey:
+    image: valkey/valkey:8.1.9-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  object-storage:
+    image: chrislusf/seaweedfs:4.41
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-serviq-local}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-serviq-local-dev-only}
+      S3_BUCKET: ${S3_BUCKET:-serviq-local-objects}
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - serviq_object_storage_data:/data
 
 volumes:
   serviq_postgres_data:
+  serviq_object_storage_data:

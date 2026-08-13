@@ -19,6 +19,8 @@ exporters:
     endpoint: http://tempo:4318
   otlphttp/loki:
     endpoint: http://loki:3100/otlp
+    headers:
+      X-Scope-OrgID: serviq-local
 
 service:
   extensions: [health_check]

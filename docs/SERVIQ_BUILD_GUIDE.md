@@ -1348,3 +1348,86 @@ The goal is that someone can start at the top of this document months from now a
 **Scope intentionally not added:** OPE-255 does not add platform-operator authentication, navigation, tenant lookup, real system-health data, provider-health APIs, queue/job controls, feature flags, rate-limit editing, incident management, cross-tenant access, or backend API calls.
 
 **Status:** **Completed.** PRs #13 and #18 are merged, GitHub issue #6 is closed as completed, all required automated checks and browser QA passed, and Linear OPE-255 is Done.
+## OPE-256 — Shared UI package skeleton
+
+**Current state:** **In Review — implemented and validated in PR #26, not yet merged into `main`.**
+
+**What changed on the implementation branch:** `packages/ui` now exists as the proposed `@serviq/ui` shared frontend package. It contains a private ESM manifest, strict TypeScript configuration, an intentionally empty component export surface, documented neutral design-token placeholders, and an ownership README.
+
+**Why this matters:** three Serviq web applications need one future design-system home. The package prevents duplicated visual primitives without pretending this scaffold has already designed buttons, dialogs, tables, Storybook, dark mode, or final branding.
+
+**What this improves:** later UI tickets can add reviewed shared primitives instead of copying components between apps. Semantic token names can be shared while final brand values remain changeable.
+
+**Validation:** GitHub Actions run `31695466527` used Node.js 24.18.0 and pnpm 10.15.0. Dependency installation, `@serviq/ui` typecheck, build validation, workspace resolution, and the no-application-import check passed. The run generated `pnpm-lock.yaml`; the temporary validation workflow was removed afterward.
+
+**Not implemented:** no reusable component API, feature UI, app source change, backend code, Storybook, dark mode, or final brand system.
+
+**Tracking:** GitHub issue #20; PR #26; Linear OPE-256. The ticket remains In Review until merge/completion tracking.
+
+## OPE-257 — Shared contracts package skeleton
+
+**Current state:** **In Review — implemented and validated in PR #27, not yet merged into `main`.**
+
+**What changed on the implementation branch:** `packages/contracts` now exists as the proposed `@serviq/contracts` package. It contains strict TypeScript configuration and only architecture-frozen baseline wire shapes: `{ data, meta? }`, the standard error envelope, pagination `{ page, pageSize, total, totalPages }`, and a named string correlation identifier. Empty auth/event folders reserve ownership without inventing feature contracts.
+
+**Why this matters:** frontend apps must not independently invent API casing, optionality, or error shapes.
+
+**What this improves:** shared wire vocabulary has one reviewable source while future feature contracts remain architect-controlled.
+
+**Validation:** GitHub Actions run `31695492522` passed strict typecheck, build validation, workspace resolution, compile examples, and the no-application-import check on Node.js 24.18.0 / pnpm 10.15.0. The temporary workflow was removed after lockfile generation.
+
+**Not implemented:** no database models, generated client, provider SDK types, auth implementation, or feature endpoint types.
+
+**Tracking:** GitHub issue #21; PR #27; Linear OPE-257. The ticket remains In Review until merge/completion tracking.
+
+## OPE-258 — Cross-cutting shared package boundaries
+
+**Current state:** **In Review — implemented and validated in PR #28, not yet merged into `main`.**
+
+**What changed on the implementation branch:** four proposed workspace packages now have explicit ownership boundaries: `@serviq/config`, `@serviq/observability`, `@serviq/security`, and `@serviq/testkit`. Each has its own manifest, strict TypeScript configuration, intentionally empty public index, and README.
+
+**Why this matters:** configuration, telemetry, security helpers, and test utilities are cross-cutting concerns. Reserving their homes now prevents later code from being scattered across applications while avoiding speculative implementations.
+
+**What this improves:** later tickets get clear reusable-code boundaries with no premature runtime dependency or behavior.
+
+**Validation:** GitHub Actions run `31695529867` passed all four package typechecks, workspace-name resolution, and the no-application-import check on Node.js 24.18.0 / pnpm 10.15.0. The temporary workflow was removed after lockfile generation.
+
+**Not implemented:** no OpenTelemetry/logging setup, environment parser, auth/security behavior, fixtures, fake LLM, business data, app/backend edit, Docker change, or persistent workflow.
+
+**Tracking:** GitHub issue #22; PR #28; Linear OPE-258. The ticket remains In Review until merge/completion tracking.
+
+## OPE-259 — FastAPI API service scaffold
+
+**Current state:** **In Review — implemented and validated in PR #25, not yet merged into `main`.**
+
+**What changed on the implementation branch:** `services/api` now contains the proposed Python 3.14 FastAPI foundation. `app/main.py` exposes only `FastAPI(title="Serviq API")`. Architecture-owned core placeholders exist for config, errors, logging, auth, tenancy, idempotency, and rate limits; modules/contracts boundaries, Ruff, strict mypy, pytest, a smoke test, and `uv.lock` are included.
+
+**Dependency result:** Python 3.14 resolved successfully with FastAPI 0.140.13 and compatible Pydantic 2.x, SQLAlchemy 2.x, Alembic, Uvicorn, and dev tooling. No frozen dependency was silently downgraded.
+
+**Why this matters:** every V1 REST module needs one predictable ASGI service root and common tooling before database/auth/feature work begins.
+
+**What this improves:** future backend tickets can add router → service → repository modules on a tested service foundation.
+
+**Validation:** GitHub Actions run `31695430241` installed Python 3.14.6, resolved/synced dependencies, passed Ruff, strict mypy, pytest, direct app import, and Uvicorn startup; `/openapi.json` was fetched successfully during smoke QA.
+
+**Not implemented:** no database, migration, model, auth/OIDC behavior, tenancy enforcement, idempotency/rate-limit implementation, logging config, health endpoint, or business route.
+
+**Tracking:** GitHub issue #23; PR #25; Linear OPE-259. The ticket remains In Review until merge/completion tracking.
+
+## OPE-260 — Durable worker service scaffold
+
+**Current state:** **In Review — implemented and validated in stacked PR #29, not yet merged; PR #29 depends on OPE-259 / PR #25.**
+
+**What changed on the implementation branch:** `services/worker` now contains the proposed durable-worker boundary using Python 3.14 tooling but no FastAPI dependency. It includes an executable/importable entry point, explicit `app/jobs`, `app/consumers`, and `app/core` boundaries, config placeholder, smoke test, and `uv.lock`.
+
+**Why this matters:** ingestion, projections, webhooks, reconciliation, retention, notifications, and event consumers must eventually survive API-process restarts rather than becoming FastAPI in-process tasks.
+
+**What this improves:** Serviq gets a separately testable process boundary for future durable work, with jobs and broker consumers conceptually separated from the start.
+
+**Validation:** GitHub Actions run `31695783384` used Python 3.14.6 and passed dependency sync, Ruff, strict mypy, pytest, import, process start/exit, and a source check confirming no FastAPI, `APIRouter`, or `Request` imports.
+
+**Not implemented:** no Kafka/Redpanda client, real consumer/job, database, scheduler, retry policy, outbox publisher, external integration, or web route.
+
+**Dependency note:** PR #29 is intentionally stacked on PR #25. After OPE-259 merges, OPE-260 should be retargeted or rebased onto `main` before final merge.
+
+**Tracking:** GitHub issue #24; PR #29; Linear OPE-260. The ticket remains In Review until its dependency and merge are complete.

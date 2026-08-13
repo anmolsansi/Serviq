@@ -109,3 +109,5 @@ jobs:
           finally:
               driver.quit()
           PY
+
+# Validation rerun after OPE-254/OPE-255 app-icon QA fixes landed on main.

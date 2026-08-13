@@ -1,6 +1,6 @@
 # Serviq Product Specification
 
-**Status:** Product charter v1.1  
+**Status:** Product charter v1.2  
 **Product:** Serviq  
 **Category:** Multi-tenant AI customer operations platform  
 **Development posture:** Local-first and zero-dollar-friendly, with an explicit cloud scale path  
@@ -283,7 +283,17 @@ Every conversation/agent run can be traced back to the version it used.
 
 ### 9.1 Typed Tool Model
 
-Tools are explicit named capabilities with versioned input/output schemas. Examples for a commerce-like client may include status lookup, eligibility check, cancellation, refund request, or ticket creation. The actual first demo tool set is blocked by the Product Decision in `PRD.md`.
+Tools are explicit named capabilities with versioned input/output schemas. The Production V1 reference configuration uses a DoorDash reference support/delivery domain together with a separate Stripe reference payment domain. This is an architectural demo composition only and does not assert that DoorDash uses Stripe internally.
+
+The first frozen demo tool keys are:
+
+```text
+demo.get_delivery_order_status
+demo.check_order_resolution_eligibility
+demo.create_refund
+```
+
+`demo.get_delivery_order_status` is a read-only lookup over synthetic order/delivery state. `demo.check_order_resolution_eligibility` is a read-only eligibility/policy calculation over synthetic order/item/delivery/payment state plus Serviq rules. `demo.create_refund` is a protected idempotent mutation that changes only Serviq synthetic refund state in the deterministic V1 demo; it does not move real money or call DoorDash/Stripe production systems.
 
 The model may propose a tool and arguments. It cannot directly mutate business data.
 
@@ -482,30 +492,40 @@ Real provider behavior uses the contributor's BYOK credential. AWS deployment is
 
 ## 17. Public Demo Strategy
 
-The portfolio demonstration uses a **real company's publicly available support documentation** and synthetic private operational data.
+The Production V1 portfolio reference is now frozen by OPE-251 / CCR-003 as a **combined, explicitly separated reference configuration**:
 
-Serviq must not claim affiliation, endorsement, partnership, or access to the selected company's private systems.
+- **Primary customer-operations reference domain:** DoorDash public support/delivery concepts, where a source is explicitly permitted for the intended use.
+- **Separate payment-provider reference domain:** Stripe public payment/refund concepts.
+- **Synthetic private operational domain:** Serviq-generated customers, orders, order items, deliveries, order events, payments, refund rules, refunds, and support cases.
+- **Public source policy:** `doordash-stripe-allowlist-v1`.
+- **Frozen demo tools:** `demo.get_delivery_order_status`, `demo.check_order_resolution_eligibility`, `demo.create_refund`.
+
+The composition demonstrates that Serviq can coordinate customer-support knowledge, private operational state, payments, policy, tools, and human support across more than one system boundary. It does **not** assert that DoorDash uses Stripe, and the deterministic V1 demo does not access DoorDash private systems or execute real Stripe transactions.
 
 The demo approach is:
 
 ```text
-Real public support documentation
+Approved/permitted public support + payment documentation
 + source manifest/provenance
-+ synthetic customers/private records/tool responses
++ synthetic customers/orders/deliveries/payments/refunds/support cases
 + Serviq customer workflow
++ Serviq policy/tool workflow
 + Serviq client/support workflow
 ```
 
-Repository rules:
+Repository and ingestion rules:
 
-- do not commit a wholesale copy of a third-party help center;
+- do not commit a wholesale copy of a third-party help center or documentation corpus;
 - preserve source provenance;
-- respect access controls, crawl limits, terms, and copyright constraints;
+- use an explicit allowlist instead of unrestricted domain crawling;
+- respect access controls, crawl limits, robots/anti-bot controls where applicable, terms, and copyright constraints;
+- do not bypass authentication or access restrictions;
+- if automated ingestion is not permitted for a selected source, disable that source and use only material that can be used through an allowed/manual/permitted path;
 - do not scrape authenticated/private content;
-- use synthetic customer, order, payment, refund, delivery, and ticket data;
-- include a clear non-affiliation disclaimer in the demo/README once the company is selected.
+- use synthetic customer, order, payment, refund, delivery, and support-case data;
+- include a clear non-affiliation disclaimer anywhere DoorDash or Stripe is named publicly.
 
-`Needs Product Decision: The first public-company corpus is not frozen. See PRD Section 16.`
+**Frozen public disclaimer:** Serviq is an independent portfolio project and is not affiliated with, endorsed by, sponsored by, or connected with DoorDash, Inc. or Stripe, Inc. DoorDash and Stripe names and publicly available documentation are referenced only to demonstrate Serviq customer-support and payment-workflow capabilities, subject to permitted access. All customers, orders, deliveries, payments, refunds, support cases, and operational records shown by Serviq are synthetic. The reference demo does not access DoorDash private systems and does not execute real DoorDash or Stripe transactions.
 
 ## 18. Product Quality Bar
 

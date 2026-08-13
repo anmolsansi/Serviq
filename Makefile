@@ -1,3 +1,5 @@
+COMPOSE := docker compose -f infra/docker/compose.yml
+
 .PHONY: setup dev test lint typecheck security e2e load-test down
 
 setup:
@@ -7,7 +9,8 @@ setup:
 	cd services/llm-gateway && uv sync --frozen
 
 dev:
-	@echo dev
+	$(COMPOSE) up --detach
+	@echo "Core Serviq infrastructure is running. Start app and service processes in separate terminals."
 
 test:
 	pnpm test
@@ -40,4 +43,4 @@ load-test:
 	@false
 
 down:
-	@echo down
+	$(COMPOSE) down

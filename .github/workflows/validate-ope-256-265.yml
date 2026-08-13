@@ -1,0 +1,202 @@
+name: Validate OPE-256 through OPE-265
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: serviq-validation-only
+      AWS_ACCESS_KEY_ID: serviq-local
+      AWS_SECRET_ACCESS_KEY: serviq-local-dev-only
+      AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.0 --activate
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate shared TypeScript packages
+        run: |
+          pnpm --filter @serviq/ui typecheck
+          pnpm --filter @serviq/contracts typecheck
+          pnpm --filter @serviq/config typecheck
+          pnpm --filter @serviq/observability typecheck
+          pnpm --filter @serviq/security typecheck
+          pnpm --filter @serviq/testkit typecheck
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.6'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Validate API service
+        working-directory: services/api
+        run: |
+          uv sync --frozen
+          uv run ruff check .
+          uv run mypy app tests
+          uv run pytest
+          uv run python -c "from app.main import app; assert app.title == 'Serviq API'"
+
+      - name: Validate worker service
+        working-directory: services/worker
+        run: |
+          uv sync --frozen
+          uv run ruff check .
+          uv run mypy app tests
+          uv run pytest
+          uv run python -c "import app.main"
+          ! grep -RIE '(^|[[:space:]])(from|import)[[:space:]]+fastapi' app
+
+      - name: Validate LLM gateway service
+        working-directory: services/llm-gateway
+        run: |
+          uv lock
+          uv sync
+          uv run ruff check .
+          uv run mypy app tests
+          uv run pytest
+          uv run python -c "from app.main import app; assert app.title == 'Serviq LLM Gateway'"
+          uv run python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path('pyproject.toml').read_text())
+          deps = ' '.join(data['project']['dependencies']).lower()
+          forbidden = ('openai', 'anthropic', 'google-genai', 'openrouter', 'litellm')
+          assert not any(name in deps for name in forbidden), deps
+          PY
+          ! grep -RIE '(^|[[:space:]])(from|import)[[:space:]]+(openai|anthropic|google|litellm)' app
+
+      - name: Smoke-test LLM gateway startup
+        working-directory: services/llm-gateway
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8011 > /tmp/llm-gateway.log 2>&1 &
+          pid=$!
+          trap 'kill $pid || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8011/openapi.json >/tmp/llm-openapi.json; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/llm-gateway.log
+          exit 1
+
+      - name: Validate Docker Compose configuration
+        working-directory: infra/docker
+        run: docker compose config >/tmp/serviq-compose.yml
+
+      - name: Start local infrastructure
+        working-directory: infra/docker
+        run: docker compose up -d postgres valkey object-storage keycloak
+
+      - name: Wait for container health
+        working-directory: infra/docker
+        run: |
+          wait_healthy() {
+            service="$1"
+            for i in $(seq 1 60); do
+              cid=$(docker compose ps -q "$service")
+              status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid")
+              echo "$service: $status"
+              if [ "$status" = healthy ]; then return 0; fi
+              if [ "$status" = unhealthy ]; then docker compose logs "$service"; return 1; fi
+              sleep 2
+            done
+            docker compose logs "$service"
+            return 1
+          }
+          wait_healthy postgres
+          wait_healthy valkey
+          wait_healthy object-storage
+          wait_healthy keycloak
+
+      - name: Validate PostgreSQL and pgvector
+        working-directory: infra/docker
+        run: |
+          docker compose exec -T postgres psql -U serviq -d serviq -Atc "SELECT version();" | grep 'PostgreSQL 18'
+          test "$(docker compose exec -T postgres psql -U serviq -d serviq -Atc "SELECT extname FROM pg_extension WHERE extname='vector';" | tr -d '\r')" = vector
+          docker compose exec -T postgres psql -U serviq -d serviq -c "CREATE TABLE ope262_persistence_test (id integer primary key); INSERT INTO ope262_persistence_test VALUES (1);"
+          docker compose restart postgres
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U serviq -d serviq >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          test "$(docker compose exec -T postgres psql -U serviq -d serviq -Atc 'SELECT count(*) FROM ope262_persistence_test;' | tr -d '\r')" = 1
+          docker compose exec -T postgres psql -U serviq -d serviq -c "DROP TABLE ope262_persistence_test;"
+
+      - name: Validate Valkey
+        working-directory: infra/docker
+        run: test "$(docker compose exec -T valkey valkey-cli ping | tr -d '\r')" = PONG
+
+      - name: Validate private object storage and persistence
+        run: |
+          uv run --with boto3 python - <<'PY'
+          import boto3
+          s3 = boto3.client(
+              's3', endpoint_url='http://127.0.0.1:8333',
+              aws_access_key_id='serviq-local',
+              aws_secret_access_key='serviq-local-dev-only',
+              region_name='us-east-1',
+          )
+          s3.head_bucket(Bucket='serviq-local-objects')
+          s3.put_object(Bucket='serviq-local-objects', Key='validation/persist.txt', Body=b'serviq')
+          assert s3.get_object(Bucket='serviq-local-objects', Key='validation/persist.txt')['Body'].read() == b'serviq'
+          PY
+          code=$(curl -sS -o /tmp/anonymous-object -w '%{http_code}' http://127.0.0.1:8333/serviq-local-objects/validation/persist.txt || true)
+          test "$code" = 401 -o "$code" = 403
+          cd infra/docker
+          docker compose restart object-storage
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q object-storage)" 2>/dev/null || true)
+            if [ "$status" = healthy ]; then break; fi
+            sleep 1
+          done
+          cd ../..
+          uv run --with boto3 python - <<'PY'
+          import boto3
+          s3 = boto3.client(
+              's3', endpoint_url='http://127.0.0.1:8333',
+              aws_access_key_id='serviq-local',
+              aws_secret_access_key='serviq-local-dev-only',
+              region_name='us-east-1',
+          )
+          assert s3.get_object(Bucket='serviq-local-objects', Key='validation/persist.txt')['Body'].read() == b'serviq'
+          s3.delete_object(Bucket='serviq-local-objects', Key='validation/persist.txt')
+          PY
+
+      - name: Validate Keycloak readiness
+        run: |
+          curl -fsS http://127.0.0.1:9000/health/ready
+          curl -fsS http://127.0.0.1:8080/ >/tmp/keycloak-home.html
+
+      - name: Show infrastructure logs on failure
+        if: failure()
+        working-directory: infra/docker
+        run: docker compose logs
+
+      - name: Stop local infrastructure
+        if: always()
+        working-directory: infra/docker
+        run: docker compose down

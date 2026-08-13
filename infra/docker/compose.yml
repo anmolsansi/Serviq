@@ -63,6 +63,17 @@ services:
       retries: 24
       start_period: 15s
 
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.1
+    profiles: ["events"]
+    command: ["redpanda", "start", "--kafka-addr", "0.0.0.0:9092", "--advertise-kafka-addr", "redpanda:9092", "--mode", "dev-container", "--smp", "1"]
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
 volumes:
   serviq_postgres_data:
   serviq_object_storage_data:

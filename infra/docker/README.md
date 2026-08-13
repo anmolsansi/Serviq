@@ -9,3 +9,11 @@ Valkey uses the Compose hostname `valkey` and container port `6379`. It is local
 The S3-compatible object-storage service uses the Compose hostname `object-storage` and S3 port `8333`. Host access is loopback-only at `127.0.0.1:8333`. The required local bucket name is `serviq-local-objects`.
 
 Local overrides use `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_BUCKET`. These are development-only values and must never be reused as staging or production credentials.
+
+## Optional events profile
+
+The local event broker is intentionally opt-in. Normal local development does not start it.
+
+Enable the `events` Compose profile when broker integration work is required. Other Compose containers reach the broker with the service name `redpanda` on port `9092`.
+
+This foundation creates no Serviq topic, producer, consumer, schema registry, or production broker configuration. It is a single-node local development dependency only.

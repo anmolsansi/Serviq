@@ -1,0 +1,41 @@
+name: Update OPE-270 audit
+on:
+  push:
+    branches: [ope-270-repository-audit]
+permissions:
+  contents: write
+jobs:
+  update-audit:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ope-270-repository-audit
+      - name: Refresh audited facts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/repo_context.md')
+          text = path.read_text()
+          replacements = {
+              'Audit source commit before this file: `6ea6e5bde67a6845718cf84e7d21a11fb777751a`': 'Audit source commit before this file: `b7c94fe55db4837ed93e4ea84722b6bf15f480df`',
+              'All Python services declare Python `>=3.14,<3.15` in their `pyproject.toml` files. Their uv lockfiles normalize that to `==3.14.*`: `services/api/uv.lock`, `services/worker/uv.lock`, and `services/llm-gateway/uv.lock`.': 'All Python services declare Python `>=3.14,<3.15` in their `pyproject.toml` files. The API and worker have committed uv lockfiles at `services/api/uv.lock` and `services/worker/uv.lock`, which normalize Python to `==3.14.*`. The LLM gateway currently has no committed `services/llm-gateway/uv.lock`; its `pyproject.toml` is the only dependency source committed for that service.',
+              '- `make setup` — frozen pnpm install plus frozen uv sync for API, worker, and LLM gateway.': '- `make setup` — frozen pnpm install, frozen uv sync for API and worker, and normal `uv sync` for the LLM gateway because that service currently has no committed lockfile.',
+              '**Known mismatch at this audit point:** the checked-in OPE-269 workflow currently triggers on `pull_request` only. OPE-269 requires both pull requests and pushes to `main`; the attempted `push: main` update is not present in the audited file. OPE-269 must not be marked complete until that trigger and a successful real workflow run are confirmed.': '**Validated state:** the OPE-269 workflow triggers on pull requests and pushes to `main`. GitHub Actions run `31743372387` completed successfully on the rebased branch and passed dependency setup, lint, typecheck, test, and Compose configuration validation. An earlier run exposed the missing LLM-gateway lockfile assumption in `make setup`; OPE-268 was corrected to use the dependency state that actually exists in the repository.',
+              '1. **OPE-269 is incomplete in the audited branch.** `.github/workflows/ci.yml` does not yet include the required push-to-`main` trigger, and no successful real Actions run for this workflow has been recorded in this audit.\n2. **OPE-266 runtime acceptance is not yet proven here.** The Redpanda Compose structure is present, but this audit does not claim a successful broker-health/topic-list run.\n3. **OPE-267 runtime acceptance is not yet proven here.** The observability configuration is present, but this audit does not claim Grafana/data-source/Prometheus-target runtime verification.': '1. **The LLM gateway has no committed uv lockfile.** `make setup` therefore uses normal `uv sync` for `services/llm-gateway` while API and worker use `--frozen`. This is an explicit reproducibility landmine; future dependency-hardening work should either commit a reviewed gateway lockfile or deliberately document a different dependency policy.\n2. **OPE-266 runtime acceptance was exercised in GitHub Actions run `31743262767`.** The default profile started without Redpanda, the events profile reached the point where `rpk cluster info` and `rpk topic list` succeeded, and stopping Redpanda left the core services running.\n3. **OPE-267 runtime startup was exercised in GitHub Actions run `31743262767`.** The optional services were absent from the default profile and all five observability services started under the `observability` profile. This audit does not overclaim an independent Grafana datasource-health API or Prometheus-target assertion beyond that startup/provisioning evidence.'
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Expected audit text not found: {old[:80]}')
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
+      - name: Commit refreshed audit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/repo_context.md
+          git commit -m "OPE-270: refresh audited repository facts [skip ci]"
+          git push

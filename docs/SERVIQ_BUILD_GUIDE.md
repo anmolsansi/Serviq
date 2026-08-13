@@ -1301,11 +1301,19 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-253 — Client Console scaffold
 
-**What changed:** the tenant/business-facing Next.js application shell was created.
+**What changed:** the tenant/business-facing Serviq Client Console now has its own working Next.js application shell at `apps/client-console`. The app uses the App Router, React, strict TypeScript, Tailwind CSS, and app-local `dev`, `build`, `lint`, and `typecheck` commands. The visible root page intentionally remains minimal and identifies the product as **Serviq Client Console** with a **Foundation scaffold** note. PR #11 merged this scaffold into `main`.
 
-**Why:** internal Serviq client workflows need a dedicated application separate from customers and Serviq operators.
+**Why:** Serviq needs a dedicated web application for the employees of a business using the platform. Those users will eventually configure AI providers, knowledge, tools, policies, conversations, human-support workflows, analytics, team access, and settings. Keeping this application separate from the public Customer Web app and the privileged Serviq Platform Console creates clearer product and security boundaries from the beginning.
 
-**Status:** scaffold created; lint/typecheck/build validation still required before Done.
+**How it works in plain language:** Next.js provides the web-application structure, React provides the reusable interface building blocks, strict TypeScript catches many incorrect data assumptions before the application runs, Tailwind provides the styling pipeline, and ESLint checks for common code-quality problems. At this stage the page does not call an API, use authentication, load customer data, or pretend later product features already exist. It is the tested frame that future Client Console screens will be built inside.
+
+**What this improves:** future Client Console tickets no longer need to recreate frontend setup. They can add actual product features on top of one stable application boundary. The separate app also reduces the risk of accidentally mixing business-admin code with public customer code or platform-operator code.
+
+**Validation completed:** after PR #11 was already merged, a temporary validation-only GitHub Actions PR (#14) tested the current `main` code using Node.js 24.18.0 and pnpm 10. Dependency installation succeeded. `pnpm --filter @serviq/client-console lint` passed, `pnpm --filter @serviq/client-console typecheck` passed, and `pnpm --filter @serviq/client-console build` passed. The workflow then started the Client Console development server and fetched the root page, confirming that the rendered HTML contains both `Serviq` and `Client Console` and no standard Next.js application-error marker. The temporary validation workflow was removed and PR #14 was closed without merging, so no validation-only workflow was added to `main`.
+
+**Scope intentionally not added:** OPE-253 does not add authentication, navigation, API calls, charts, real customer data, AI configuration screens, conversation screens, support-inbox logic, or a component library. Those remain separate future tickets.
+
+**Status:** **Completed.** The scaffold is merged through PR #11 and all required lint, typecheck, production-build, and root-page render checks passed. GitHub issue #4 and Linear OPE-253 can be closed as completed.
 
 ## OPE-254 — Customer Web scaffold
 

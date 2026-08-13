@@ -1,0 +1,29 @@
+name: Validate OPE-268 and OPE-269
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  validate-makefile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: validation-only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start core stack through Makefile
+        run: make dev
+      - name: Verify core services are running
+        run: |
+          for service in postgres keycloak valkey object-storage; do
+            docker compose -f infra/docker/compose.yml ps --status running --services | grep -qx "$service"
+          done
+      - name: Stop stack through Makefile
+        run: make down
+      - name: Verify placeholder gates fail
+        run: |
+          for target in security e2e load-test; do
+            if make "$target"; then
+              echo "$target unexpectedly returned success" >&2
+              exit 1
+            fi
+          done

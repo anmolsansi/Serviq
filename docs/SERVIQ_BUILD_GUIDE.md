@@ -1351,7 +1351,7 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-256 — Shared UI package skeleton
 
-**Current state:** **In Review — implemented and validated in PR #26, not yet merged into `main`.**
+**Status:** **Completed.** PR #26 is merged into `main`, GitHub issue #20 is closed as completed, and Linear OPE-256 is Done.
 
 **What changed on the implementation branch:** `packages/ui` now exists as the proposed `@serviq/ui` shared frontend package. It contains a private ESM manifest, strict TypeScript configuration, an intentionally empty component export surface, documented neutral design-token placeholders, and an ownership README.
 
@@ -1359,15 +1359,15 @@ The goal is that someone can start at the top of this document months from now a
 
 **What this improves:** later UI tickets can add reviewed shared primitives instead of copying components between apps. Semantic token names can be shared while final brand values remain changeable.
 
-**Validation:** GitHub Actions run `31695466527` used Node.js 24.18.0 and pnpm 10.15.0. Dependency installation, `@serviq/ui` typecheck, build validation, workspace resolution, and the no-application-import check passed. The run generated `pnpm-lock.yaml`; the temporary validation workflow was removed afterward.
+**Validation completed:** GitHub Actions run `31695466527` used Node.js 24.18.0 and pnpm 10.15.0. Dependency installation, `@serviq/ui` typecheck, build validation, workspace resolution, and the no-application-import check passed. Final consolidation run `31717466336` again passed the shared TypeScript package checks on the fully merged OPE-256 through OPE-265 codebase.
 
 **Not implemented:** no reusable component API, feature UI, app source change, backend code, Storybook, dark mode, or final brand system.
 
-**Tracking:** GitHub issue #20; PR #26; Linear OPE-256. The ticket remains In Review until merge/completion tracking.
+**Tracking:** GitHub issue #20 is closed as completed; PR #26 is merged; Linear OPE-256 is Done.
 
 ## OPE-257 — Shared contracts package skeleton
 
-**Current state:** **In Review — implemented and validated in PR #27, not yet merged into `main`.**
+**Status:** **Completed.** PR #27 is merged into `main`, GitHub issue #21 is closed as completed, and Linear OPE-257 is Done.
 
 **What changed on the implementation branch:** `packages/contracts` now exists as the proposed `@serviq/contracts` package. It contains strict TypeScript configuration and only architecture-frozen baseline wire shapes: `{ data, meta? }`, the standard error envelope, pagination `{ page, pageSize, total, totalPages }`, and a named string correlation identifier. Empty auth/event folders reserve ownership without inventing feature contracts.
 
@@ -1375,11 +1375,11 @@ The goal is that someone can start at the top of this document months from now a
 
 **What this improves:** shared wire vocabulary has one reviewable source while future feature contracts remain architect-controlled.
 
-**Validation:** GitHub Actions run `31695492522` passed strict typecheck, build validation, workspace resolution, compile examples, and the no-application-import check on Node.js 24.18.0 / pnpm 10.15.0. The temporary workflow was removed after lockfile generation.
+**Validation completed:** GitHub Actions run `31695492522` passed strict typecheck, build validation, workspace resolution, compile examples, and the no-application-import check on Node.js 24.18.0 / pnpm 10.15.0. Conflict-resolution run `31697565128` then verified the merged lockfile state. Final consolidation run `31717466336` again passed the shared TypeScript package checks.
 
 **Not implemented:** no database models, generated client, provider SDK types, auth implementation, or feature endpoint types.
 
-**Tracking:** GitHub issue #21; PR #27; Linear OPE-257. The ticket remains In Review until merge/completion tracking.
+**Tracking:** GitHub issue #21 is closed as completed; PR #27 is merged; Linear OPE-257 is Done.
 
 ## OPE-258 — Cross-cutting shared package boundaries
 
@@ -1399,7 +1399,7 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-259 — FastAPI API service scaffold
 
-**Current state:** **In Review — implemented and validated in PR #25, not yet merged into `main`.**
+**Status:** **Completed.** PR #25 is merged into `main`, GitHub issue #23 is closed as completed, and Linear OPE-259 is Done.
 
 **What changed on the implementation branch:** `services/api` now contains the proposed Python 3.14 FastAPI foundation. `app/main.py` exposes only `FastAPI(title="Serviq API")`. Architecture-owned core placeholders exist for config, errors, logging, auth, tenancy, idempotency, and rate limits; modules/contracts boundaries, Ruff, strict mypy, pytest, a smoke test, and `uv.lock` are included.
 
@@ -1409,15 +1409,15 @@ The goal is that someone can start at the top of this document months from now a
 
 **What this improves:** future backend tickets can add router → service → repository modules on a tested service foundation.
 
-**Validation:** GitHub Actions run `31695430241` installed Python 3.14.6, resolved/synced dependencies, passed Ruff, strict mypy, pytest, direct app import, and Uvicorn startup; `/openapi.json` was fetched successfully during smoke QA.
+**Validation completed:** GitHub Actions run `31695430241` installed Python 3.14.6, resolved/synced dependencies, passed Ruff, strict mypy, pytest, direct app import, and Uvicorn startup; `/openapi.json` was fetched successfully during smoke QA. Final consolidation run `31717466336` re-ran dependency sync, Ruff, strict mypy, pytest, and direct app import successfully on the merged codebase.
 
 **Not implemented:** no database, migration, model, auth/OIDC behavior, tenancy enforcement, idempotency/rate-limit implementation, logging config, health endpoint, or business route.
 
-**Tracking:** GitHub issue #23; PR #25; Linear OPE-259. The ticket remains In Review until merge/completion tracking.
+**Tracking:** GitHub issue #23 is closed as completed; PR #25 is merged; Linear OPE-259 is Done.
 
 ## OPE-260 — Durable worker service scaffold
 
-**Current state:** **In Review — implemented and validated in stacked PR #29, not yet merged; PR #29 depends on OPE-259 / PR #25.**
+**Status:** **Completed.** PR #29 is merged into `main`, GitHub issue #24 is closed as completed, and Linear OPE-260 is Done.
 
 **What changed on the implementation branch:** `services/worker` now contains the proposed durable-worker boundary using Python 3.14 tooling but no FastAPI dependency. It includes an executable/importable entry point, explicit `app/jobs`, `app/consumers`, and `app/core` boundaries, config placeholder, smoke test, and `uv.lock`.
 
@@ -1425,13 +1425,13 @@ The goal is that someone can start at the top of this document months from now a
 
 **What this improves:** Serviq gets a separately testable process boundary for future durable work, with jobs and broker consumers conceptually separated from the start.
 
-**Validation:** GitHub Actions run `31695783384` used Python 3.14.6 and passed dependency sync, Ruff, strict mypy, pytest, import, process start/exit, and a source check confirming no FastAPI, `APIRouter`, or `Request` imports.
+**Validation completed:** GitHub Actions run `31695783384` used Python 3.14.6 and passed dependency sync, Ruff, strict mypy, pytest, import, process start/exit, and a source check confirming no FastAPI, `APIRouter`, or `Request` imports. Final consolidation run `31717466336` again passed the worker dependency sync, Ruff, strict mypy, pytest, import, and no-FastAPI-import check.
 
 **Not implemented:** no Kafka/Redpanda client, real consumer/job, database, scheduler, retry policy, outbox publisher, external integration, or web route.
 
-**Dependency note:** PR #29 is intentionally stacked on PR #25. After OPE-259 merges, OPE-260 should be retargeted or rebased onto `main` before final merge.
+**Dependency resolution:** OPE-259 was merged before final completion, and OPE-260 is now merged into `main` through PR #29.
 
-**Tracking:** GitHub issue #24; PR #29; Linear OPE-260. The ticket remains In Review until its dependency and merge are complete.
+**Tracking:** GitHub issue #24 is closed as completed; PR #29 is merged; Linear OPE-260 is Done.
 
 ## OPE-261 — LLM gateway service scaffold
 
@@ -1459,9 +1459,9 @@ Later OpenAI, Anthropic, Gemini, OpenRouter, or other provider work gets a known
 
 There is no provider adapter, provider SDK, API-key loading, model routing, fallback policy, streaming, usage accounting, cost policy, retry policy, circuit breaker, or actual LLM request. Those are separate contracts and future tickets.
 
-### Validation status
+### Validation and completion status
 
-Static TOML parsing and Python syntax checks passed. The current execution environment does not provide the required Python 3.14 runtime/dependency environment, so dependency locking, Ruff, strict mypy, pytest, import validation, and Uvicorn startup validation are still pending. OPE-261 therefore remains In Progress and draft PR #37 remains unmerged.
+PR #37 is merged. Final GitHub Actions run `31717466336` used Python 3.14.6, resolved the LLM-gateway dependencies, passed Ruff, strict mypy, pytest, direct app import, the provider-SDK dependency/import guard, and a real Uvicorn startup plus `/openapi.json` smoke check. GitHub issue #32 is closed as completed and Linear OPE-261 is Done. **Status: Completed.**
 
 ## OPE-262 — Local PostgreSQL 18 with pgvector
 
@@ -1485,9 +1485,9 @@ Future backend work receives one reproducible local database target. Later RAG a
 
 There are no Serviq tables, Alembic migrations, row-level-security rules, tenant queries, backups, replicas, cloud database settings, application database connections, or production credentials.
 
-### Validation status
+### Validation and completion status
 
-The Compose YAML parses successfully. Docker is not available in the current execution environment, so live PostgreSQL startup, health transition, vector-extension verification, and persistence tests are still pending. OPE-262 remains In Progress and draft PR #38 remains unmerged.
+PR #38 is merged. Final GitHub Actions run `31717466336` passed `docker compose config`, started PostgreSQL, verified the container healthcheck, confirmed PostgreSQL 18 and the `vector` extension, created a temporary row, restarted PostgreSQL, verified the row persisted, and removed the temporary table. GitHub issue #33 is closed as completed and Linear OPE-262 is Done. **Status: Completed.**
 
 ## OPE-263 — Local Valkey cache
 
@@ -1515,9 +1515,9 @@ Future tickets have a predictable low-latency local service instead of independe
 
 There is no session design, rate-limit middleware, semantic response cache, cache-key namespace, TTL policy, invalidation strategy, distributed lock, cluster mode, or production Valkey deployment.
 
-### Validation status
+### Validation and completion status
 
-The stacked Compose YAML parses successfully. The live service response and clean-start behavior cannot be tested in the current environment because Docker is unavailable. OPE-263 therefore remains In Progress and draft PR #39 remains unmerged.
+PR #39 is merged. Final GitHub Actions run `31717466336` started Valkey with the full local stack, waited for its healthcheck, and confirmed `PING` returned `PONG`. The same run verified that the surrounding PostgreSQL, object-storage, and Keycloak services remained healthy together. GitHub issue #34 is closed as completed and Linear OPE-263 is Done. **Status: Completed.**
 
 ## OPE-264 — Local S3-compatible object storage
 
@@ -1545,9 +1545,9 @@ Knowledge-ingestion and export tickets now have a defined local object-storage t
 
 There is no upload endpoint, presigned URL flow, MIME/type/size validation, malware scanning, generated object-key implementation, knowledge parsing, public bucket policy, cloud S3 deployment, or retention lifecycle.
 
-### Validation status
+### Validation and completion status
 
-The Compose YAML parses successfully. The current environment has no Docker, so startup, bucket creation, private-access behavior, restart persistence, and a temporary object write/read/delete round trip have not been executed. The branch also still needs its final accepted service-healthcheck implementation. OPE-264 therefore remains In Progress and draft PR #40 remains unmerged.
+PR #40 is merged, and PR #45 added the missing object-storage healthcheck discovered during completion review. Final GitHub Actions run `31717466336` passed Compose validation, waited for object storage to become healthy, confirmed the private `serviq-local-objects` bucket, completed an authenticated write/read/delete round trip, verified anonymous access was rejected, restarted object storage, and confirmed stored data persisted. GitHub issue #35 is closed as completed and Linear OPE-264 is Done. **Status: Completed.**
 
 ## OPE-265 — Local Keycloak OIDC service
 
@@ -1575,16 +1575,10 @@ Later workforce-authentication work gets a free local standards-based identity-p
 
 There is no Serviq realm, OIDC client, permanent user, tenant-role mapping, platform-operator role mapping, login/logout flow, token validation, refresh logic, application authorization guard, SSO federation, or production identity deployment.
 
-### Validation status
+### Validation and completion status
 
-The Compose YAML parses successfully. Docker is not available in the current execution environment, so Keycloak startup, readiness, and browser reachability have not been runtime-tested. OPE-265 remains In Progress. A draft PR creation attempt through the connected GitHub action was not accepted, so the implementation branch is currently the review location.
+PR #43 is merged. Final GitHub Actions run `31717466336` started the complete local stack, waited for Keycloak's container healthcheck to become healthy, successfully called the management readiness endpoint, and confirmed the local web endpoint was reachable. No Serviq realm, OIDC client, login flow, or role mapping was introduced by this infrastructure ticket. GitHub issue #36 is closed as completed and Linear OPE-265 is Done. **Status: Completed.**
 
 ## Current tracking summary
 
-- OPE-261: GitHub issue #32, branch `ope-261-llm-gateway-scaffold`, draft PR #37.
-- OPE-262: GitHub issue #33, branch `ope-262-postgres-pgvector-compose`, draft PR #38.
-- OPE-263: GitHub issue #34, branch `ope-263-valkey-compose`, draft PR #39.
-- OPE-264: GitHub issue #35, branch `ope-264-object-storage-compose`, draft PR #40.
-- OPE-265: GitHub issue #36, branch `ope-265-keycloak-compose`; PR creation still pending.
-
-None of OPE-261 through OPE-265 is marked complete yet. Static configuration/source validation has been recorded honestly, while runtime checks that require Docker or the exact Python 3.14 environment remain open acceptance work.
+OPE-256 through OPE-265 are now completed. PRs #25 through #29 and #37 through #40/#43 are merged as applicable; OPE-264 completion hardening is merged in PR #45; GitHub issues #20, #21, #22, #23, #24, and #32 through #36 are closed as completed; and Linear OPE-256 through OPE-265 are Done. Final consolidation run `31717466336` validated the merged shared packages, API, worker, LLM gateway, PostgreSQL/pgvector, Valkey, private object storage, and Keycloak together.

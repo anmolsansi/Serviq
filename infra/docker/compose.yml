@@ -23,6 +23,7 @@ services:
     environment:
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME:-serviq-local-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD:?Set KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD for local development}
     ports:
       - "127.0.0.1:8080:8080"
       - "127.0.0.1:9000:9000"

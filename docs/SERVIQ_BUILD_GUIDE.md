@@ -1382,19 +1382,19 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-258 — Cross-cutting shared package boundaries
 
-**Current state:** **In Review — implemented and validated in PR #28, not yet merged into `main`.**
+**Status:** **Completed.** PR #28 is merged into `main`, GitHub issue #22 is closed as completed, and Linear OPE-258 is Done.
 
-**What changed on the implementation branch:** four proposed workspace packages now have explicit ownership boundaries: `@serviq/config`, `@serviq/observability`, `@serviq/security`, and `@serviq/testkit`. Each has its own manifest, strict TypeScript configuration, intentionally empty public index, and README.
+**What changed:** Serviq now has four explicit shared workspace boundaries: `@serviq/config`, `@serviq/observability`, `@serviq/security`, and `@serviq/testkit`. Each package has its own manifest, strict TypeScript configuration, intentionally empty public index, and ownership README. The packages create safe homes for future reusable configuration, telemetry, security, and test helpers without implementing those behaviors prematurely.
 
-**Why this matters:** configuration, telemetry, security helpers, and test utilities are cross-cutting concerns. Reserving their homes now prevents later code from being scattered across applications while avoiding speculative implementations.
+**Why this matters:** these are cross-cutting concerns. Without dedicated package boundaries, future code could become duplicated or scattered across applications. Creating the boundaries now makes later ownership clearer while avoiding speculative logging, authentication, environment parsing, cryptography, fixtures, or fake-AI implementations.
 
-**What this improves:** later tickets get clear reusable-code boundaries with no premature runtime dependency or behavior.
+**What this improves:** later tickets can add reviewed reusable helpers in one predictable location. Application code remains separated from shared infrastructure concerns, and the package ownership rules reduce accidental coupling between `apps/*` and cross-cutting libraries.
 
-**Validation:** GitHub Actions run `31695529867` passed all four package typechecks, workspace-name resolution, and the no-application-import check on Node.js 24.18.0 / pnpm 10.15.0. The temporary workflow was removed after lockfile generation.
+**Validation completed:** original GitHub Actions run `31695529867` passed typechecks for all four packages, verified workspace-name resolution, and confirmed no application imports on Node.js 24.18.0 with pnpm 10.15.0. After OPE-256 and OPE-257 merged, PR #28 developed a `pnpm-lock.yaml` conflict. Conflict-resolution run `31698137990` merged current `main`, preserved the already-merged `packages/ui` and `packages/contracts` lockfile importers, regenerated the combined lockfile, re-ran all four OPE-258 package typechecks, verified all six shared package importers, and re-confirmed that the four OPE-258 packages do not import application code. Every step passed.
 
-**Not implemented:** no OpenTelemetry/logging setup, environment parser, auth/security behavior, fixtures, fake LLM, business data, app/backend edit, Docker change, or persistent workflow.
+**Conflict fix:** the lockfile was regenerated from the current merged workspace rather than choosing one side of the conflict. This preserved both the already-merged UI/contracts packages and the four new OPE-258 packages. The temporary conflict-resolution workflow was removed before merge, so OPE-258 introduced no permanent GitHub workflow.
 
-**Tracking:** GitHub issue #22; PR #28; Linear OPE-258. The ticket remains In Review until merge/completion tracking.
+**Scope intentionally not added:** no OpenTelemetry/logging implementation, environment parser, authentication/authorization helper, validation helper, cryptography, fixtures, fake LLM, business test data, application source change, backend behavior, Docker change, or permanent workflow.
 
 ## OPE-259 — FastAPI API service scaffold
 

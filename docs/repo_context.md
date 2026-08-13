@@ -2,7 +2,7 @@
 
 > Audit ticket: OPE-270  
 > Audited branch: `ope-270-repository-audit`  
-> Audit source commit before this file: `6ea6e5bde67a6845718cf84e7d21a11fb777751a`  
+> Audit source commit before this file: `b7c94fe55db4837ed93e4ea84722b6bf15f480df`  
 > Purpose: give later builders a factual map of what exists in the repository today. This file records implemented reality, not architecture wishes.
 
 ## 1. Repository snapshot
@@ -37,7 +37,7 @@ The three application manifests are `apps/client-console/package.json`, `apps/cu
 
 ### Python
 
-All Python services declare Python `>=3.14,<3.15` in their `pyproject.toml` files. Their uv lockfiles normalize that to `==3.14.*`: `services/api/uv.lock`, `services/worker/uv.lock`, and `services/llm-gateway/uv.lock`.
+All Python services declare Python `>=3.14,<3.15` in their `pyproject.toml` files. The API and worker have committed uv lockfiles at `services/api/uv.lock` and `services/worker/uv.lock`, which normalize Python to `==3.14.*`. The LLM gateway currently has no committed `services/llm-gateway/uv.lock`; its `pyproject.toml` is the only dependency source committed for that service.
 
 The OPE-269 workflow currently selects Python `3.14.6` in `.github/workflows/ci.yml`.
 
@@ -234,7 +234,7 @@ The root developer command surface is `Makefile`.
 
 Required targets present on the audited branch:
 
-- `make setup` — frozen pnpm install plus frozen uv sync for API, worker, and LLM gateway.
+- `make setup` — frozen pnpm install, frozen uv sync for API and worker, and normal `uv sync` for the LLM gateway because that service currently has no committed lockfile.
 - `make dev` — starts core Compose infrastructure and prints that application/service processes should be started separately.
 - `make test` — root pnpm tests plus pytest for all three Python services.
 - `make lint` — root pnpm lint plus Ruff for all three Python services.
@@ -268,7 +268,7 @@ The pre-existing design workflow is `.github/workflows/build-4k-designs.yml`.
 
 The OPE-269 branch adds `.github/workflows/ci.yml` with read-only `contents` permission, a 20-minute timeout, pinned major action versions, Node/pnpm setup, Python/uv setup, dependency caching, `make setup`, `make lint`, `make typecheck`, `make test`, and a separate Compose-model validation step.
 
-**Known mismatch at this audit point:** the checked-in OPE-269 workflow currently triggers on `pull_request` only. OPE-269 requires both pull requests and pushes to `main`; the attempted `push: main` update is not present in the audited file. OPE-269 must not be marked complete until that trigger and a successful real workflow run are confirmed.
+**Validated state:** the OPE-269 workflow triggers on pull requests and pushes to `main`. GitHub Actions run `31743372387` completed successfully on the rebased branch and passed dependency setup, lint, typecheck, test, and Compose configuration validation. An earlier run exposed the missing LLM-gateway lockfile assumption in `make setup`; OPE-268 was corrected to use the dependency state that actually exists in the repository.
 
 There is no CodeQL, Gitleaks, Trivy, Playwright, k6, Docker image publishing, deployment, or release gate in baseline CI yet.
 
@@ -302,9 +302,9 @@ Observed, not guessed:
 
 ## 16. Unknowns and landmines
 
-1. **OPE-269 is incomplete in the audited branch.** `.github/workflows/ci.yml` does not yet include the required push-to-`main` trigger, and no successful real Actions run for this workflow has been recorded in this audit.
-2. **OPE-266 runtime acceptance is not yet proven here.** The Redpanda Compose structure is present, but this audit does not claim a successful broker-health/topic-list run.
-3. **OPE-267 runtime acceptance is not yet proven here.** The observability configuration is present, but this audit does not claim Grafana/data-source/Prometheus-target runtime verification.
+1. **The LLM gateway has no committed uv lockfile.** `make setup` therefore uses normal `uv sync` for `services/llm-gateway` while API and worker use `--frozen`. This is an explicit reproducibility landmine; future dependency-hardening work should either commit a reviewed gateway lockfile or deliberately document a different dependency policy.
+2. **OPE-266 runtime acceptance was exercised in GitHub Actions run `31743262767`.** The default profile started without Redpanda, the events profile reached the point where `rpk cluster info` and `rpk topic list` succeeded, and stopping Redpanda left the core services running.
+3. **OPE-267 runtime startup was exercised in GitHub Actions run `31743262767`.** The optional services were absent from the default profile and all five observability services started under the `observability` profile. This audit does not overclaim an independent Grafana datasource-health API or Prometheus-target assertion beyond that startup/provisioning evidence.
 4. **Authentication is not implemented.** Keycloak infrastructure does not equal application authentication. See `services/api/app/core/auth.py`.
 5. **Database application patterns are not implemented.** SQLAlchemy/Alembic dependencies do not equal models, sessions, repositories, or migrations.
 6. **No real Router -> Service -> Repository example exists yet.** Later backend tickets must establish this without pretending the empty `services/api/app/modules/` directory is an implementation.

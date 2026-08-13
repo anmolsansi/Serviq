@@ -154,6 +154,25 @@ Serviq should eventually do something like this:
 
 This one example demonstrates most of the hard parts of a real AI support platform: knowledge retrieval, private customer data, business rules, tool use, permissions, money-related actions, confirmation, human approval, and audit history.
 
+### What OPE-251 actually completed
+
+OPE-251 did **not** build the order database, AI agent, crawler, or refund function. Its job was to remove ambiguity before those systems are built.
+
+The ticket froze the reference contracts that later engineers will implement:
+
+```text
+Primary support reference: DoorDash support/delivery domain
+Separate payment reference: Stripe payment/refund domain
+Source policy: doordash-stripe-allowlist-v1
+Status tool: demo.get_delivery_order_status
+Eligibility tool: demo.check_order_resolution_eligibility
+Mutation tool: demo.create_refund
+```
+
+It also froze the rule that all private demo records are synthetic. The DoorDash reference does not authorize unrestricted crawling: every source must be explicitly approved/permitted, and Serviq must never bypass authentication, anti-bot controls, terms, or access restrictions. The deterministic V1 refund changes only Serviq synthetic data and moves no real money.
+
+The decision history was merged in GitHub PR #8. The remaining PRD, Product Specification, and Architecture wording was then synchronized in PR #9 so future MAS-7 implementation tickets no longer see a contradictory “choose a demo company/domain” blocker.
+
 ---
 
 ## 5. Why the private demo data is synthetic
@@ -1057,6 +1076,8 @@ A ticket should only be moved to Done after its required checks genuinely pass.
 
 This is important for credibility. A production project must distinguish between “code was written” and “code was verified.”
 
+OPE-251 is different from the frontend scaffold tickets: it is a product/architecture decision ticket, so its validation is documentation/contract consistency rather than runtime lint/build tests. Its final verification checks that the PRD, Product Specification, Architecture, CCR-003, GitHub issue, and Linear ticket all describe the same reference domains, source policy, tools, synthetic-data boundary, and non-affiliation rule.
+
 ---
 
 # Part XIII — What these first tickets improved
@@ -1260,11 +1281,15 @@ The goal is that someone can start at the top of this document months from now a
 
 ## OPE-251 — Demo domain decision
 
-**What changed:** the initial reference configuration was frozen as a DoorDash-style customer-support/delivery domain combined with a separate Stripe-style payment domain, with synthetic operational data and protected demo tools.
+**What changed:** the Production V1 reference configuration is frozen as a DoorDash customer-support/delivery reference domain combined with a separate Stripe payment/refund reference domain, with synthetic private operational data and three protected demo tool contracts. PR #8 merged the decision history/CCR records; PR #9 synchronized the PRD, Product Specification, and Architecture and removed the MAS-7 demo-domain Product Decision blockers.
 
-**Why:** this gives Serviq a realistic end-to-end support story covering knowledge, customer context, delivery, payments, policy, actions, approval, and escalation.
+**Why:** this gives Serviq a realistic end-to-end support story covering knowledge, customer context, delivery, payments, policy, actions, approval, and escalation without using real private company/customer data or real money movement.
 
-**Status:** decision work is still being finalized against authoritative product/architecture documents before the ticket can be marked Done.
+**How it is kept safe:** DoorDash and Stripe are independent reference domains; Serviq does not claim DoorDash uses Stripe. Public knowledge is explicit-allowlist only and must respect source access/terms. All private operational records are synthetic. `demo.create_refund` changes only synthetic Serviq state in deterministic V1.
+
+**Validation:** authoritative product and architecture documents now agree on `doordash-stripe-allowlist-v1`, `demo.get_delivery_order_status`, `demo.check_order_resolution_eligibility`, `demo.create_refund`, the synthetic record families, source-access restrictions, and the non-affiliation boundary. The unrelated end-customer attachment question remains intentionally open.
+
+**Status:** **Completed.** OPE-251 is ready to close after PR #9 merges and the GitHub/Linear tracking records are marked completed.
 
 ## OPE-252 — Root monorepo toolchain
 

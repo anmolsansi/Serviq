@@ -1,9 +1,9 @@
 name: Resolve OPE-258 Main Conflict
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - ope-258-cross-cutting-packages
 
 permissions:
   contents: write
@@ -17,7 +17,7 @@ jobs:
       - name: Check out OPE-258 branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ope-258-cross-cutting-packages
           fetch-depth: 0
 
       - name: Configure Git identity
@@ -42,7 +42,6 @@ jobs:
               exit 1
             fi
 
-            # Start from main's already-merged lockfile so OPE-256/OPE-257 importers are preserved.
             git checkout --theirs pnpm-lock.yaml
             git add pnpm-lock.yaml
           fi
@@ -92,4 +91,4 @@ jobs:
           elif ! git diff --cached --quiet; then
             git commit -m 'chore(packages): refresh workspace lockfile after main updates'
           fi
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:ope-258-cross-cutting-packages

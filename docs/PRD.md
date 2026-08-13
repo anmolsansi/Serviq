@@ -1,6 +1,6 @@
 # PRD: Serviq — Production V1
 
-**Status:** Architecture-ready draft v1.1  
+**Status:** Product decisions synchronized v1.2  
 **Product:** Serviq  
 **Audience:** Product, engineering, design, QA, security, DevOps, and contributors  
 **Document authority:** This PRD defines what Production V1 must do. `ARCHITECTURE.md` defines how it is built. `TECH_STACK.md` freezes technology choices. `PRODUCT_SPECIFICATION.md` describes the longer-term product.
@@ -38,7 +38,7 @@ Production V1 intentionally does **not** include the following. These are deferr
 - Verified 10 million concurrent-user capacity or 10 million requests per second. The architecture keeps a scale-out path, but those numbers require measured proof.
 - Multi-region active-active production deployment.
 - A dedicated vector database or dedicated search cluster unless V1 measurements prove PostgreSQL-based retrieval insufficient.
-- Real private customer, order, payment, or ticket data from the public company used for the portfolio demo.
+- Real private customer, order, payment, or ticket data from the public companies referenced by the portfolio demo.
 - Autonomous high-impact actions that tenant policy marks as human-only.
 - Arbitrary model-generated code execution, arbitrary shell execution, or unrestricted database access.
 - Multilingual product guarantees. Production V1 user-facing copy and evaluation are English-first.
@@ -51,7 +51,7 @@ Production V1 intentionally does **not** include the following. These are deferr
 4. **Grounded retrieval [MAS-4].** Serviq performs tenant-scoped hybrid retrieval over active knowledge, returns source provenance with each result, excludes disabled/deprecated content, and can expose retrieval diagnostics to authorized business users.
 5. **Customer support conversation [MAS-5].** A customer can start or resume a conversation, send messages, receive streamed responses, see citations when enabled, retry recoverable failures, request a human, and submit feedback. Anonymous and tenant-verified customer sessions are supported as separate policies.
 6. **Bounded agent runtime [MAS-6].** Every agent run follows explicit states, maximum step/model/tool budgets, timeout budgets, and deterministic completion, failure, or escalation outcomes. The model cannot bypass policy or tool boundaries.
-7. **Customer context and typed tools [MAS-7].** The demo supports synthetic private operational records and typed tools for the selected demo domain. At minimum, the tool set must include one read-only status lookup, one eligibility/policy lookup, and one state-changing action so both safe reads and protected mutations are demonstrated.
+7. **Customer context and typed tools [MAS-7].** The Production V1 reference configuration is the DoorDash reference support/delivery domain plus a separate Stripe reference payment domain, with all private customer/order/delivery/payment/refund/support records kept synthetic. The source-manifest policy is `doordash-stripe-allowlist-v1`. The first three frozen tool keys are exactly `demo.get_delivery_order_status` (read-only status), `demo.check_order_resolution_eligibility` (read-only eligibility/policy), and `demo.create_refund` (protected mutation). The public demo never claims DoorDash uses Stripe, never accesses DoorDash private systems, and never moves real money.
 8. **Policy, confirmation, and approval [MAS-8].** Mutating tools are deny-by-default unless a tenant policy allows them. A policy can allow, deny, require customer confirmation, or require human approval. Approved execution is idempotent, expiry-aware, and audited.
 9. **Human escalation and support inbox [MAS-9].** Serviq can escalate automatically or on customer request. The handoff includes customer context, conversation summary, evidence, tool history, policy decisions, errors, pending approvals, reason code, and recommended next action. A support agent can take over and resolve or reassign the case.
 10. **Client configuration console [MAS-10].** Business users receive a polished console for onboarding, knowledge, AI agents, providers, tools, policies, conversations, support inbox, team/access, and environment settings. Permission-denied states are explicit and never rendered as generic errors.
@@ -141,6 +141,16 @@ Production V1 intentionally does **not** include the following. These are deferr
 5. Otherwise Serviq escalates or returns a temporary-failure state without inventing an answer from model memory.
 6. Provider failure, fallback, latency, and final outcome are observable.
 
+### 7.7 V1 Reference Missing-Item / Refund Flow
+
+1. Customer reports a missing or incorrect item in the DoorDash reference support domain.
+2. Serviq retrieves only approved/permitted support knowledge from the explicit `doordash-stripe-allowlist-v1` manifest. It does not use unrestricted crawling or bypass source access controls.
+3. `demo.get_delivery_order_status` reads the synthetic order and delivery state.
+4. `demo.check_order_resolution_eligibility` evaluates the synthetic order/item/delivery/payment state and Serviq demo resolution rules.
+5. If a refund is allowed, Serviq requests customer confirmation and human approval when the configured rule requires it.
+6. `demo.create_refund` creates an idempotent synthetic refund record. The deterministic V1 demo does not move real money and does not modify DoorDash or Stripe production systems.
+7. The result, policy decision, confirmation/approval, and idempotency reference are auditable and available to human support if escalation is needed.
+
 ## 8. Roles & Permissions
 
 `yes` means allowed in V1, `no` means denied, `scoped` means limited to assigned queues/resources, and `policy` means an additional tenant policy must authorize the action.
@@ -183,6 +193,8 @@ End-customer permissions are not workforce roles. Customer access is determined 
 - **Escalation** belongs to a support queue and tracks assignment, SLA state, handoff context, and resolution.
 - **Audit Event** is append-oriented and records security-sensitive configuration and business actions.
 - **Outbox Event** guarantees reliable publication of domain events committed with transactional state changes.
+
+The V1 reference demo additionally uses synthetic entities defined by CCR-003: `demo_customers`, `demo_orders`, `demo_order_items`, `demo_deliveries`, `demo_order_events`, `demo_payments`, `demo_refund_rules`, `demo_refunds`, and `demo_support_cases`. These are reference/demo-domain records and are not DoorDash or Stripe private data.
 
 Exact columns, constraints, indexes, retention, and deletion behavior are owned by `ARCHITECTURE.md` and migrations.
 
@@ -249,7 +261,7 @@ Every data-driven screen must implement loading, empty, error, permission-denied
 - **MAS-4 Retrieval & Grounding** — tenant-scoped lexical/vector retrieval, hybrid ranking, filters, citations, retrieval debugger contract. Depends on: MAS-3. Outbound dependencies: evidence contract consumed by MAS-6 and MAS-9.
 - **MAS-5 Customer Conversation Experience** — customer session, conversation/message lifecycle, streaming, citations UI, retry, human request, feedback. Depends on: MAS-1 tenant resolution. Outbound dependencies: message/run request contract consumed by MAS-6 and escalation state from MAS-9.
 - **MAS-6 Agent Runtime & Routing** — bounded state machine, request class, deterministic path, retrieval/model/tool planning, budgets, result verification, output guardrail, completion/escalation. Depends on: MAS-2, MAS-4, MAS-5. Outbound dependencies: tool proposal to MAS-7, policy request to MAS-8, escalation request to MAS-9.
-- **MAS-7 Customer Context & Tool Execution** — tenant-scoped typed tool registry, synthetic demo adapter, input/output normalization, timeout, idempotency, reconciliation. Depends on: MAS-1. Outbound dependencies: action proposal/execution contract with MAS-8 and result contract with MAS-6.
+- **MAS-7 Customer Context & Tool Execution** — tenant-scoped typed tool registry, synthetic DoorDash-reference order/delivery/support and Stripe-reference payment/refund adapter, the three CCR-003 tool contracts, input/output normalization, timeout, idempotency, and reconciliation. Depends on: MAS-1 plus the frozen OPE-251/CCR-003 product contract. Outbound dependencies: action proposal/execution contract with MAS-8 and result contract with MAS-6.
 - **MAS-8 Policy, Confirmation & Approval** — deny-by-default action policy, customer confirmation, human approval, expiry, decision audit metadata. Depends on: MAS-1 and MAS-7 tool schemas. Outbound dependencies: decision contract to MAS-6/MAS-7 and approval task contract to MAS-9.
 - **MAS-9 Human Support & Escalation** — escalation creation, queues, assignment, SLA, handoff package, takeover, notes, approval task handling, resolution/reopen. Depends on: MAS-5, MAS-6, MAS-8. Outbound dependencies: conversation ownership/state back to MAS-5 and outcomes to MAS-11.
 - **MAS-10 Client Configuration Console** — onboarding, knowledge/provider/agent/tool/policy/team management surfaces. Depends on: MAS-1 through MAS-8 contracts. It may build against contract mocks before all backends are complete.
@@ -270,7 +282,7 @@ Every data-driven screen must implement loading, empty, error, permission-denied
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Scope becomes too large to finish | High | Keep V1 to the numbered scope above, use MAS boundaries, and move additions to V2+ unless they block an end-to-end V1 flow. |
-| Public documentation terms or copyright limit the demo corpus | High | Store source manifests and provenance, avoid wholesale republishing, respect access controls and crawl limits, and switch the selected public corpus if terms do not permit the planned ingestion. |
+| Public documentation terms or copyright limit the demo corpus | High | Store source manifests and provenance, avoid wholesale republishing, respect access controls and crawl limits, and disable or replace any selected source whose terms/access do not permit the planned ingestion. DoorDash remains the reference support domain, but that does not authorize unrestricted crawling. |
 | Prompt injection from public/retrieved content | High | Treat retrieved content as data, isolate instructions, validate model outputs, restrict tool URLs/scopes, and require policy authorization before execution. |
 | Cross-tenant data leakage | Critical | Tenant IDs in every relevant contract, query-scoped access, database defense in depth, isolation tests, audit, and premium review of auth/permission code. |
 | Duplicate/ambiguous external mutations | Critical | Idempotency keys, reconciliation state, bounded retry policy, and no blind retry of non-idempotent actions. |
@@ -278,8 +290,18 @@ Every data-driven screen must implement loading, empty, error, permission-denied
 | Local stack becomes too resource-heavy | Medium | Docker Compose profiles, deterministic/mock provider mode, start only required services, and defer distributed components until the MAS that needs them. |
 | Premature scale claims damage credibility | High | Publish architecture targets separately from measured benchmark results and keep load-test configuration reproducible. |
 
-## 16. Open Questions
+## 16. Open Questions and Resolved Product Decisions
 
-- `Needs Product Decision: Which real company's public support documentation will be the first Serviq demo corpus? Candidate set currently includes DoorDash, Shopify, Etsy, and Stripe.`
-- `Needs Product Decision: Which matching synthetic private-data/tool domain will be the first reference workflow? The choice must align with the selected public corpus and support at least one read-only status tool plus one protected mutation.`
+### Resolved by OPE-251 / CCR-003
+
+- **Primary public support reference domain:** DoorDash customer-support/delivery domain. This is a reference domain, not a private integration.
+- **Separate payment-provider reference domain:** Stripe payment/refund domain. The demo does **not** assert that DoorDash uses Stripe.
+- **Public source-manifest policy:** `doordash-stripe-allowlist-v1`. Only explicitly approved/permitted sources may be ingested. Serviq does not use unrestricted crawling or bypass authentication, anti-bot controls, access restrictions, terms, or copyright constraints.
+- **Synthetic private domain:** customers, orders, order items, deliveries, order events, payments, refund rules, refunds, and support cases are all Serviq-generated synthetic records.
+- **Frozen tool keys:** `demo.get_delivery_order_status`, `demo.check_order_resolution_eligibility`, and `demo.create_refund`.
+- **Protected mutation rule:** the Production V1 deterministic/reference mutation creates only a synthetic Serviq refund record. It does not move real money or modify DoorDash/Stripe production systems.
+- **Public disclaimer:** Serviq is independent and not affiliated with, endorsed by, sponsored by, or connected with DoorDash, Inc. or Stripe, Inc.; referenced public documentation is used only to demonstrate Serviq support/payment workflow capabilities, subject to permitted access.
+
+### Still open
+
 - `Needs Product Decision: Should end-customer file/image attachments be enabled in Production V1, or should V1 accept knowledge-file uploads only from authenticated business users?`

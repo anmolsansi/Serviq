@@ -1,0 +1,95 @@
+name: Resolve OPE-258 Main Conflict
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out OPE-258 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Merge current main and resolve lockfile
+        shell: bash
+        run: |
+          git fetch origin main
+          set +e
+          git merge --no-edit origin/main
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            if [ "$conflicts" != "pnpm-lock.yaml" ]; then
+              echo "Unexpected merge conflicts:"
+              printf '%s\n' "$conflicts"
+              exit 1
+            fi
+
+            # Start from main's already-merged lockfile so OPE-256/OPE-257 importers are preserved.
+            git checkout --theirs pnpm-lock.yaml
+            git add pnpm-lock.yaml
+          fi
+
+      - name: Set up Node from repository toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.15.0
+
+      - name: Regenerate combined workspace lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Validate OPE-258 packages
+        run: |
+          pnpm --filter @serviq/config typecheck
+          pnpm --filter @serviq/observability typecheck
+          pnpm --filter @serviq/security typecheck
+          pnpm --filter @serviq/testkit typecheck
+
+      - name: Confirm all shared package importers are locked
+        shell: bash
+        run: |
+          for package_path in packages/ui packages/contracts packages/config packages/observability packages/security packages/testkit; do
+            grep -q "  ${package_path}:" pnpm-lock.yaml || {
+              echo "Missing lockfile importer: ${package_path}"
+              exit 1
+            }
+          done
+
+      - name: Confirm no application imports
+        shell: bash
+        run: |
+          if grep -R --line-number --include='*.ts' -E 'from ["'"'"'].*apps/|from ["'"'"']@serviq/(client-console|customer-web|platform-console)' packages/config packages/observability packages/security packages/testkit; then
+            echo 'Cross-cutting packages must not import application code.'
+            exit 1
+          fi
+
+      - name: Complete merge and push conflict resolution
+        shell: bash
+        run: |
+          git add pnpm-lock.yaml
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git commit -m 'merge(main): resolve OPE-258 workspace lockfile conflict'
+          elif ! git diff --cached --quiet; then
+            git commit -m 'chore(packages): refresh workspace lockfile after main updates'
+          fi
+          git push origin HEAD:${{ github.head_ref }}

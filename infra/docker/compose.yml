@@ -17,5 +17,8 @@ services:
       retries: 12
       start_period: 10s
 
+  valkey:
+    image: valkey/valkey:8.1.9-alpine
+
 volumes:
   serviq_postgres_data:

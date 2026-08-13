@@ -1,0 +1,1 @@
+"""Serviq API application package."""

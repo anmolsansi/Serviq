@@ -1582,3 +1582,358 @@ PR #43 is merged. Final GitHub Actions run `31717466336` started the complete lo
 ## Current tracking summary
 
 OPE-256 through OPE-265 are now completed. PRs #25 through #29 and #37 through #40/#43 are merged as applicable; OPE-264 completion hardening is merged in PR #45; GitHub issues #20, #21, #22, #23, #24, and #32 through #36 are closed as completed; and Linear OPE-256 through OPE-265 are Done. Final consolidation run `31717466336` validated the merged shared packages, API, worker, LLM gateway, PostgreSQL/pgvector, Valkey, private object storage, and Keycloak together.
+
+---
+
+# Build-history update — OPE-266 through OPE-271
+
+The sections below describe the next foundation work. They also correct one important reading rule for older sections above: a statement such as “observability is not implemented yet” was true when that earlier section was written. Later ticket sections supersede historical state. The guide keeps the old explanation because it shows how Serviq evolved over time.
+
+## OPE-266 — Optional local Redpanda event-broker profile
+
+### What we changed
+
+OPE-266 adds a Kafka-compatible Redpanda broker to `infra/docker/compose.yml`, but places it behind the optional Docker Compose profile named `events`. The implementation branch is `ope-266-redpanda-events-profile`.
+
+The Redpanda image is pinned rather than using an unbounded `latest` tag. Inside the Docker network, other containers can address the broker as `redpanda:9092`. The service includes a health check using Redpanda's `rpk cluster info` command. `infra/docker/README.md` now explains the optional event-development boundary.
+
+### What that means in normal language
+
+Think of an event broker as a durable message conveyor belt between software systems. One system can place a message on the belt and another system can process it independently. That becomes useful when Serviq later performs background ingestion, projections, notifications, reconciliation, and other work that should not be tied to one web request.
+
+The key word here is **optional**. A developer working only on a frontend page or normal database code should not need to run an event broker. Redpanda therefore does not start as part of the ordinary Compose profile.
+
+### Why we did this
+
+The worker service already reserves a future consumer boundary. Adding a local Kafka-compatible broker gives later event tickets a concrete development target without prematurely inventing Serviq event payloads or topics.
+
+Keeping the broker optional also reduces local CPU and memory usage for developers who do not need it.
+
+### What this improves
+
+- Later event-driven work gets one predictable local broker endpoint.
+- The normal development stack remains smaller when event work is not needed.
+- Broker infrastructure is separated from business event design.
+- No later feature needs to quietly introduce its own incompatible local message broker.
+
+### What is intentionally not implemented
+
+OPE-266 does **not** create Serviq topics, producers, consumers, event schemas, schema-registry configuration, retry/dead-letter behavior, application event logic, or production broker configuration.
+
+### Validation and tracking status
+
+The Compose YAML and service structure were inspected successfully, including the optional profile, pinned image, internal listener, and healthcheck. No core service depends on Redpanda.
+
+A real Docker broker-health and topic-list test has **not** yet been completed in this work session because the available execution environment does not have Docker, and the attempted temporary GitHub Actions validation workflow was blocked by the repository write-safety layer. For that reason OPE-266 remains **In Progress**, not Done.
+
+The implementation is pushed in micro-level commits. GitHub issue #47 tracks the work, and PR #53 is open.
+
+## OPE-267 — Optional local observability profile
+
+### What we changed
+
+OPE-267 creates `infra/docker/observability/` and adds five optional local services under the Compose profile `observability`:
+
+- OpenTelemetry Collector — receives telemetry and forwards it to the appropriate local backend;
+- Prometheus — stores and queries metrics;
+- Grafana — provides a user interface for exploring telemetry;
+- Loki — stores and queries logs;
+- Tempo — stores and queries distributed traces.
+
+The implementation also adds configuration files for the collector, Prometheus, Loki, Tempo, and Grafana data-source provisioning. Grafana is pre-wired to the local Prometheus, Loki, and Tempo services. Prometheus is configured to scrape itself and the collector. Loki is given the explicit local tenant identifier `serviq-local` through the collector and Grafana data-source configuration.
+
+### What that means in normal language
+
+Imagine a complicated machine in a factory. When it fails, a mechanic needs more than a red light saying “broken.” The mechanic wants measurements, a history of what happened, and a way to follow a request through multiple parts of the machine.
+
+Observability provides those clues:
+
+- **metrics** answer questions such as “How many requests are happening?”;
+- **logs** record structured events and errors;
+- **traces** follow one operation across services;
+- **Grafana** is the screen used to inspect that information.
+
+The OpenTelemetry Collector acts like a telemetry post office. Applications will eventually send telemetry there, and the collector will route it to the correct local storage system.
+
+### Why we did this
+
+Production-grade software cannot rely on developers manually reproducing every problem. Serviq will eventually need evidence about latency, failures, provider health, queue behavior, background work, and request flow.
+
+Adding the local infrastructure boundary now gives later instrumentation tickets a known destination without pretending instrumentation already exists.
+
+### What this improves
+
+- Telemetry backends have one reproducible local home.
+- The stack is optional, so normal development does not always pay its resource cost.
+- Grafana data sources are provisioned rather than requiring repeated manual clicking.
+- Future application instrumentation can target standard OpenTelemetry protocols instead of hard-coding every backend throughout the codebase.
+
+### What is intentionally not implemented
+
+There is no Serviq application instrumentation yet, no product-specific dashboard, no production monitoring account, no alerting policy, no incident automation, and no claim that business requests are already producing useful traces, logs, or metrics.
+
+### Validation and tracking status
+
+The configuration files and Compose boundaries are pushed, and no application code was changed. A full runtime check — starting all five services, confirming Grafana health/data sources, and confirming Prometheus target health — is still required before OPE-267 can be called complete. The current execution environment cannot run Docker.
+
+The branch is `ope-267-observability-profile`, GitHub issue #48 tracks it, and stacked PR #54 is open. Linear OPE-267 remains **In Progress**.
+
+## OPE-268 — Root developer Makefile
+
+### What we changed
+
+OPE-268 adds a root `Makefile` that gives contributors one consistent command surface across the JavaScript/TypeScript workspace, the three Python services, and local Docker infrastructure.
+
+The required targets are:
+
+```text
+make setup
+make dev
+make test
+make lint
+make typecheck
+make security
+make e2e
+make load-test
+make down
+```
+
+`setup` uses the existing pnpm lockfile and each Python service's uv lockfile. `lint`, `typecheck`, and `test` delegate to the real repository commands. `dev` starts the core Compose dependencies and prints the separate commands used to start the applications/services. `down` tears down the Compose project.
+
+The three future gates — `security`, `e2e`, and `load-test` — deliberately return a non-zero result instead of printing a fake green success.
+
+### What that means in normal language
+
+Before this file, a new contributor had to know several different package managers and remember which directory to enter for each command. The Makefile is a front desk: the contributor asks for “test” or “typecheck,” and the front desk delegates that request to the correct tools.
+
+It does not replace pnpm, uv, pytest, Ruff, mypy, or Docker. It gives them one predictable entrance.
+
+### Why the unimplemented commands fail on purpose
+
+A placeholder command that exits successfully is dangerous. CI could say “security passed” even when no security scanner ran.
+
+Returning a failure is more truthful. It prevents a future reviewer from accidentally treating an empty command as evidence that a real quality gate exists.
+
+### What this improves
+
+- Local development and CI can use the same high-level commands.
+- New contributors need fewer repository-specific commands to memorize.
+- Quality checks become easier to automate consistently.
+- Missing security/E2E/load-test systems are visible rather than hidden.
+
+### Validation and tracking status
+
+The Makefile was parsed with dry-run execution, and the three placeholder gates were executed to confirm they return non-zero instead of fake success. Full dependency/install/test execution is expected to be exercised by CI rather than claimed from an environment that lacks the complete runtime toolchain.
+
+The branch is `ope-268-root-makefile`, GitHub issue #49 tracks it, and stacked PR #55 is open. Linear OPE-268 remains **In Progress** until the stacked work is integrated and required checks are complete.
+
+## OPE-269 — Baseline CI workflow
+
+### What we changed
+
+OPE-269 adds `.github/workflows/ci.yml` on branch `ope-269-baseline-ci`. The workflow currently:
+
+- uses read-only repository-content permission;
+- checks out the code;
+- configures pnpm 10.15.0;
+- reads Node.js from `.nvmrc`;
+- configures Python 3.14.6;
+- configures uv caching;
+- runs `make setup`;
+- runs `make lint`;
+- runs `make typecheck`;
+- runs `make test`;
+- separately validates the Docker Compose model;
+- limits the job to 20 minutes.
+
+### Why CI matters
+
+CI means Continuous Integration. In plain language, it is a neutral computer that checks the repository after a change instead of trusting that a developer's laptop happened to work.
+
+That matters because “it worked on my machine” is not enough evidence for a production project. CI makes the repository repeat the same quality checks in a clean environment.
+
+### Important incomplete requirement
+
+The ticket requires CI on both pull requests and pushes to `main`. The current pushed workflow triggers on pull requests only.
+
+An attempted change to add the `push`-to-`main` trigger was blocked by the GitHub write-safety layer available in this session. Attempts to create the pull request for this workflow-modifying branch were also blocked. Therefore there is no successful GitHub Actions run for this workflow yet.
+
+This is deliberately documented instead of hidden. OPE-269 is **not complete** and must not be marked Done until the missing trigger exists and a real workflow run passes.
+
+### What this improves already
+
+The pushed branch provides the baseline quality-gate design and connects CI to the root Makefile. Once the blocked trigger/PR step is resolved, pull requests can receive one repeatable repository-wide lint/typecheck/test result instead of manually running unrelated commands.
+
+### What is intentionally not implemented
+
+This baseline CI does not add security scanning, browser E2E testing, load testing, image publishing, deployment, releases, production secrets, or cloud credentials.
+
+### Tracking status
+
+GitHub issue #50 tracks OPE-269. The branch is pushed, but no PR was created because that repository workflow write was blocked. Linear OPE-269 remains **In Progress**.
+
+## OPE-270 — Post-scaffold repository audit and `repo_context.md`
+
+### What we changed
+
+OPE-270 adds one file only: `docs/repo_context.md`.
+
+That file is an evidence-based map of the repository after the initial scaffolding work. It records exact paths, actual dependency/tooling versions, the real folder tree, existing frontend/backend examples, current commands, testing reality, CI reality, and important missing systems.
+
+It explicitly separates “planned architecture” from “implemented code.” For example, the architecture says backend modules should eventually follow Router → Service → Repository, but the repository does not yet contain a real business module demonstrating that pattern. The audit says so instead of pretending the pattern is already implemented.
+
+### What that means in normal language
+
+Imagine hiring a new intern and handing them a huge building blueprint. The blueprint tells them what the building is supposed to become, but it does not tell them which rooms are actually finished today.
+
+`repo_context.md` is the walk-through report. It says, “This room exists, this door is only a placeholder, this system has not been installed yet, and these are the exact tools currently used.”
+
+That is important for AI coding agents too. An agent that sees an architecture plan may otherwise invent code that does not match repository reality.
+
+### Major facts recorded by the audit
+
+The audit documents, among other things:
+
+- the current Node, pnpm, Next.js, React, TypeScript, Python, and infrastructure versions;
+- the real three frontend applications and six shared TypeScript package boundaries;
+- the API, worker, and LLM-gateway scaffolds;
+- the fact that authentication is not implemented even though local Keycloak exists;
+- the fact that application database models/migrations/repositories are not implemented even though PostgreSQL, SQLAlchemy, and Alembic dependencies exist;
+- the fact that there is no real Router → Service → Repository feature example yet;
+- the fact that application telemetry instrumentation is not implemented;
+- the fact that OPE-269 is incomplete because its push-to-main trigger and successful run are missing;
+- the downstream builder start gate that requires future tickets to inspect current repository reality before coding.
+
+### Why we did this
+
+After a scaffold grows beyond a few folders, “remember how everything works” is not a scalable process. A factual repository context file reduces repeated rediscovery and prevents new builders from treating empty placeholder directories as completed subsystems.
+
+### What this improves
+
+- Future tickets start from exact current paths rather than guesses.
+- AI agents receive a written boundary between implemented reality and future architecture.
+- Missing contracts become explicit blockers instead of invitations to invent behavior.
+- Repository conventions become reviewable and updateable.
+
+### Validation and tracking status
+
+The audit was produced from the actual branch tree, package manifests/lockfiles, source files, Compose configuration, and workflow state. OPE-270's branch changes exactly one file relative to its OPE-269 base.
+
+GitHub issue #51 tracks the ticket. PR #56 is open with `ope-269-baseline-ci` as its stacked base. Linear OPE-270 remains **In Progress** while the upstream CI ticket is unresolved and the stacked PR is not merged.
+
+## OPE-271 — Repository contribution and pull-request governance
+
+### What we changed
+
+OPE-271 creates four repository-governance files on branch `ope-271-repository-governance`:
+
+- `.github/pull_request_template.md`;
+- `CONTRIBUTING.md`;
+- `SECURITY.md`;
+- `.github/CODEOWNERS`.
+
+The pull-request template requires a ticket reference, summary, files changed, validation, manual QA, contract-change declaration, security-review statement, `Needs Architect Decision` field, and builder done report.
+
+`CONTRIBUTING.md` tells contributors to read the ticket and `docs/repo_context.md`, use one ticket per branch/PR, push small ticket-labelled commits, use the real root Makefile commands, avoid claiming placeholder gates have passed, follow contract-change discipline, and keep long-form implementation explanations in this cumulative guide.
+
+`SECURITY.md` gives responsible vulnerability-reporting guidance without inventing a private email address. It instructs reporters not to expose sensitive vulnerability details publicly and to use GitHub's private reporting path when available.
+
+`CODEOWNERS` assigns the repository to the verified existing GitHub owner `@anmolsansi`; no username was invented.
+
+### Why we did this
+
+Technical quality is not only about source code. A repository also needs a predictable way for people to propose, explain, test, and review changes.
+
+Without governance files, every contributor may use a different branch style, omit validation information, hide a contract change inside a feature, or forget to state what was intentionally deferred.
+
+These files turn those expectations into repository-visible instructions.
+
+### What this improves
+
+- Reviewers get a consistent pull-request checklist.
+- New contributors can learn the repository workflow without relying on private team knowledge.
+- Contract changes are harder to hide accidentally.
+- Security impact and unresolved architecture decisions must be stated explicitly.
+- Ownership is visible through a verified CODEOWNERS entry.
+- The existing “one cumulative build guide” documentation rule is reinforced.
+
+### What is intentionally not changed
+
+OPE-271 does not configure GitHub branch-protection settings, change CI, create issue templates, define a release process, or invent a private security contact.
+
+### Validation and tracking status
+
+A branch comparison against OPE-270 confirms exactly four governance files and four micro-level commits. The Markdown content references repository commands that actually exist.
+
+Attempts to create the OPE-271 pull request were blocked by the GitHub write-safety layer in this session. The branch and commits are pushed, but the ticket therefore remains **In Progress** rather than being presented as merged or complete. GitHub issue #52 tracks the work.
+
+## Current tracking summary — OPE-266 through OPE-271
+
+At this point the implementation work is pushed to GitHub, but these tickets are intentionally **not being reported as completed** because required runtime/CI validation and integration steps remain.
+
+- OPE-266: branch pushed, PR #53 open; broker runtime validation pending.
+- OPE-267: branch pushed, PR #54 open; full observability runtime validation pending.
+- OPE-268: branch pushed, PR #55 open; Makefile dry-run/placeholder behavior verified, stacked integration pending.
+- OPE-269: branch pushed; required push-to-main trigger and successful Actions run still missing; PR creation was blocked.
+- OPE-270: `docs/repo_context.md` pushed; PR #56 open against the stacked OPE-269 base.
+- OPE-271: four governance files pushed; PR creation was blocked by the repository write-safety layer.
+
+This guide update is intentionally truthful about those incomplete steps. A production-grade project gains credibility by distinguishing “written and pushed” from “validated, merged, and Done.”
+
+
+---
+
+# OPE-266 through OPE-271 — validation and integration update
+
+> **Current-status note:** this section was added after the implementation and GitHub Actions validation work described above. For OPE-266 through OPE-271, the status statements here supersede earlier “pending validation” or “PR not created” statements while preserving the earlier technical explanations as history.
+
+## OPE-266 current result
+
+Temporary validation PR #58 proved that the default Compose profile starts without Redpanda, the `events` profile starts the broker, `rpk cluster info` and `rpk topic list` succeed, and stopping Redpanda leaves PostgreSQL, Keycloak, Valkey, and object storage running.
+
+PR #53 is merged into `main`. GitHub issue #47 is closed as completed and Linear OPE-266 is Done.
+
+## OPE-267 current result
+
+PR #54 is merged into `main`. Temporary validation PR #58 proved that the observability services are absent from the default profile and that OpenTelemetry Collector, Prometheus, Grafana, Loki, and Tempo start together under the optional `observability` profile.
+
+OPE-267 remains In Progress because this session did not independently assert every Grafana datasource-health API result and every Prometheus target-health result listed in the ticket's manual QA. The infrastructure is merged, but partial runtime evidence is not being presented as stronger validation than actually occurred.
+
+## OPE-268 current result
+
+GitHub Actions exposed an important repository fact while validating the new Makefile: `services/llm-gateway` has a `pyproject.toml` but no committed `uv.lock`. The first CI run therefore failed when `make setup` tried a frozen uv sync for that service.
+
+The Makefile was corrected to match repository reality: pnpm remains frozen, API and worker remain frozen against their committed uv lockfiles, and the LLM gateway uses normal `uv sync` until separate dependency-hardening work adds a reviewed gateway lockfile or deliberately chooses another policy.
+
+After that correction, baseline CI passed setup, lint, typecheck, tests, and Compose-model validation. Temporary validation PR #59 also proved that `make dev` starts the core stack, `make down` stops it, and `make security`, `make e2e`, and `make load-test` return non-zero rather than creating fake green gates.
+
+PR #55 is merged into `main`. GitHub issue #49 is closed as completed and Linear OPE-268 is Done.
+
+## OPE-269 current result
+
+The baseline CI workflow now has both required triggers: pull requests and pushes to `main`. It uses read-only repository-content permission, no paid-service secret, and a 20-minute timeout. GitHub Actions run `31743372387` passed the full baseline after the OPE-268 setup correction. Temporary validation PR #59 also passed baseline CI.
+
+PR #57 is open against `main`. The final merge operation for this workflow-changing PR could not be completed through the available repository write path in this session, so OPE-269 is In Review rather than being reported as Done.
+
+## OPE-270 current result
+
+`docs/repo_context.md` has been refreshed after the real CI run. It now records the missing LLM-gateway lockfile as a landmine instead of incorrectly claiming that every Python service has a committed lockfile. It also records the successful baseline CI state and the runtime evidence gathered for optional infrastructure profiles.
+
+The temporary updater workflow used to refresh the audit was removed before review, so OPE-270 changes only `docs/repo_context.md` relative to its ticket base. CI run `31743667816` passed on the final audit branch. PR #56 is open and Linear OPE-270 is In Review.
+
+## OPE-271 current result
+
+The governance branch contains the four intended files: `.github/pull_request_template.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `.github/CODEOWNERS`. The CODEOWNERS entry uses the confirmed repository owner `@anmolsansi`; no username or private security email was invented. The contribution guide references the real Makefile commands and the audited `docs/repo_context.md`.
+
+CI run `31743760233` passed. PR #60 is open against the OPE-270 audit branch. Linear OPE-271 is In Review until the stacked dependency chain is merged.
+
+## Current ticket summary
+
+- **OPE-266 — Completed.** Merged, runtime validated, GitHub issue closed, Linear Done.
+- **OPE-267 — In Progress.** Implementation merged and profile startup validated; remaining datasource/target manual QA is tracked.
+- **OPE-268 — Completed.** Merged, CI validated, lifecycle validated, GitHub issue closed, Linear Done.
+- **OPE-269 — In Review.** Implementation and required CI validation passed; PR #57 remains open.
+- **OPE-270 — In Review.** Repository audit is refreshed, CI passed, PR #56 is open.
+- **OPE-271 — In Review.** Governance files are implemented, CI passed, PR #60 is open.
+
+This status deliberately distinguishes code that is written, code that is runtime-tested, code that is merged, and a ticket that is actually Done.

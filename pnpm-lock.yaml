@@ -119,7 +119,7 @@ importers:
         specifier: ^5.1.0
         version: 5.9.3
 
-  packages/contracts:
+  packages/ui:
     devDependencies:
       typescript:
         specifier: ^5.1.0

@@ -6,6 +6,32 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: validation-only
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+      - name: Validate Compose model
+        run: docker compose -f infra/docker/compose.yml --profile "*" config
+      - name: Confirm optional services are absent by default
+        run: |
+          services="$(docker compose -f infra/docker/compose.yml config --services)"
+          for service in redpanda otel-collector prometheus grafana loki tempo; do
+            ! printf '%s\n' "$services" | grep -qx "$service"
+          done
+      - name: Start core profile
+        run: docker compose -f infra/docker/compose.yml up -d --wait
+      - name: Start Redpanda profile
+        run: docker compose -f infra/docker/compose.yml --profile events up -d --wait redpanda
+      - name: Validate Redpanda broker
+        run: |
+          docker compose -f infra/docker/compose.yml --profile events exec -T redpanda rpk cluster info
+          docker compose -f infra/docker/compose.yml --profile events exec -T redpanda rpk topic list
+      - name: Stop Redpanda and verify core remains running
+        run: |
+          docker compose -f infra/docker/compose.yml --profile events stop redpanda
+          for service in postgres keycloak valkey object-storage; do
+            docker compose -f infra/docker/compose.yml ps --status running --services | grep -qx "$service"
+          done
+      - name: Tear down
+        if: always()
+        run: docker compose -f infra/docker/compose.yml --profile events --profile observability down -v

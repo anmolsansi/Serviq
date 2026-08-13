@@ -32,6 +32,8 @@ jobs:
           for service in postgres keycloak valkey object-storage; do
             docker compose -f infra/docker/compose.yml ps --status running --services | grep -qx "$service"
           done
+      - name: Start observability profile
+        run: docker compose -f infra/docker/compose.yml --profile observability up -d --wait otel-collector prometheus grafana loki tempo
       - name: Tear down
         if: always()
         run: docker compose -f infra/docker/compose.yml --profile events --profile observability down -v

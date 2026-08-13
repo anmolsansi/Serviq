@@ -1,8 +1,8 @@
 # Architecture Plan: Serviq — Production V1
 
-**Status:** Architecture baseline v1.2  
+**Status:** Architecture baseline v1.3  
 **Scope:** Production V1 defined by `docs/PRD.md`  
-**Contract change record:** `docs/contract-changes/CCR-001-foundation-hardening.md`  
+**Contract change records:** `docs/contract-changes/CCR-001-foundation-hardening.md` and `docs/contract-changes/CCR-003-doordash-stripe-demo-composition.md`  
 **Architecture rule:** Builders implement frozen contracts. Any API, database, event, shared-type, config, file-path, auth, or permission contract change requires architect-owned contract change control before implementation.  
 **Scale statement:** Serviq preserves a path toward millions of concurrent users and a long-term 10M concurrent-connection target. Neither 10M concurrency nor 10M RPS is a verified claim until reproducible load tests prove it.
 
@@ -1153,9 +1153,39 @@ Local/dev workforce identity. Authorization Code + PKCE. Identity outage never b
 
 HTTPS by default. Before each fetch and after every redirect, resolve and reject loopback, link-local, RFC1918/private, metadata, multicast, reserved, and prohibited IPv4/IPv6 targets. Apply domain allowlist, response-size limit, content-type allowlist, timeout, crawl rate, and access/terms restrictions. Never bypass authentication or anti-bot/access controls.
 
+For the OPE-251 reference configuration, `doordash-stripe-allowlist-v1` is the only approved source-manifest policy name. DoorDash is the primary customer-support/delivery reference domain and Stripe is a separate payment/refund reference domain. This choice does not grant Serviq permission to crawl either site broadly. Each source entry must be explicitly approved/permitted for the intended ingestion path. If automated access is not permitted, the source is disabled and only an allowed/manual/permitted alternative may be used.
+
 ### 9.4 Synthetic Demo Operational Adapter
 
-Provides synthetic private customer/order/status/action data. Exact tools remain blocked by the PRD demo-domain Product Decisions. Adapter must support deterministic errors, timeout simulation, and ambiguous-mutation simulation for reconciliation tests.
+The Production V1 reference adapter is frozen by CCR-003 and combines a DoorDash reference customer-support/delivery domain with a separate Stripe reference payment domain. It is a Serviq-owned synthetic adapter and does not assert or depend on any real DoorDash-to-Stripe integration.
+
+Required synthetic entity families are:
+
+```text
+demo_customers
+demo_orders
+demo_order_items
+demo_deliveries
+demo_order_events
+demo_payments
+demo_refund_rules
+demo_refunds
+demo_support_cases
+```
+
+The first tool keys are exactly:
+
+```text
+demo.get_delivery_order_status
+demo.check_order_resolution_eligibility
+demo.create_refund
+```
+
+- `demo.get_delivery_order_status` is read-only and returns verified synthetic order/delivery state.
+- `demo.check_order_resolution_eligibility` is read-only and evaluates synthetic order/item/delivery/payment state plus Serviq demo policy.
+- `demo.create_refund` is a protected idempotent mutation that changes only Serviq synthetic refund state in deterministic V1 development/CI.
+
+The deterministic V1 demo never accesses DoorDash private systems, never uses real customer/payment PII, never calls a production Stripe account, and never moves real money. The adapter must support deterministic failures, timeout simulation, and ambiguous-mutation simulation for reconciliation tests. A later ticket may add an optional Stripe test-mode adapter behind the same Serviq tool contract without changing agent/policy semantics.
 
 ### 9.5 Outbound Tenant Webhooks — Frozen SSRF/Egress Contract
 
@@ -1386,6 +1416,23 @@ Authoritative database: `platform_feature_flags`, `rate_limit_policies`. Runtime
 
 Export/delete request is tenant/customer scoped and requires verified identity. Async job uses `data_subject_requests.id` as idempotency key. Export artifact max lifetime 7 days, signed URL max 24h. Delete follows Section 4.5 and cannot delete/rewrite immutable audit history beyond pseudonymization rules. Owner: MAS-11 Privacy module.
 
+### CONTRACT C-16 — Production V1 Reference Demo Composition
+
+OPE-251 / CCR-003 freezes the following implementation identifiers:
+
+```text
+demoCompany = "DoorDash reference support domain"
+paymentProvider = "Stripe reference payment domain"
+publicSourceManifestPolicy = "doordash-stripe-allowlist-v1"
+statusToolKey = "demo.get_delivery_order_status"
+eligibilityToolKey = "demo.check_order_resolution_eligibility"
+mutationToolKey = "demo.create_refund"
+```
+
+Required synthetic record families: `demo_customers`, `demo_orders`, `demo_order_items`, `demo_deliveries`, `demo_order_events`, `demo_payments`, `demo_refund_rules`, `demo_refunds`, `demo_support_cases`.
+
+The DoorDash and Stripe references are independent reference domains; the architecture makes no claim that DoorDash uses Stripe. Public-source ingestion is explicit-allowlist only and may not bypass access controls. The deterministic Production V1 mutation modifies only synthetic Serviq data. Owner: MAS-7, with MAS-3/4 source/evaluation dependencies and MAS-8 policy governance.
+
 ## 13. Parallelization Map
 
 ### Phase 0 — Foundation
@@ -1405,7 +1452,7 @@ Repository scaffold, Docker Compose, CI/security baseline, shared API/error cont
 
 - MAS-4 after MAS-3 contract.
 - MAS-6 against MAS-2/MAS-4/MAS-5 mocks/contracts.
-- MAS-7 after selected demo Product Decision.
+- MAS-7 may proceed against the frozen OPE-251 / CCR-003 reference contract and no longer has a demo-domain Product Decision blocker.
 - MAS-8 after MAS-7 schemas and MAS-1 auth.
 
 ### Phase 3 — Human and Management
@@ -1428,7 +1475,7 @@ Repository scaffold, Docker Compose, CI/security baseline, shared API/error cont
 | Tenant authorization/RLS | Cross-tenant leakage | Premium review; tenant-scoped queries, RLS defense, adversarial isolation tests. |
 | Customer identity | Forged assertion exposes private records | Premium review; signed short-lived assertions, issuer/audience/expiry checks. |
 | BYOK secrets | Key exposure creates billing/security risk | Secret adapter, encryption, masking, redaction, premium review. |
-| Public ingestion | SSRF, malware, prompt injection, legal/source issues | Network checks, redirect re-check, content limits, untrusted boundary, premium review. |
+| Public ingestion | SSRF, malware, prompt injection, legal/source issues | Network checks, redirect re-check, content limits, untrusted boundary, explicit source allowlist/access checks, premium review. |
 | Outbound webhooks | SSRF/DNS rebinding or forged callbacks | HTTPS/443 only, resolve each delivery, peer-IP validation, no redirects, HMAC, premium review. |
 | Rate limiting | Bypass or accidental tenant-wide denial | Frozen defaults, authoritative DB config, derived cache, conservative fallback, premium review. |
 | Privacy deletion | Partial deletion leaves PII or destroys required audit | Resumable idempotent purge, pseudonymized audit, backup replay procedure, premium review. |
@@ -1441,10 +1488,16 @@ Repository scaffold, Docker Compose, CI/security baseline, shared API/error cont
 | 10M concurrency target | Premature complexity/false claims | Preserve seams, scale from measured bottlenecks, publish reproducible benchmarks. |
 | Local resource use | Full stack too heavy | Compose profiles and deterministic mocks. |
 
-### Architecture Decisions Still Blocked by Product Decisions
+### Architecture Product Decisions
 
-- `Needs Product Decision: Select the first real public-company support corpus before freezing demo tool schemas and fixtures.`
-- `Needs Product Decision: Select the matching synthetic private-data/tool domain before MAS-7 implementation tickets are written.`
+Resolved by OPE-251 / CCR-003:
+
+- first public customer-support reference domain: DoorDash support/delivery reference;
+- separate payment-provider reference domain: Stripe payment/refund reference;
+- matching synthetic private-data/tool domain and the three MAS-7 tool keys.
+
+Still blocked:
+
 - `Needs Product Decision: Resolve end-customer attachment scope before any customer upload endpoint, object path, validation rule, or UI is created.`
 
-Builders must not guess these three product decisions.
+Builders must not guess the remaining attachment decision. The OPE-251 demo-domain decision is no longer blocked.

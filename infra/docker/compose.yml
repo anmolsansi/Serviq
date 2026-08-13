@@ -31,6 +31,11 @@ services:
   object-storage:
     image: chrislusf/seaweedfs:4.41
     command: ["mini", "-dir=/data"]
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - serviq_object_storage_data:/data
 
 volumes:
   serviq_postgres_data:
+  serviq_object_storage_data:

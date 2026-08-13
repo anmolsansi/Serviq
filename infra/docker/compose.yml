@@ -17,5 +17,11 @@ services:
       retries: 12
       start_period: 10s
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.1
+    command: ["start-dev"]
+    ports:
+      - "127.0.0.1:8080:8080"
+
 volumes:
   serviq_postgres_data:

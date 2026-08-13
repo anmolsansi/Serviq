@@ -6,7 +6,7 @@ setup:
 	pnpm install --frozen-lockfile
 	cd services/api && uv sync --frozen
 	cd services/worker && uv sync --frozen
-	cd services/llm-gateway && uv sync --frozen
+	cd services/llm-gateway && uv sync
 
 dev:
 	$(COMPOSE) up --detach

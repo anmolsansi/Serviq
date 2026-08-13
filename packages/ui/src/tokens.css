@@ -1,0 +1,43 @@
+/*
+ * Serviq shared design-token placeholders.
+ *
+ * These values are intentionally conservative and neutral. Product-specific brand
+ * decisions must be introduced by a dedicated design-system ticket rather than
+ * being guessed inside feature applications.
+ */
+:root {
+  /* Spacing */
+  --serviq-space-1: 0.25rem;
+  --serviq-space-2: 0.5rem;
+  --serviq-space-3: 0.75rem;
+  --serviq-space-4: 1rem;
+  --serviq-space-6: 1.5rem;
+  --serviq-space-8: 2rem;
+
+  /* Radius */
+  --serviq-radius-sm: 0.375rem;
+  --serviq-radius-md: 0.625rem;
+  --serviq-radius-lg: 1rem;
+
+  /* Typography */
+  --serviq-font-sans: ui-sans-serif, system-ui, sans-serif;
+  --serviq-font-size-sm: 0.875rem;
+  --serviq-font-size-base: 1rem;
+  --serviq-font-size-lg: 1.125rem;
+  --serviq-line-height-body: 1.5;
+
+  /* Surfaces and text */
+  --serviq-color-background: #ffffff;
+  --serviq-color-foreground: #0f172a;
+  --serviq-color-border: #e2e8f0;
+
+  /* Semantic status */
+  --serviq-color-success: #166534;
+  --serviq-color-warning: #92400e;
+  --serviq-color-danger: #b91c1c;
+
+  /* Focus */
+  --serviq-focus-ring-width: 2px;
+  --serviq-focus-ring-offset: 2px;
+  --serviq-focus-ring-color: #2563eb;
+}

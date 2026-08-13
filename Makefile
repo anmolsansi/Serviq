@@ -10,7 +10,13 @@ setup:
 
 dev:
 	$(COMPOSE) up --detach
-	@echo "Core Serviq infrastructure is running. Start app and service processes in separate terminals."
+	@echo "Core Serviq infrastructure is running."
+	@echo "Client Console: pnpm --filter @serviq/client-console dev"
+	@echo "Customer Web: pnpm --filter @serviq/customer-web dev"
+	@echo "Platform Console: pnpm --filter @serviq/platform-console dev"
+	@echo "API: cd services/api && uv run uvicorn app.main:app --reload"
+	@echo "LLM gateway: cd services/llm-gateway && uv run uvicorn app.main:app --reload"
+	@echo "Worker: cd services/worker && uv run python -m app.main"
 
 test:
 	pnpm test
@@ -43,4 +49,4 @@ load-test:
 	@false
 
 down:
-	$(COMPOSE) down
+	$(COMPOSE) --profile "*" down

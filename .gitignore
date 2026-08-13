@@ -1,0 +1,63 @@
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+
+# Local service/runtime data
+.local/
+local-data/
+.minio/
+.postgres-data/
+.valkey-data/
+.redpanda-data/
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+.temp/
+*.tmp
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / browser artifacts
+playwright-report/
+test-results/
+blob-report/
+
+# Infrastructure local state
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

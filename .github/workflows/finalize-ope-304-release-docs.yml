@@ -1,0 +1,74 @@
+name: Finalize OPE-304 release documentation
+
+on:
+  push:
+    branches:
+      - docs-ope-304-final-release-reconciliation
+    paths:
+      - .github/workflows/finalize-ope-304-release-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Append final verified release status
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          guide = Path("docs/SERVIQ_BUILD_GUIDE.md")
+          text = guide.read_text()
+          marker = "## OPE-304 final verified result"
+          append = r'''
+
+          ## OPE-304 final verified result
+
+          **Completed.** The release-system implementation merged through PR #67 into `main` at commit `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`.
+
+          Baseline CI run `31832353639` completed successfully on that exact `main` commit. The new Release workflow then ran as `31832353708`. Its `bootstrap-foundation-release` job successfully completed dependency setup, linting, type checking, tests, Docker Compose configuration validation, release-label creation, and the first release publication.
+
+          GitHub now contains the tag `v0.1.0-alpha.1`, and that tag points exactly to `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`. The corresponding GitHub Release is named `Serviq v0.1.0-alpha.1 — Platform Foundation`, is published rather than draft, and is explicitly marked as a prerelease. The release notes state that this is an alpha developer preview and not a production-ready customer release.
+
+          The repository release labels now exist alongside the original GitHub default labels: `release:major`, `release:minor`, `release:patch`, `release:skip`, `breaking-change`, `feature`, `fix`, `security`, `infrastructure`, `testing`, `dependencies`, `refactor`, and `performance`.
+
+          PR #67 was subsequently labelled `release:minor` and `infrastructure` so its repository metadata matches the release policy introduced by the ticket. The first generated release notes necessarily include the repository's historical merged pull requests under the catch-all category because those older pull requests predate the release-label convention. Future releases will become more structured as new pull requests use the new labels before merge.
+
+          The first release tag is intentionally left pointing to the OPE-304 implementation merge commit. Later documentation-only reconciliation commits do not move or rewrite that published tag; this demonstrates the repository policy that published versions are permanent history.
+
+          OPE-304 therefore established and exercised the complete first release loop: reviewed code -> green PR CI -> merge to `main` -> green `main` CI -> release quality gates -> immutable-by-policy semantic tag -> published GitHub prerelease -> verification.
+          '''
+          if marker not in text:
+              guide.write_text(text.rstrip() + append + "\n")
+
+          context = Path("docs/repo_context.md")
+          context_text = context.read_text()
+          context_marker = "### OPE-304 verified release state"
+          context_append = r'''
+
+          ### OPE-304 verified release state
+
+          The OPE-304 release system has now been exercised successfully, not merely configured. PR #67 merged to `main` at `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`; baseline CI run `31832353639` and Release workflow run `31832353708` both succeeded. The first repository tag and GitHub Release are `v0.1.0-alpha.1`, with the tag pointing to that exact merge commit and the release marked as a prerelease.
+
+          The release labels defined by OPE-304 now exist in GitHub. Future builders should treat the release workflow, generated-release-note configuration, PR release-impact fields, `CONTRIBUTING.md`, and `docs/RELEASING.md` as implemented repository behavior rather than future planning.
+          '''
+          if context_marker not in context_text:
+              context.write_text(context_text.rstrip() + context_append + "\n")
+          PY
+
+      - name: Remove temporary updater and commit final documentation
+        run: |
+          rm .github/workflows/finalize-ope-304-release-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/SERVIQ_BUILD_GUIDE.md docs/repo_context.md .github/workflows/finalize-ope-304-release-docs.yml
+          git commit -m "OPE-304: record verified first GitHub release"
+          git push origin HEAD:docs-ope-304-final-release-reconciliation

@@ -1,0 +1,81 @@
+name: OPE-278 diagnostics
+
+on:
+  push:
+    branches:
+      - ope-278-organization-invitations
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg18-bookworm
+        env:
+          POSTGRES_DB: serviq
+          POSTGRES_USER: serviq
+          POSTGRES_PASSWORD: serviq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U serviq -d serviq"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SERVIQ_ENV: test
+      SERVIQ_PUBLIC_BASE_URL: http://localhost:3000
+      SERVIQ_API_BASE_URL: http://localhost:8000
+      DATABASE_URL: postgresql://serviq:serviq@localhost:5432/serviq
+      VALKEY_URL: valkey://localhost:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+      OBJECT_STORAGE_ENDPOINT: http://localhost:8333
+      OBJECT_STORAGE_BUCKET: serviq-test
+      OBJECT_STORAGE_ACCESS_KEY: test-placeholder
+      OBJECT_STORAGE_SECRET_KEY: test-placeholder
+      OIDC_ISSUER_URL: http://localhost:8080/realms/serviq
+      OIDC_CLIENT_ID: serviq-test
+      OIDC_CLIENT_SECRET: test-placeholder
+      OIDC_REDIRECT_URI: http://localhost:3000/auth/callback
+      SESSION_SECRET: test-placeholder
+      LLM_GATEWAY_URL: http://localhost:8100
+      LLM_GATEWAY_INTERNAL_TOKEN: test-placeholder
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+      LOG_LEVEL: INFO
+      SERVIQ_LOCAL_WEBHOOK_ALLOWLIST: ""
+    steps:
+      - name: Check out ticket branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ope-278-organization-invitations
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.14.6'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+      - name: Install API
+        run: cd services/api && uv sync --frozen
+      - name: Apply Ruff-safe fixes and capture remaining diagnostics
+        run: |
+          cd services/api
+          uv run ruff check . --fix --exit-zero
+          uv run ruff check . > ../../ope-278-ruff-output.txt 2>&1 || true
+      - name: Capture Alembic upgrade diagnostics
+        run: |
+          cd services/api
+          uv run alembic upgrade head > ../../ope-278-alembic-output.txt 2>&1 || true
+      - name: Commit diagnostics and safe fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/api ope-278-ruff-output.txt ope-278-alembic-output.txt
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore(ope-278): capture validation diagnostics"
+          git push

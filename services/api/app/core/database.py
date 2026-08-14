@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -75,6 +76,14 @@ async def get_database_session() -> AsyncIterator[AsyncSession]:
 
     async with get_database_session_factory()() as session:
         yield session
+
+
+async def ping_database(engine: AsyncEngine | None = None) -> None:
+    """Execute the one trivial query allowed for database readiness."""
+
+    target_engine = get_database_engine() if engine is None else engine
+    async with target_engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))
 
 
 async def dispose_database_engine() -> None:

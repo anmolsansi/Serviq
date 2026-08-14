@@ -37,8 +37,11 @@ typecheck:
 	cd services/llm-gateway && uv run mypy app tests
 
 security:
-	@echo "not yet implemented — see OPE-272"
-	@false
+	@echo "Running local dependency vulnerability audits."
+	@echo "CodeQL, Gitleaks, and Trivy run as the required GitHub Actions security gate."
+	pnpm audit --audit-level high --prod
+	cd services/api && uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-api-requirements.txt && uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-api-requirements.txt
+	cd services/worker && uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-worker-requirements.txt && uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-worker-requirements.txt
 
 e2e:
 	@echo "not yet implemented — dedicated E2E coverage will land in a later ticket"

@@ -1,0 +1,43 @@
+name: OPE-278 RBAC test sync
+
+on:
+  push:
+    branches:
+      - ope-278-organization-invitations
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ticket branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ope-278-organization-invitations
+
+      - name: Update OPE-277 schema assertion for final invitation state
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('services/api/tests/integration/test_rbac_migration.py')
+          text = path.read_text()
+          start = text.index('def test_schema_contains_exact_six_product_tables_and_deferred_invitation_fk() -> None:')
+          end = text.index('\ndef test_duplicate_tenant_slug_is_rejected()', start)
+          replacement = '''def test_rbac_schema_remains_present_and_invitation_fk_is_completed() -> None:\n    async def run() -> None:\n        engine = create_database_engine(load_settings())\n        try:\n            async with engine.connect() as connection:\n                snapshot = await connection.run_sync(_schema_snapshot)\n        finally:\n            await engine.dispose()\n\n        assert {\n            "tenants",\n            "users",\n            "memberships",\n            "roles",\n            "role_permissions",\n            "membership_roles",\n        } <= snapshot["tables"]\n        invitation_column = snapshot["membership_columns"]["created_by_invitation_id"]\n        assert invitation_column["nullable"] is True\n        assert "ix_memberships_created_by_invitation_id" in snapshot["membership_indexes"]\n        invitation_fk = next(\n            fk\n            for fk in snapshot["membership_fks"]\n            if fk["constrained_columns"] == ["created_by_invitation_id"]\n        )\n        assert invitation_fk["referred_table"] == "organization_invitations"\n        assert invitation_fk["options"].get("ondelete") == "SET NULL"\n\n    asyncio.run(run())\n\n'''
+          path.write_text(text[:start] + replacement + text[end + 1:])
+          PY
+
+      - name: Commit test contract update
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/api/tests/integration/test_rbac_migration.py
+          git commit -m "test(database): assert completed invitation membership foreign key"
+          git push

@@ -1,5 +1,0 @@
-INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
-INFO  [alembic.runtime.migration] Will assume transactional DDL.
-INFO  [alembic.runtime.migration] Running upgrade  -> 20260814_0001, Establish Alembic persistence baseline without product tables.
-INFO  [alembic.runtime.migration] Running upgrade 20260814_0001 -> 20260814_0002, Create tenant, workforce, and RBAC tables.
-INFO  [alembic.runtime.migration] Running upgrade 20260814_0002 -> 20260814_0003, Create organization invitation persistence and complete CCR-004.

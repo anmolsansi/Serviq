@@ -1,0 +1,109 @@
+name: Finalize OPE-266 through OPE-271 guide
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/finalize-ope-266-271-guide.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-guide:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Append final completion reconciliation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/SERVIQ_BUILD_GUIDE.md')
+          text = path.read_text()
+          marker = '# OPE-266 through OPE-271 — final completion reconciliation'
+          if marker not in text:
+              addition = r'''
+
+---
+
+# OPE-266 through OPE-271 — final completion reconciliation
+
+> **Final-status note:** this section supersedes the earlier status-only notes for OPE-266 through OPE-271. The detailed “what changed / how it works / why we did it / what it improves” sections above remain the permanent technical explanation and history.
+
+## OPE-266 final status
+
+**Completed.** PR #53 is merged, GitHub issue #47 is closed as completed, and Linear OPE-266 is Done. Validation-only GitHub Actions run `31743262767` proved that the default Compose profile can run without Redpanda, the optional `events` profile can start the broker, `rpk cluster info` and `rpk topic list` succeed, and stopping Redpanda does not take down PostgreSQL, Keycloak, Valkey, or object storage.
+
+This means the event broker is now a real, optional local-development capability rather than only a configuration file. It still does not create Serviq business topics, event schemas, producers, consumers, retries, or production broker architecture; those remain separate future contracts.
+
+## OPE-267 final status
+
+**Completed.** PR #54 is merged, GitHub issue #48 is closed as completed, and Linear OPE-267 is Done. Validation-only GitHub Actions run `31743262767` proved that the observability services are absent from the default/core profile and that OpenTelemetry Collector, Prometheus, Grafana, Loki, and Tempo start together under the optional `observability` profile.
+
+This gives future telemetry work a reproducible local destination without forcing every developer to run the heavier monitoring stack. Application instrumentation, product dashboards, alert rules, and production observability remain intentionally out of scope.
+
+## OPE-268 final status
+
+**Completed.** PR #55 is merged, GitHub issue #49 is closed as completed, and Linear OPE-268 is Done. The root `Makefile` now provides the common developer command surface for setup, development infrastructure, linting, type checking, tests, teardown, and future quality gates.
+
+Validation exposed an important repository fact: `services/llm-gateway` does not currently have a committed `uv.lock`. The final Makefile therefore uses frozen uv sync where lockfiles actually exist and normal `uv sync` for the LLM gateway instead of pretending a lockfile exists. `make security`, `make e2e`, and `make load-test` continue to fail deliberately until real implementations replace those placeholders. That prevents a fake green quality signal.
+
+## OPE-269 final status
+
+**Completed.** The original stacked PR #57 became stale as earlier foundation work merged, so it was replaced by PR #62 created from the then-current `main`. The final CI workflow contains both required triggers — pull requests and pushes to `main` — uses read-only repository-content permission, has a 20-minute timeout, and does not require a paid-service secret.
+
+GitHub Actions run `31778357529` passed dependency setup, linting, type checking, tests, and Docker Compose configuration validation. PR #62 merged as `5ccfe27a878af5aa32fe049fe7632d8e04bc221d`. GitHub issue #50 is closed as completed, Linear OPE-269 is Done, and old PR #57 is closed as superseded rather than leaving two competing CI implementations.
+
+This improves Serviq by giving every later pull request a neutral, repeatable repository-wide quality check instead of relying only on one developer's local machine.
+
+## OPE-270 final status
+
+**Completed.** After OPE-269 merged, the earlier stacked audit PR #56 was replaced by PR #63 built from current `main`. The final `docs/repo_context.md` records the repository as it actually exists: exact toolchain and infrastructure versions, real paths, implemented examples, missing systems, current commands, CI behavior, security/auth/database reality, known landmines, and the required downstream builder start gate.
+
+The audit explicitly records that the LLM gateway has no committed uv lockfile, application authentication is not implemented even though local Keycloak exists, and the database infrastructure exists without an implemented application model/migration/repository convention. These are important because later builders must not invent missing contracts from architecture prose.
+
+GitHub Actions run `31778606260` passed the full baseline CI suite. PR #63 merged as `a2b7f38926bb8bd0ae90e891c5f4bbb4b4b62783`. GitHub issue #51 is closed as completed, Linear OPE-270 is Done, and PR #56 is closed as superseded.
+
+## OPE-271 final status
+
+**Completed.** The stale stacked PR #60 was replaced by PR #64 on top of the completed repository audit. The final ticket intentionally used four micro-level commits so each governance concern has a separate Git history entry:
+
+1. `.github/pull_request_template.md` — requires ticket references, summary, changed files, validation, manual QA, contract-change status, security review, architect-decision status, and builder done report;
+2. `CONTRIBUTING.md` — documents one-ticket-per-branch/PR development, small commits, current root commands, contract discipline, the repository-audit start gate, and the one-cumulative-guide rule;
+3. `SECURITY.md` — provides responsible vulnerability-reporting guidance without fabricating a private email address or asking reporters to expose sensitive details publicly;
+4. `.github/CODEOWNERS` — assigns ownership to the verified repository owner `@anmolsansi` rather than inventing a username.
+
+GitHub Actions run `31778818213` passed. PR #64 merged as `21448734e6f842e9c70fa4eff693bba35d345f07`. GitHub issue #52 is closed as completed, Linear OPE-271 is Done, and PR #60 is closed as superseded.
+
+This improves the project by making the development and review process part of the repository itself. A new contributor no longer needs private knowledge to understand how a Serviq change should be scoped, tested, documented, and reviewed.
+
+## Final batch summary
+
+All six tickets — OPE-266, OPE-267, OPE-268, OPE-269, OPE-270, and OPE-271 — are now **Done** in Linear. Their GitHub tracking issues #47 through #52 are closed as completed, and all permanent implementation changes are merged to `main`.
+
+Temporary validation PRs #58 and #59 remain intentionally closed without merge because their purpose was to prove runtime/developer-lifecycle behavior, not to add permanent validation-only workflows. The stale stacked PRs #57, #56, and #60 are also closed; their final current-main replacements are PRs #62, #63, and #64 respectively.
+
+The repository now has three additional production-foundation capabilities that were not present before this batch: optional local event/observability infrastructure, a repeatable developer/CI command-and-quality path, and explicit repository audit/governance rules for every later builder ticket.
+'''
+              path.write_text(text.rstrip() + addition + '\n')
+          PY
+
+      - name: Remove temporary updater workflow
+        run: rm .github/workflows/finalize-ope-266-271-guide.yml
+
+      - name: Commit final guide state
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/finalize-ope-266-271-guide.yml
+          git commit -m "docs: reconcile OPE-266 through OPE-271 completion"
+          git push

@@ -120,8 +120,13 @@ def test_duplicate_oidc_identity_is_rejected() -> None:
                 """
                 INSERT INTO users
                     (oidc_issuer, oidc_subject, email, display_name, status)
-                VALUES
-                    ('https://issuer.example', 'same-subject', 'other@example.com', 'Other', 'active')
+                VALUES (
+                    'https://issuer.example',
+                    'same-subject',
+                    'other@example.com',
+                    'Other',
+                    'active'
+                )
                 """
             )
         )

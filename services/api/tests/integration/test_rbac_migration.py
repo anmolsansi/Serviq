@@ -75,7 +75,7 @@ def _schema_snapshot(connection: Connection) -> dict[str, Any]:
     }
 
 
-def test_schema_contains_exact_six_product_tables_and_deferred_invitation_fk() -> None:
+def test_rbac_schema_remains_present_and_invitation_fk_is_completed() -> None:
     async def run() -> None:
         engine = create_database_engine(load_settings())
         try:
@@ -84,25 +84,26 @@ def test_schema_contains_exact_six_product_tables_and_deferred_invitation_fk() -
         finally:
             await engine.dispose()
 
-        assert snapshot["tables"] == {
-            "alembic_version",
+        assert {
             "tenants",
             "users",
             "memberships",
             "roles",
             "role_permissions",
             "membership_roles",
-        }
+        } <= snapshot["tables"]
         invitation_column = snapshot["membership_columns"]["created_by_invitation_id"]
         assert invitation_column["nullable"] is True
         assert "ix_memberships_created_by_invitation_id" in snapshot["membership_indexes"]
-        assert all(
-            fk["constrained_columns"] != ["created_by_invitation_id"]
+        invitation_fk = next(
+            fk
             for fk in snapshot["membership_fks"]
+            if fk["constrained_columns"] == ["created_by_invitation_id"]
         )
+        assert invitation_fk["referred_table"] == "organization_invitations"
+        assert invitation_fk["options"].get("ondelete") == "SET NULL"
 
     asyncio.run(run())
-
 
 def test_duplicate_tenant_slug_is_rejected() -> None:
     async def scenario(connection: AsyncConnection) -> None:

@@ -23,6 +23,8 @@ EXPECTED_TABLES = {
     "roles",
     "role_permissions",
     "membership_roles",
+    "organization_invitations",
+    "organization_invitation_roles",
 }
 
 

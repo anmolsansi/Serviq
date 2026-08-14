@@ -2416,3 +2416,88 @@ This ticket adds no organization invitation table, invitation token logic, API e
 ### Validation required before completion
 
 The pull request must pass normal repository lint/type/tests, the real PostgreSQL migration/constraint/reversibility job, and the Security workflow. The cumulative guide and repository context must describe CCR-004 so a later engineer does not misinterpret the temporary missing invitation foreign key as an accidental omission.
+
+
+## OPE-278 — Secure organization invitation database schema
+
+### What this ticket builds
+
+OPE-278 adds the database structure Serviq will later use when one organization invites a person to join its workforce. The important word is *later*: this ticket does not send invitation emails, generate invitation links, accept invitations, or calculate runtime expiry. It builds the safe persistence layer those future workflows need.
+
+The migration is Alembic revision `20260814_0003_organization_invitations.py`, directly after the OPE-277 tenant/workforce/RBAC revision. It creates exactly two new product tables: `organization_invitations` and `organization_invitation_roles`. It also completes the one foreign-key step deliberately deferred by CCR-004 from OPE-277.
+
+### A simple way to think about an invitation token
+
+An invitation link will eventually contain a random secret value. Whoever possesses that secret can attempt to prove they received the invitation. Storing that secret directly in the database would be risky: if a database snapshot, support query, or accidental export exposed the table, the raw invitation links could potentially be reused.
+
+Serviq therefore stores only `token_hash`. A hash is a one-way representation of the future secret. The intended runtime pattern is similar to password verification: when a user presents an invitation token, future application code will hash the presented value and compare the result with the stored hash. The database does not need the plaintext token after the invitation is created.
+
+This migration makes that security choice structural. There is no `token`, `raw_token`, `invite_token`, `invitation_token`, or equivalent plaintext column. The database has only `token_hash`, and that hash is globally unique. Even two different tenants cannot store the same invitation hash. OPE-278 tests inspect the real PostgreSQL table metadata to make sure the plaintext-token columns do not exist.
+
+### `organization_invitations`
+
+Each invitation belongs to one tenant through `tenant_id`. The foreign key uses `ON DELETE RESTRICT`, meaning a tenant cannot be removed while invitation history still depends on it.
+
+`email_normalized` stores the email form that future application code will use for matching. Its length is restricted to 3–320 characters. This ticket intentionally does not implement the normalization algorithm itself; that belongs to runtime invitation logic. The database contract simply makes the normalized value the canonical matching field.
+
+`status` can only be one of four values: `pending`, `accepted`, `revoked`, or `expired`. PostgreSQL enforces that list with a CHECK constraint. A typo such as `acceptd` or an unapproved lifecycle state cannot silently enter the database.
+
+`invited_by_user_id` records which workforce user created the invitation and is required. `accepted_by_user_id` is nullable because a new invitation has not yet been accepted. Both reference `users` with `ON DELETE RESTRICT`, preserving the identity history while invitation rows exist. Because Serviq's database conventions require foreign-key lookup support, both user-reference columns have explicit indexes.
+
+`expires_at` is required and records when the invitation stops being usable. `accepted_at` and `revoked_at` are optional lifecycle timestamps. The frozen product rule says invitations expire after seven days, but calculating that seven-day value is deliberately not done by this migration. Future invitation creation logic will write the correct expiry time. The database only requires that a value exists.
+
+Like the other mutable product tables, invitations receive UUIDv7 primary keys plus timezone-aware `created_at` and `updated_at` timestamps using the shared architecture convention.
+
+### Why only one pending invitation may exist for one tenant/email
+
+Imagine an administrator clicking “Invite” multiple times for the same person. If the database allowed several simultaneously pending invitations for the same tenant and normalized email, later code would have to guess which invitation is authoritative. That creates confusing user experiences and increases the number of valid invitation secrets.
+
+OPE-278 prevents that with a PostgreSQL *partial unique index*. The index is unique on `(tenant_id, email_normalized)` only when `status = 'pending'`. In plain language, a tenant may have only one currently pending invitation for an email address.
+
+The word *partial* matters because historical invitations must remain useful history. An accepted, revoked, or expired invitation does not block a later new pending invitation for the same email. The integration tests prove both sides of this rule: a second pending invitation is rejected, while an accepted historical invitation and a new pending invitation can coexist.
+
+The migration also creates ordinary indexes for `(tenant_id, status, expires_at)` and `(tenant_id, email_normalized)`. These support future jobs that search for expiring invitations and future organization-scoped invitation lookups.
+
+### `organization_invitation_roles`
+
+An invitation may request one or more Serviq roles. Those role requests are not stored as a comma-separated string inside the invitation row. Instead, `organization_invitation_roles` is a proper join table between an invitation and a role.
+
+`invitation_id` references `organization_invitations` with `ON DELETE CASCADE`. If an invitation row is deleted, its requested-role mappings have no independent meaning, so PostgreSQL removes them automatically. `role_id` references `roles` with `ON DELETE RESTRICT`, preventing a role from disappearing while an invitation still requests it.
+
+The pair `(invitation_id, role_id)` is unique, so the same role cannot be attached twice to one invitation. Both foreign-key columns are indexed. Real PostgreSQL tests verify duplicate mappings are rejected and a mapping cannot point to a role that does not exist.
+
+### CCR-004 is now fully completed
+
+OPE-277 created `memberships.created_by_invitation_id` but could not add its final foreign key because `organization_invitations` did not exist yet. CCR-004 documented that migration-order dependency before OPE-277 was merged.
+
+OPE-278 now completes the contract. After creating `organization_invitations`, revision `20260814_0003` adds the named foreign key from `memberships.created_by_invitation_id` to `organization_invitations.id` with `ON DELETE SET NULL`. This means a membership can remember the invitation that originally created it, but deleting an invitation record does not delete the membership. Instead PostgreSQL preserves the membership and clears only its invitation-origin pointer.
+
+The integration suite proves this behavior by creating a tenant, user, invitation, and membership linked to that invitation; deleting the invitation; and confirming the membership still exists with `created_by_invitation_id = NULL`. The existing OPE-277 schema test is also updated from the temporary “FK intentionally absent” state to the final “FK exists and uses SET NULL” state.
+
+### Why downgrade drops the membership foreign key first
+
+A database migration must work in both directions. On upgrade, the invitation table has to exist before the membership foreign key can reference it. On downgrade, the dependency order is reversed: PostgreSQL cannot drop `organization_invitations` while `memberships` still has a foreign key pointing at it.
+
+The OPE-278 downgrade therefore removes the deferred membership foreign key first, then removes `organization_invitation_roles`, then removes `organization_invitations`. Once revision `20260814_0002` is restored, the database is back in the exact CCR-004 intermediate state expected by OPE-277.
+
+### Real PostgreSQL tests
+
+OPE-278 extends the permanent database integration suite instead of relying on SQLite or mocked migration behavior. At migration head, the expected schema now includes the two invitation tables in addition to the OPE-277 tables and Alembic metadata.
+
+The invitation-specific integration tests verify: only a token hash is persisted; the expected tenant/user/FK indexes exist; the partial unique index is really a unique PostgreSQL index whose predicate is limited to `pending`; duplicate pending invitations are rejected; accepted history does not block a new pending invitation; duplicate token hashes are rejected globally; invalid invitation status and invalid email length are rejected; duplicate invitation-role mappings are rejected; nonexistent role references are rejected; and deleting an invitation sets the membership-origin reference to null. Test hashes use clearly fake strings rather than anything resembling a production invitation secret.
+
+The CI migration sequence is now aligned with this revision: upgrade a clean PostgreSQL database to `head`, run the full integration suite, downgrade specifically to `20260814_0002`, upgrade to `head` again to prove OPE-278 can be reapplied, then downgrade the complete chain to `base`. This gives explicit evidence that both the new tables and CCR-004 foreign key can be created and removed safely.
+
+### What this improves
+
+After OPE-278, Serviq has a database-safe way to represent an organization invitation lifecycle without requiring plaintext invitation secrets. The schema prevents duplicate live invitations for the same organization/email, preserves historical invitations, records who invited and who accepted, supports requested role assignments, and connects resulting memberships back to their originating invitations with safe delete behavior.
+
+These protections are enforced at the PostgreSQL layer. Future API validation can provide friendlier error messages, but even a bug in future application code cannot bypass the database's unique, CHECK, or foreign-key constraints without deliberately changing the schema.
+
+### What is intentionally not built
+
+This ticket does not generate secure random tokens, hash presented tokens, send email, normalize email strings, create an invitation API, calculate seven-day expiry at runtime, automatically mark expired invitations, accept/revoke invitations, assign roles to memberships, or implement authorization rules. It also does not add example plaintext tokens to fixtures. Those behaviors belong to later runtime/service tickets and must consume this schema rather than expanding it ad hoc.
+
+### Validation required before completion
+
+The final pull request must pass the normal repository quality job, including lint, strict type checking, tests, and Compose validation; the real PostgreSQL integration job with upgrade/downgrade/re-upgrade coverage; and the OPE-272 Security workflow. The temporary OPE-278 documentation workflow is removed before merge.

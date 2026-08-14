@@ -1,0 +1,157 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - javascript-typescript
+          - python
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+
+  secrets:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan Git history and current tree for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  filesystem:
+    name: Trivy filesystem and configuration scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Scan dependencies and configuration
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload Trivy report to code scanning
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-filesystem
+
+  dependencies:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.0 --activate
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+
+      - name: Audit pnpm lockfile
+        shell: bash
+        run: |
+          set +e
+          pnpm audit --audit-level high --prod --json > pnpm-audit.json
+          status=$?
+          set -e
+          echo "PNPM_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
+
+      - name: Audit API Python lockfile
+        shell: bash
+        run: |
+          cd services/api
+          uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-api-requirements.txt
+          set +e
+          uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-api-requirements.txt -f json -o ../../api-pip-audit.json
+          status=$?
+          set -e
+          echo "API_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
+
+      - name: Audit worker Python lockfile
+        shell: bash
+        run: |
+          cd services/worker
+          uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-worker-requirements.txt
+          set +e
+          uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-worker-requirements.txt -f json -o ../../worker-pip-audit.json
+          status=$?
+          set -e
+          echo "WORKER_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
+
+      - name: Upload dependency audit reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-audit-reports
+          path: |
+            pnpm-audit.json
+            api-pip-audit.json
+            worker-pip-audit.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce dependency audit results
+        shell: bash
+        run: |
+          test "${PNPM_AUDIT_STATUS:-1}" -eq 0
+          test "${API_PIP_AUDIT_STATUS:-1}" -eq 0
+          test "${WORKER_PIP_AUDIT_STATUS:-1}" -eq 0

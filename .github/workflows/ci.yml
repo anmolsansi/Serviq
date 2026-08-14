@@ -113,11 +113,17 @@ jobs:
       - name: Install frozen API environment
         run: cd services/api && uv sync --frozen
 
-      - name: Upgrade database to migration head
+      - name: Upgrade clean database to migration head
         run: cd services/api && uv run alembic upgrade head
 
       - name: Run real PostgreSQL integration tests
         run: cd services/api && uv run pytest tests/integration
 
-      - name: Downgrade migration head to base
+      - name: Downgrade tenant schema to previous revision
+        run: cd services/api && uv run alembic downgrade 20260814_0001
+
+      - name: Upgrade tenant schema again to prove reversibility
+        run: cd services/api && uv run alembic upgrade head
+
+      - name: Downgrade full migration chain to base
         run: cd services/api && uv run alembic downgrade base

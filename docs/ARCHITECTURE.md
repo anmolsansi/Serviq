@@ -258,6 +258,8 @@ Retry rules:
 
 The following is the frozen schema contract. Migrations may split table creation across tickets but may not rename, repurpose, or silently add cross-MAS fields without contract change control.
 
+**Migration sequencing note (CCR-004):** the final `memberships.created_by_invitation_id -> organization_invitations(id) ON DELETE SET NULL` contract remains frozen, but the OPE-277 migration creates the nullable column before the invitation table exists. OPE-278 creates `organization_invitations` and then adds that foreign-key constraint in the same revision. This is a migration-order clarification only; the final schema contract below is unchanged.
+
 ```text
 tenants
   id uuid PK

@@ -2337,3 +2337,82 @@ Only PostgreSQL is checked. Valkey, Kafka/Redpanda, object storage, OIDC, the LL
 ### Validation required before completion
 
 The final pull request must pass normal repository lint, mypy/type checks, unit tests, Compose validation, the real PostgreSQL integration job, and the OPE-272 Security workflow. The branch-specific finalizer exists only to refresh the API lock and append this cumulative documentation; it is removed before merge.
+
+
+## OPE-277 — Tenant, workforce, and RBAC database schema
+
+### What this ticket builds
+
+OPE-277 is the first Serviq migration that creates real product-domain tables. It creates the database foundation for organizations, workforce identities, organization membership, roles, permissions, and role assignments. The six tables are `tenants`, `users`, `memberships`, `roles`, `role_permissions`, and `membership_roles`. They are created by Alembic revision `20260814_0002`, directly after the empty OPE-275 persistence baseline.
+
+A useful way to understand the model is to separate a *person* from a *person's membership in an organization*. `users` stores the workforce identity recognized through OIDC. `tenants` stores Serviq customer organizations. `memberships` joins a user to a tenant and gives that relationship its own status. A user can therefore exist once in Serviq and later belong to one or more tenants without duplicating the user's identity record.
+
+`roles` describes named access roles. A role may belong to one tenant or may be global when `tenant_id` is null. `role_permissions` lists the permission keys attached to each role. `membership_roles` assigns roles to a particular membership. This avoids storing comma-separated permissions or hard-coding access logic inside a user row.
+
+### Why CCR-004 was required before coding
+
+The architecture says `memberships.created_by_invitation_id` eventually references `organization_invitations(id)` with `ON DELETE SET NULL`. However, OPE-277 is explicitly forbidden from creating invitation tables; those belong to OPE-278. PostgreSQL cannot create a foreign key to a table that does not exist. Trying to follow both instructions literally in one migration would therefore make the migration invalid.
+
+The issue was handled as a contract-sequencing decision instead of being hidden in code. `CCR-004-invitation-foreign-key-migration-sequencing.md` records that OPE-277 creates the nullable `created_by_invitation_id` column now, while OPE-278 creates `organization_invitations` and then adds the final foreign key in that later migration. The Architecture document now carries the same note. The final schema contract is not weakened or renamed; only the order in which PostgreSQL can safely reach that final schema is clarified.
+
+OPE-277 still creates an index on `created_by_invitation_id`. That prepares the column for its final foreign-key role and follows the architecture's broader rule that foreign-key columns are indexed. No invitation API or business logic can write the field in this ticket.
+
+### Shared primary-key and timestamp rules
+
+All six tables follow Serviq's database conventions. Their primary key is a PostgreSQL UUID with `DEFAULT uuidv7()`, so the database creates identifiers when an insert does not supply one. Each mutable table also gets `created_at` and `updated_at` as non-null timezone-aware timestamps defaulting to `now()`. These shared columns come from small migration helper functions so the six table definitions do not accidentally drift from one another.
+
+### `tenants`
+
+A tenant is one organization using Serviq. Its `slug` is required, unique, and restricted to 3–63 characters. `display_name` is required and 1–120 characters. `status` can only be `active`, `suspended`, or `deleted`. `default_locale` defaults to `en`. The migration creates the unique slug constraint and a status index.
+
+These checks happen in PostgreSQL itself. Even if a future API bug tries to insert a tenant with an invalid status or short slug, the database still refuses the invalid state. This is intentional defense in depth: UI/API validation improves user feedback, but database constraints protect the stored truth.
+
+### `users`
+
+A workforce user stores `oidc_issuer`, `oidc_subject`, `email`, `display_name`, and an `active|disabled` status. The pair `(oidc_issuer, oidc_subject)` is unique. OIDC subjects are only meaningful in the context of their issuer, so this pair prevents one external identity from being represented twice while allowing different identity providers to use the same subject string. Email receives an index for later lookup but is not treated as the immutable identity key.
+
+### `memberships`
+
+A membership links one tenant and one user. Both foreign keys use `ON DELETE RESTRICT`, which prevents a tenant or user from being deleted while a membership still depends on it. Membership status is limited to `active|suspended`, and `(tenant_id, user_id)` is unique so the same user cannot receive duplicate membership rows in one tenant.
+
+Indexes support tenant/status queries, user membership lookup, and the future invitation-origin foreign key. As described by CCR-004, the invitation-origin column is present and nullable but its foreign-key constraint is deliberately deferred until OPE-278 creates the referenced table.
+
+### `roles` and the important NULL uniqueness rule
+
+A role has an optional `tenant_id`, a 2–64 character `key`, a 1–80 character `display_name`, and `is_system`, which defaults to false. Tenant-owned roles reference `tenants` with `ON DELETE RESTRICT`.
+
+The uniqueness rule is not an ordinary `(tenant_id, key)` unique constraint. Serviq requires PostgreSQL's `UNIQUE NULLS NOT DISTINCT (tenant_id, key)`. Normally SQL treats two NULL values as different for uniqueness, which could allow multiple global roles with the same key because their `tenant_id` is NULL. `NULLS NOT DISTINCT` changes that behavior so only one global role with a given key can exist while still allowing the same role key in different tenants. The integration tests verify both the actual PostgreSQL constraint definition and a duplicate global-role rejection.
+
+### `role_permissions`
+
+Each row attaches a 2–120 character permission key to a role. The role foreign key uses `ON DELETE CASCADE`: deleting a role removes its permission rows because those permissions have no meaning without that role. `(role_id, permission_key)` is unique, preventing the same permission from being attached twice. The role foreign key is indexed.
+
+### `membership_roles`
+
+This join table assigns a role to a membership. The membership foreign key uses `ON DELETE CASCADE`, so deleting a membership automatically removes its role assignments. The role foreign key uses `ON DELETE RESTRICT`, so a role cannot be removed while memberships still reference it. `(membership_id, role_id)` is unique and both foreign keys are indexed.
+
+### Dependency-safe migration order
+
+Upgrade order is `tenants`, `users`, `memberships`, `roles`, `role_permissions`, then `membership_roles`. That order ensures every referenced table exists before a foreign key is added, except the one invitation relationship explicitly deferred by CCR-004. Downgrade uses the reverse dependency direction: `membership_roles`, `role_permissions`, `roles`, `memberships`, `users`, `tenants`. Alembic/PostgreSQL can therefore remove the schema without encountering a child table that still depends on a parent.
+
+### Real PostgreSQL constraint tests
+
+The database integration suite now expects exactly the Alembic bookkeeping table plus these six product tables after migration head. A dedicated `test_rbac_migration.py` validates the schema and attempts invalid writes against real PostgreSQL. It proves duplicate tenant slugs, duplicate OIDC identities, duplicate tenant/user memberships, invalid tenant/user/membership statuses, duplicate membership-role mappings, duplicate role permissions, and duplicate global role keys are rejected by PostgreSQL. It also inspects the temporary invitation column/index and confirms CCR-004's foreign key has not been added early.
+
+Each negative test creates its seed data and the failing insert in one transaction. The expected `IntegrityError` causes that transaction to roll back, so one test cannot pollute another with leftover rows. This lets the suite exercise actual PostgreSQL constraints rather than mocking database behavior or using SQLite.
+
+### Upgrade, downgrade, upgrade verification
+
+The permanent CI database job now performs a stronger migration sequence. It upgrades a clean PostgreSQL database to `head`, runs all integration tests, downgrades the tenant/RBAC migration back to `20260814_0001`, upgrades to `head` again, and finally downgrades the entire chain to `base`. This checks both directions and proves the migration can be reapplied after removal.
+
+### What this improves
+
+Before OPE-277, Serviq had a reliable database connection and migration framework but no organization or workforce data model. After this ticket, future authentication, tenant onboarding, invitations, team management, and authorization work can build on an explicit relational foundation whose invalid states are blocked at the database layer. The role/permission model is normalized and tenant-aware rather than being embedded in application conditionals.
+
+### What is intentionally not built
+
+This ticket adds no organization invitation table, invitation token logic, API endpoint, service, repository, seed data, platform-operator shortcut, authentication middleware, or permission-enforcement middleware. It also does not add the deferred invitation foreign key; OPE-278 owns that final step under CCR-004. The schema is foundation only.
+
+### Validation required before completion
+
+The pull request must pass normal repository lint/type/tests, the real PostgreSQL migration/constraint/reversibility job, and the Security workflow. The cumulative guide and repository context must describe CCR-004 so a later engineer does not misinterpret the temporary missing invitation foreign key as an accidental omission.

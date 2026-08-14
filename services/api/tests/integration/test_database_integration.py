@@ -15,12 +15,22 @@ pytestmark = pytest.mark.skipif(
     reason="requires the real PostgreSQL integration environment",
 )
 
+EXPECTED_TABLES = {
+    "alembic_version",
+    "tenants",
+    "users",
+    "memberships",
+    "roles",
+    "role_permissions",
+    "membership_roles",
+}
+
 
 def _table_names(connection: Connection) -> list[str]:
     return inspect(connection).get_table_names(schema="public")
 
 
-def test_async_session_connects_to_real_postgres_without_product_tables() -> None:
+def test_async_session_connects_to_real_postgres_with_expected_schema() -> None:
     async def scenario() -> None:
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
@@ -32,7 +42,7 @@ def test_async_session_connects_to_real_postgres_without_product_tables() -> Non
             async with engine.connect() as connection:
                 tables = await connection.run_sync(_table_names)
 
-            assert set(tables) <= {"alembic_version"}
+            assert set(tables) == EXPECTED_TABLES
         finally:
             await engine.dispose()
 

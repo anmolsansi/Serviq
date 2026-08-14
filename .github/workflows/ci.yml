@@ -113,11 +113,11 @@ jobs:
       - name: Install frozen API environment
         run: cd services/api && uv sync --frozen
 
-      - name: Upgrade empty database to migration head
+      - name: Upgrade database to migration head
         run: cd services/api && uv run alembic upgrade head
 
-      - name: Run real PostgreSQL integration test
-        run: cd services/api && uv run pytest tests/integration/test_database_integration.py
+      - name: Run real PostgreSQL integration tests
+        run: cd services/api && uv run pytest tests/integration
 
       - name: Downgrade migration head to base
         run: cd services/api && uv run alembic downgrade base

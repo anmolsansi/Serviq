@@ -10,4 +10,21 @@ Do not silently invent or change architecture-owned API, database, event, authen
 
 Use `.github/pull_request_template.md` to report the ticket, summary, important files, validation, manual QA, contract-change status, security impact, unresolved architect decisions, completed scope, deferred work, and follow-up work. A pushed branch or open pull request is not the same as a completed ticket.
 
+## Release and versioning policy
+
+GitHub Releases are Serviq's official public version history. Releases are created only from commits contained in `main` and use Semantic Versioning with a leading `v`: `vMAJOR.MINOR.PATCH`. Development releases use an explicit prerelease suffix such as `v0.2.0-alpha.1`, `v0.5.0-beta.1`, or `v1.0.0-rc.1`.
+
+Every pull request must declare one release-impact choice and should carry the matching label before merge:
+
+- `release:major` for an approved breaking compatibility change;
+- `release:minor` for backward-compatible functionality;
+- `release:patch` for a backward-compatible bug/security fix;
+- `release:skip` when the change should not appear in generated release notes.
+
+Use the more specific type labels (`feature`, `fix`, `security`, `infrastructure`, `testing`, `dependencies`, `refactor`, `performance`, `documentation`) when they describe the change. `.github/release.yml` uses these labels to organize GitHub-generated release notes.
+
+Do not create or move a published release tag to point at different code. If a release is wrong, publish a new patch/prerelease version rather than rewriting history. Stable `v1.0.0` is reserved for the point where the project has explicitly met its production-readiness criteria; pre-1.0 and alpha/beta/RC releases must not be described as production-ready.
+
+The release workflow lives at `.github/workflows/release.yml`. It runs the repository quality gates before publishing and supports both an authorized manual release from `main` and a semantic-version tag that already points to a commit contained in `main`. Operator instructions are in `docs/RELEASING.md`.
+
 Long-form implementation explanations belong in the cumulative `docs/SERVIQ_BUILD_GUIDE.md`. Explain what changed, how it works, why it was done, what it improves, how it was validated, and what is intentionally still missing. Do not create a separate long-form worklog for each ticket unless the repository convention is explicitly changed.

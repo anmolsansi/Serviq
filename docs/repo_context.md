@@ -574,3 +574,12 @@ ADR-002 establishes `services/api/app/modules/health/` as the infrastructure hea
 `GET /health/live` is process-only and returns `{"status":"live"}`. It must not acquire dependency checks. `GET /health/ready` currently checks PostgreSQL only. Success is exactly HTTP 200 `{"status":"ready"}`. Database exception/unavailability/timeout is exactly HTTP 503 `{"status":"not_ready","dependency":"database"}`. Health failure logs use stable event names only and must not attach raw dependency exceptions or connection details.
 
 API HTTP contract tests now use `httpx` as a development-only dependency. The permanent CI `database-integration` job runs the entire `services/api/tests/integration` directory after Alembic upgrade and before downgrade, so readiness is exercised against real PostgreSQL in addition to mocked unit/contract tests.
+
+
+### OPE-277 tenant/workforce/RBAC schema reality
+
+Alembic revision `20260814_0002_tenant_workforce_rbac.py` is the first Serviq product-schema migration. It creates exactly `tenants`, `users`, `memberships`, `roles`, `role_permissions`, and `membership_roles` after baseline revision `20260814_0001`. Tables use PostgreSQL `uuid DEFAULT uuidv7()` primary keys plus `created_at`/`updated_at timestamptz NOT NULL DEFAULT now()` under the Architecture convention.
+
+CCR-004 resolves the invitation dependency cycle: OPE-277 creates nullable `memberships.created_by_invitation_id` plus its index but intentionally does not create its FK because `organization_invitations` does not exist until OPE-278. OPE-278 must create the invitation table and then add `memberships.created_by_invitation_id -> organization_invitations(id) ON DELETE SET NULL`; its downgrade must drop that FK before the invitation table. No runtime code may rely on the invitation-origin relationship before OPE-278.
+
+`roles` uses the exact PostgreSQL `UNIQUE NULLS NOT DISTINCT(tenant_id, key)` contract, not a normal unique pair. Real PostgreSQL integration tests cover schema/table expectations, CHECK/unique constraints, duplicate global-role behavior, the CCR-004 intermediate state, and migration reversibility. The permanent database CI sequence is upgrade head -> integration tests -> downgrade to `20260814_0001` -> upgrade head -> downgrade base.

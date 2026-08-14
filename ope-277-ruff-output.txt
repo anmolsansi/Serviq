@@ -1,0 +1,12 @@
+E501 Line too long (102 > 100)
+   --> tests/integration/test_rbac_migration.py:124:101
+    |
+122 |                     (oidc_issuer, oidc_subject, email, display_name, status)
+123 |                 VALUES
+124 |                     ('https://issuer.example', 'same-subject', 'other@example.com', 'Other', 'active')
+    |                                                                                                     ^^
+125 |                 """
+126 |             )
+    |
+
+Found 1 error.

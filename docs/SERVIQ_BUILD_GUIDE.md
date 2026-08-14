@@ -2133,3 +2133,42 @@ Before OPE-272, a pull request could pass the normal lint/type/test workflow eve
 ### Validation and intentional limits
 
 The ticket is considered complete only after the new Security workflow runs on the pull request and all four categories report understandable results. The implementation deliberately does not add container-image scanning because Serviq does not yet publish product container images, and it does not add penetration testing, runtime WAF/security controls, or custom Semgrep rules. Those are different layers of security and belong to later work.
+
+
+## OPE-273 — Typed platform configuration and safe environment template
+
+### What we changed
+
+Serviq now has a real, typed configuration boundary instead of empty placeholder files. The API reads the architecture-owned platform environment variables through `services/api/app/core/config.py`, and the worker mirrors the same contract through its already-approved `services/worker/app/core/config.py` boundary. A root `.env.example` shows every platform variable with local-only placeholder values so a new developer can see which knobs exist without receiving any real credential.
+
+The configuration model covers the environment name, public and API URLs, PostgreSQL, Valkey, Kafka bootstrap servers, object storage, OIDC identity-provider settings, the server-side session secret, the internal LLM gateway connection, OpenTelemetry export, logging level, and the local webhook allowlist. Tenant-owned provider keys such as an OpenAI API key are intentionally *not* part of this environment model. Those future credentials belong to tenant-scoped BYOK storage, not to a process-wide `.env` file.
+
+### How the code works
+
+`load_settings()` receives either the real process environment or an explicit mapping supplied by a test. It copies only the exact variable names frozen in Architecture v1.3 and asks Pydantic to validate their types. HTTP endpoints must really look like HTTP URLs; database, Valkey, and telemetry endpoints must parse as URLs; `SERVIQ_ENV` can only be `local`, `test`, `staging`, or `production`; `LOG_LEVEL` is restricted to the supported logging levels; and non-empty string fields cannot silently become blank configuration.
+
+Secrets use Pydantic's `SecretStr`, which masks them when represented. Serviq adds another protection around validation: `SettingsError` reports only the *names of bad fields*. It deliberately does not copy Pydantic's raw input values into startup errors. This matters because startup logs are often retained centrally, and a badly configured secret must never become a secret leaked into logs.
+
+Production mode has an additional preflight check. Object-storage credentials, the OIDC client secret, `SESSION_SECRET`, and `LLM_GATEWAY_INTERNAL_TOKEN` must be non-empty. There is no insecure production fallback. Local development still uses explicit placeholders from `.env.example`, which makes it obvious that those values must be replaced outside local development.
+
+`SERVIQ_LOCAL_WEBHOOK_ALLOWLIST` stays a comma-separated environment value at the boundary and exposes a trimmed tuple to application code. This keeps the external environment contract simple while avoiding repeated string parsing elsewhere.
+
+### Why the API and worker have local copies
+
+Serviq does not yet have an architect-approved shared Python package across backend services. Creating one just to remove a small amount of duplication would quietly introduce a new cross-service ownership contract. Instead, this ticket keeps the same frozen variable names and validation behavior inside the two configuration paths that already existed. The LLM gateway is not given a new configuration directory in this ticket because that path did not exist and no new shared ownership path was approved. A future architecture ticket can extract common Python configuration only when that package boundary is deliberately designed.
+
+### What `.env.example` is and is not
+
+`.env.example` is a map, not a vault. It contains safe strings such as `local-placeholder` and local service URLs. A developer can copy it to the Git-ignored `.env` file and replace values for their machine. Real production credentials must never be written into the example, committed to Git, or returned to a browser. The repository's OPE-272 Gitleaks gate now adds another automated layer against accidental secret commits.
+
+### What this improves
+
+Before OPE-273, later database, authentication, storage, telemetry, and LLM-gateway tickets could each have invented their own environment names or scattered `os.getenv()` calls throughout business code. That creates subtle differences such as one service expecting `DB_URL` while another expects `DATABASE_URL`. The typed boundary makes configuration a single explicit contract per service, gives failures understandable field names, and gives tests a deterministic way to inject configuration without mutating the developer's machine.
+
+### Tests and security checks
+
+API tests cover a valid local environment, an unsupported environment name, a malformed URL, a production secret that is missing, and confirmation that tenant provider keys are not modeled. Worker tests independently cover valid loading, environment validation, URL validation, and production-secret redaction. The worker dependency lock is refreshed after adding Pydantic so frozen installs remain reproducible. Final completion additionally requires the normal CI workflow and the OPE-272 Security workflow to pass on the pull request.
+
+### Intentional limits
+
+This ticket does not create a database connection, log a user in through OIDC, encrypt secrets, connect to AWS Secrets Manager, load tenant BYOK credentials, or change provider contracts. It defines and validates the platform configuration boundary those future implementations can safely consume.

@@ -3,7 +3,9 @@ name = "serviq-worker"
 version = "0.0.0"
 description = "Serviq durable background worker service"
 requires-python = ">=3.14,<3.15"
-dependencies = []
+dependencies = [
+  "pydantic>=2,<3",
+]
 
 [dependency-groups]
 dev = [

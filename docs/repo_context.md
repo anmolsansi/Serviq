@@ -549,3 +549,10 @@ The release labels defined by OPE-304 now exist in GitHub. Future builders shoul
 `.github/workflows/security.yml` is now the repository security gate. It runs on pull requests and pushes to `main` with separate CodeQL, Gitleaks, Trivy filesystem/configuration, and dependency-audit jobs. Scanner/setup actions are pinned to exact commits, required findings are not configured with blanket `continue-on-error`, and workflow permissions are read-only except CodeQL's job-scoped `security-events: write`.
 
 `make security` now runs the local dependency-audit subset (`pnpm audit` plus pinned `pip-audit` for the frozen API and worker lockfiles) and points contributors to the GitHub workflow for CodeQL/Gitleaks/Trivy. The LLM gateway still has no committed uv lockfile, so the Python lockfile audit intentionally covers only the API and worker until that repository landmine is resolved.
+
+
+### OPE-273 platform configuration reality
+
+`services/api/app/core/config.py` is the authoritative API adapter for Architecture v1.3 platform environment names. `services/worker/app/core/config.py` mirrors the same frozen contract because that service already had an approved config boundary; the repository still has no approved cross-service Python package. Do not create one from a feature ticket. The LLM gateway did not have an existing core config path when OPE-273 was implemented, so it remains unchanged rather than inventing a new package boundary.
+
+Configuration is loaded through `load_settings()` rather than scattered `os.getenv()` calls. Startup errors expose invalid/missing field names only and must not echo raw values. Production requires non-empty object-storage credentials, OIDC client secret, session secret, and LLM gateway internal token. Tenant/provider BYOK keys are not platform environment variables. Root `.env.example` contains placeholders only and is the local-development template.

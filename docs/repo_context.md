@@ -513,3 +513,26 @@ The repository now has a credible production-oriented foundation: separated fron
 The repository does **not** yet have the core product runtime: real authentication, tenant permissions, database models/migrations, support chat, knowledge ingestion/retrieval, agent execution, LLM provider routing, policy authorization, refund/order tools, human handoff, analytics, or application observability.
 
 Future builders must preserve this distinction. The safest implementation is the one that starts from what the repository actually contains today rather than what the architecture intends it to contain later.
+
+## OPE-304 release-system convention update
+
+This section records a repository convention added after the original OPE-270 audit. It supplements the audit snapshot instead of pretending the original audited commit already contained these files.
+
+GitHub Releases are now the repository's official public version-history boundary. The permanent release-management files are:
+
+- `.github/release.yml` — generated release-note categories and exclusions;
+- `.github/workflows/release.yml` — validated release publishing;
+- `docs/RELEASING.md` — operator/versioning policy;
+- `.github/pull_request_template.md` — release-impact declaration on every PR;
+- `CONTRIBUTING.md` — contributor-facing Semantic Versioning and release rules.
+
+Serviq release tags use `vMAJOR.MINOR.PATCH` with optional prerelease suffixes such as `-alpha.1`, `-beta.1`, and `-rc.1`. Published tags are treated as permanent history and must never be silently moved to different code.
+
+The release workflow supports two permanent publishing paths: an authorized manual GitHub Actions run from `main`, and a semantic-version tag whose commit is already contained in `main`. Both paths execute `make setup`, `make lint`, `make typecheck`, `make test`, and Docker Compose configuration validation before publishing. The workflow intentionally does not claim `make security`, `make e2e`, or `make load-test` are release gates while those targets remain explicit non-zero placeholders.
+
+OPE-304 also contains a one-time idempotent bootstrap for the first prerelease, `v0.1.0-alpha.1`, after the release-system files merge into `main`. That bootstrap creates the release labels, validates the merged code, refuses to overwrite an existing tag/release, and publishes `Serviq v0.1.0-alpha.1 — Platform Foundation` as a prerelease. Later release-system edits detect the existing bootstrap release and leave it unchanged.
+
+Release publishing is not deployment. There is currently no release-triggered production deployment, GHCR container publication, SBOM, signing, provenance/attestation, backport branch, or automatic SemVer calculation. Those remain future reviewed work.
+
+Builder start rule: when a later ticket changes release/versioning behavior, read `.github/workflows/release.yml`, `.github/release.yml`, `docs/RELEASING.md`, and the current PR template/CONTRIBUTING policy before editing. Release governance is repository behavior and must not be inferred from an old architecture snapshot.
+

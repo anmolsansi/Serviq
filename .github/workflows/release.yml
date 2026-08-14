@@ -1,0 +1,372 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version tag, for example v0.2.0-alpha.1 or v1.0.0"
+        required: true
+        type: string
+      title:
+        description: "Optional release title; defaults to Serviq <version>"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: true
+        default: true
+        type: boolean
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - .github/release.yml
+      - .github/workflows/release.yml
+      - .github/pull_request_template.md
+      - CONTRIBUTING.md
+      - docs/RELEASING.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap-foundation-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Check out the merged main commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.6"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/*/uv.lock
+
+      - name: Install dependencies
+        run: make setup
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make test
+
+      - name: Validate Compose configuration
+        run: docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+
+      - name: Ensure release labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create "release:major" --color B60205 --description "Breaking change requiring a major version" --force
+          gh label create "release:minor" --color 0E8A16 --description "Backward-compatible feature for a minor version" --force
+          gh label create "release:patch" --color 1D76DB --description "Backward-compatible fix for a patch version" --force
+          gh label create "release:skip" --color C5DEF5 --description "Exclude this pull request from generated release notes" --force
+          gh label create "breaking-change" --color D93F0B --description "Introduces a breaking compatibility change" --force
+          gh label create "feature" --color 0E8A16 --description "Adds user-visible or platform functionality" --force
+          gh label create "fix" --color D4C5F9 --description "Corrects faulty behavior" --force
+          gh label create "security" --color B60205 --description "Security hardening or vulnerability remediation" --force
+          gh label create "infrastructure" --color 5319E7 --description "Infrastructure, deployment, or operations change" --force
+          gh label create "testing" --color FBCA04 --description "Testing or quality-system change" --force
+          gh label create "dependencies" --color 0366D6 --description "Dependency update or dependency-management change" --force
+          gh label create "refactor" --color C2E0C6 --description "Internal restructuring without intended behavior change" --force
+          gh label create "performance" --color F9D0C4 --description "Performance or efficiency improvement" --force
+
+      - name: Publish the first Serviq foundation prerelease once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="v0.1.0-alpha.1"
+          TITLE="Serviq v0.1.0-alpha.1 — Platform Foundation"
+
+          git fetch origin main --tags
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already has a GitHub Release; bootstrap is complete."
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists without a release. Refusing to overwrite or repoint it."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "The bootstrap commit is not contained in main. Refusing to release."
+            exit 1
+          fi
+
+          NOTES=$(cat <<'EOF'
+          Serviq's first published prerelease captures the platform-foundation work completed so far and the repository release system itself.
+
+          ### What this alpha contains
+
+          - Three Next.js application boundaries for the client console, customer support surface, and Serviq platform console.
+          - FastAPI API, durable worker, and provider-neutral LLM gateway service boundaries.
+          - Local PostgreSQL + pgvector, Valkey, S3-compatible object storage, Keycloak, optional Redpanda, and optional observability infrastructure.
+          - Root development commands, pull-request CI, repository audit/governance, and generated GitHub release-note automation.
+
+          ### Current status
+
+          This is an **alpha developer preview**, not a production-ready customer release. Important product capabilities such as application authentication, product database schemas, business APIs, provider integrations, end-to-end customer-support workflows, complete security gates, E2E coverage, and load testing are still being built in later tickets.
+
+          GitHub's generated changelog is included below so the exact merged pull requests remain traceable.
+          EOF
+          )
+
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TITLE" \
+            --prerelease \
+            --latest=false \
+            --generate-notes \
+            --notes "$NOTES"
+
+  manual-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.6"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/*/uv.lock
+
+      - name: Validate release request
+        env:
+          VERSION: ${{ inputs.version }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Version must be semantic versioning with a leading v, for example v0.2.0-alpha.1 or v1.0.0."
+            exit 1
+          fi
+
+          if [[ "$VERSION" == *-* && "$IS_PRERELEASE" != "true" ]]; then
+            echo "A version with a prerelease suffix must be published as a GitHub prerelease."
+            exit 1
+          fi
+
+          if [[ "$VERSION" != *-* && "$IS_PRERELEASE" == "true" ]]; then
+            echo "A GitHub prerelease must use an explicit semantic-version prerelease suffix such as -alpha.1, -beta.1, or -rc.1."
+            exit 1
+          fi
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists. Published versions are never overwritten."
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists. Refusing to overwrite or repoint it."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: make setup
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make test
+
+      - name: Validate Compose configuration
+        run: docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+
+      - name: Publish release from the validated main commit
+        env:
+          VERSION: ${{ inputs.version }}
+          REQUESTED_TITLE: ${{ inputs.title }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin main --tags
+          TARGET_SHA=$(git rev-parse HEAD)
+
+          if ! git merge-base --is-ancestor "$TARGET_SHA" origin/main; then
+            echo "The validated commit is no longer contained in main. Refusing to release."
+            exit 1
+          fi
+
+          TITLE="$REQUESTED_TITLE"
+          if [[ -z "$TITLE" ]]; then
+            TITLE="Serviq $VERSION"
+          fi
+
+          ARGS=(
+            "$VERSION"
+            --target "$TARGET_SHA"
+            --title "$TITLE"
+            --generate-notes
+            --notes "Published from validated main commit \`$TARGET_SHA\` by the Serviq release workflow."
+          )
+
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            ARGS+=(--prerelease --latest=false)
+          fi
+
+          gh release create "${ARGS[@]}"
+
+  tagged-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.6"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/*/uv.lock
+
+      - name: Validate tag and main ancestry
+        env:
+          VERSION: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Tag $VERSION is not an allowed semantic version."
+            exit 1
+          fi
+
+          git fetch origin main --tags
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tagged commit $GITHUB_SHA is not contained in main. Refusing to publish it."
+            exit 1
+          fi
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists. Published versions are never overwritten."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: make setup
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make test
+
+      - name: Validate Compose configuration
+        run: docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+
+      - name: Publish release for the existing tag
+        env:
+          VERSION: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARGS=(
+            "$VERSION"
+            --verify-tag
+            --title "Serviq $VERSION"
+            --generate-notes
+            --notes "Published from validated main commit \`$GITHUB_SHA\` by the Serviq release workflow."
+          )
+
+          if [[ "$VERSION" == *-* ]]; then
+            ARGS+=(--prerelease --latest=false)
+          fi
+
+          gh release create "${ARGS[@]}"

@@ -1998,3 +1998,93 @@ All six tickets — OPE-266, OPE-267, OPE-268, OPE-269, OPE-270, and OPE-271 —
 Temporary validation PRs #58 and #59 remain intentionally closed without merge because their purpose was to prove runtime/developer-lifecycle behavior, not to add permanent validation-only workflows. The stale stacked PRs #57, #56, and #60 are also closed; their final current-main replacements are PRs #62, #63, and #64 respectively.
 
 The repository now has three additional production-foundation capabilities that were not present before this batch: optional local event/observability infrastructure, a repeatable developer/CI command-and-quality path, and explicit repository audit/governance rules for every later builder ticket.
+
+---
+
+# OPE-304 — GitHub Releases and semantic versioning
+
+## What we added
+
+Before this ticket, Serviq had commits, branches, pull requests, CI, and repository governance, but it had no Git tags and no GitHub Releases. That meant the repository could explain what had merged, but it did not have a permanent named product snapshot such as “version 0.1.0.”
+
+OPE-304 adds the missing release layer without changing any Serviq runtime API, database, authentication, event, or product contract.
+
+The implementation adds `.github/release.yml`, which tells GitHub how to group merged pull requests when it generates release notes. Categories distinguish breaking changes, security work, features, bug fixes, performance, infrastructure, testing, dependencies, documentation, refactors, and unmatched changes. A `release:skip` label excludes a pull request from generated notes when it truly should not appear.
+
+The implementation also adds `.github/workflows/release.yml`. This is not the same file as `.github/release.yml`: the first is executable GitHub Actions automation; the second is only changelog configuration.
+
+The release workflow has three paths:
+
+1. a one-time foundation bootstrap after the release system first merges to `main`;
+2. an authorized manual release from the GitHub Actions UI;
+3. a release created from an existing semantic-version tag.
+
+Every publishing path is designed to fail closed. A requested version must match the approved `vMAJOR.MINOR.PATCH` format with an optional prerelease suffix. Existing release versions are never overwritten. Existing tags are never silently repointed. A tag-driven release is rejected if its commit is not contained in `main`.
+
+## Why the version starts at v0.1.0-alpha.1
+
+The repository has meaningful platform-foundation work, but many customer-facing production capabilities are still intentionally absent. Calling the current code `v1.0.0` would imply a stability and completeness level that has not been earned yet.
+
+The first release is therefore designed as:
+
+```text
+v0.1.0-alpha.1
+Serviq v0.1.0-alpha.1 — Platform Foundation
+```
+
+The `0` major version communicates that the product is still before the stable public contract, and the `alpha.1` suffix makes the developer-preview status explicit in both the tag and GitHub Release UI.
+
+## Quality checks before publishing
+
+The workflow does not create a release immediately after somebody types a version number. It first installs the repository's real dependencies and runs the existing baseline gates:
+
+```text
+make setup
+make lint
+make typecheck
+make test
+docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+```
+
+This reuses the same command surface contributors already use rather than creating a second hidden release-only test system.
+
+`make security`, `make e2e`, and `make load-test` are not called yet because they are currently deliberate failing placeholders. Treating a placeholder as a successful release gate would create a false quality signal. Later tickets should add those commands to release publishing only after they contain real checks.
+
+## Release labels and pull-request metadata
+
+OPE-304 extends the pull-request template so every future change states its release impact. The four release-impact choices are `release:major`, `release:minor`, `release:patch`, and `release:skip`.
+
+The release workflow creates the new repository labels idempotently using GitHub's repository-scoped automation token. It does not delete or replace the existing default GitHub labels such as `bug`, `documentation`, and `enhancement`.
+
+The PR template also asks for a user-visible change description, upgrade/migration information, and an explicit breaking-change declaration. This makes release consequences visible during code review instead of being reconstructed weeks later when someone tries to publish a version.
+
+## Permanent operator documentation
+
+`docs/RELEASING.md` explains the release lifecycle in plain language. It documents Semantic Versioning, the relationship between tickets/PRs/tags/releases, manual release steps, tag-driven release behavior, prerelease rules, post-release verification, and what the release process still intentionally does not automate.
+
+`CONTRIBUTING.md` now links those release rules directly into the normal contributor workflow, and `docs/repo_context.md` records the new convention for later builders because repository reality changed after the OPE-270 audit.
+
+## Security and integrity decisions
+
+The release workflow does not require a personal access token, provider API key, or paid service. It uses GitHub's short-lived repository-scoped `GITHUB_TOKEN` and grants write permission only to the jobs that actually publish releases or create labels.
+
+Release input is validated before it is used as a version. Values are quoted in shell commands. Published versions are treated as immutable by repository policy even before GitHub's stronger repository-level immutable-release setting is enabled.
+
+Repository-level immutable releases are intentionally deferred until the release process has been exercised and future artifact/signing behavior is defined. The current policy already forbids moving a published tag or replacing different code under the same version; a correction must receive a new version.
+
+## What this improves
+
+Serviq now gains a permanent answer to “what exact code is version X?” A prospective client or contributor can use the Releases page instead of reading dozens of commits to understand meaningful product snapshots. Release notes are tied back to merged pull requests, while every release is associated with one exact tested commit.
+
+The release system also creates a clean future path for Docker images, SBOMs, signed artifacts, provenance, deployments, and hotfix policies without prematurely implementing those systems today.
+
+## Intentionally deferred
+
+OPE-304 does not deploy production environments, publish containers to GHCR, generate SBOMs, sign artifacts, create attestations, infer the next version automatically, create release/hotfix branches, or declare Serviq `v1.0.0` production-ready.
+
+Those capabilities have different security and operational consequences and should be implemented through separate tickets after their requirements are explicit.
+
+## Completion gate
+
+The code/documentation portion of OPE-304 is complete only when the implementation PR passes baseline CI and merges to `main`. The ticket itself remains open until the post-merge Release workflow successfully creates `v0.1.0-alpha.1`, the release/tag are verified to point at the intended merged commit, and the release is visibly marked as a prerelease.
+

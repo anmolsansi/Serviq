@@ -11,8 +11,9 @@ completes CCR-004 by adding the deferred membership invitation foreign key.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260814_0003"
 down_revision: str | Sequence[str] | None = "20260814_0002"

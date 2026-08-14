@@ -10,9 +10,10 @@ is created here so the final schema shape stays frozen.
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260814_0002"
 down_revision: str | Sequence[str] | None = "20260814_0001"

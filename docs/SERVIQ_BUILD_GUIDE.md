@@ -2172,3 +2172,56 @@ API tests cover a valid local environment, an unsupported environment name, a ma
 ### Intentional limits
 
 This ticket does not create a database connection, log a user in through OIDC, encrypt secrets, connect to AWS Secrets Manager, load tenant BYOK credentials, or change provider contracts. It defines and validates the platform configuration boundary those future implementations can safely consume.
+
+
+## OPE-274 — Public README and verified local setup
+
+### Why this ticket mattered
+
+Before OPE-274 the first thing a visitor saw in the public GitHub repository was only `# Serviq`. That title did not explain what the product is, what actually works today, how to run the repository, or which ambitious goals are still future targets. For a public engineering project, a vague README is not just a documentation problem: it makes reviewers guess whether the code is unfinished, whether setup instructions exist somewhere else, and whether performance claims are real.
+
+OPE-274 turns the root `README.md` into a truthful front door for the project while keeping the detailed technical truth in the existing architecture, repository-context, and cumulative build documents.
+
+### What changed
+
+The README now introduces Serviq as an Enterprise AI Customer Operations Platform and immediately states its current development status. It distinguishes the *product direction* from the *code that already exists*. The current repository is described as having product/architecture foundations, three web-app scaffolds, Python service boundaries, local infrastructure, CI/security gates, and typed platform configuration. It also explicitly says the full end-to-end customer-operations product is not production-ready yet.
+
+A repository map explains the purpose of the three applications, three Python services, TypeScript packages, Docker infrastructure, and documentation. The README then links directly to the PRD, product specification, architecture, technology stack, repository context, cumulative Serviq Build Guide, and design references. This means a new intern can start with a short overview and move into deeper documents without guessing which file is authoritative.
+
+### How local setup is explained
+
+The setup section uses the versions and commands that the repository actually owns. It tells contributors to use Node 24.18.0 from `.nvmrc`, pnpm 10.15.0, Python 3.14.x, uv, Docker Compose v2, and Make. The installation sequence is `git clone`, `cd`, copy `.env.example` to the ignored `.env`, enable the pinned pnpm version, and run `make setup`.
+
+Local Docker infrastructure is described separately from application processes. `make dev` starts the default infrastructure—PostgreSQL/pgvector, Keycloak, Valkey, and S3-compatible object storage—and prints the commands for application processes. Keycloak intentionally has no known fallback bootstrap password, so the README shows a local-only `KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD` export before `make dev` instead of hiding that requirement.
+
+The optional `events` profile is documented for Redpanda. The optional `observability` profile is documented for the OpenTelemetry Collector, Prometheus, Grafana, Loki, and Tempo. The README also shows how to activate all profiles and how `make down` cleans up the stack. A branch-only validation job rendered the default, events, observability, and all-profile Compose configurations with a validation-only Keycloak password so these commands were checked against the real Compose file rather than copied from memory.
+
+### What the application commands mean
+
+The README lists the exact current commands for the Client Console, Customer Web, Platform Console, API, Worker, and LLM Gateway. Directly below them it explains an important limitation: successfully starting a scaffold does not mean authentication, tenant workflows, RAG, order/refund tools, human handoff, analytics, or the complete AI-support flow is implemented. This prevents a common portfolio mistake where a running placeholder screen is described as a completed product.
+
+### Validation commands and deliberate failures
+
+`make lint`, `make typecheck`, `make test`, and `make security` are presented as the working validation surface. The README explains that the local security command performs dependency audits while pull requests also run CodeQL, Gitleaks, Trivy, and dependency scanning.
+
+`make e2e` and `make load-test` are documented differently: they are clearly labeled *planned, not implemented yet*. Those Makefile targets intentionally fail today. Showing that fact is better than omitting the commands or making a placeholder command return success, because a green placeholder could falsely imply that end-to-end or load testing exists.
+
+### Scale wording
+
+The README preserves Serviq's large-scale ambition without converting it into a fake benchmark. It says 10 million concurrent connections/users is a long-term architecture target and explicitly says the repository has not achieved that benchmark. It also explains that registered users, connected clients, active request throughput, and LLM request rate are different metrics. Future scale claims must be tied to reproducible load tests and a defined workload.
+
+### Demo and non-affiliation wording
+
+The README records the existing demo-domain decision precisely: DoorDash is a reference support/delivery domain, while Stripe is a separate reference payment-provider domain. It does not claim DoorDash uses Stripe. It also states that these references do not imply affiliation, sponsorship, endorsement, or an existing integration, and that demo private/business records are synthetic unless a source is explicitly public and permitted.
+
+### Security and contribution expectations
+
+A short security note tells contributors not to commit credentials, provider keys, customer PII, private business data, or production secrets. It reinforces the OPE-273 boundary that tenant/provider BYOK credentials are not global environment variables. The README also avoids inventing a contribution or production-support promise: it says a formal external contribution and release/deployment support policy has not yet been published.
+
+### What this improves
+
+OPE-274 makes a fresh clone understandable without requiring the reader to inspect dozens of files. More importantly, it creates a public truthfulness boundary: visitors can distinguish current scaffolding from future product behavior, working commands from planned test commands, and architecture targets from measured performance. That makes the repository more useful to developers, reviewers, prospective clients, and future maintainers without overselling unfinished work.
+
+### Validation
+
+The temporary branch-only finalizer checked every relative Markdown link in the README, checked the required production-readiness/scale/non-affiliation/planned-test wording, and rendered all documented Docker Compose profile combinations. The normal CI and Security workflows remain the final merge gates. The temporary finalizer itself is removed before merge so no ticket-specific workflow is left behind.

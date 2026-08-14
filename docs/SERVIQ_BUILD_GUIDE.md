@@ -2225,3 +2225,62 @@ OPE-274 makes a fresh clone understandable without requiring the reader to inspe
 ### Validation
 
 The temporary branch-only finalizer checked every relative Markdown link in the README, checked the required production-readiness/scale/non-affiliation/planned-test wording, and rendered all documented Docker Compose profile combinations. The normal CI and Security workflows remain the final merge gates. The temporary finalizer itself is removed before merge so no ticket-specific workflow is left behind.
+
+
+## OPE-275 — SQLAlchemy sessions and Alembic persistence foundation
+
+### What problem this solves
+
+Until OPE-275, Serviq knew that PostgreSQL and SQLAlchemy would be used, but the API did not have a real database connection pattern. That sounds like a small missing piece, but it is a major architectural boundary: if one feature creates a synchronous SQLAlchemy session, another creates an asynchronous session, and a third opens raw database connections, later transactions, tests, migrations, and connection handling become inconsistent. OPE-275 establishes one route into PostgreSQL before product tables are created.
+
+### Architect decision before coding
+
+The ticket explicitly required an architect decision because the repository had not frozen sync versus async SQLAlchemy. `docs/architecture-decisions/ADR-001-api-database-session-model.md` now records that decision before the persistence implementation: the FastAPI service uses SQLAlchemy 2 asynchronous sessions with Psycopg 3. `services/api/app/core/database.py` owns the engine/session boundary, `services/api/app/models/base.py` owns one declarative metadata root, and `services/api/alembic/` owns schema migrations. Application repositories must not create a second synchronous engine/session pattern.
+
+This choice fits the asynchronous FastAPI service and keeps database I/O from introducing a separate blocking persistence style. Psycopg 3 also supports the project's Python 3.14/PostgreSQL 18 development targets and can be selected by SQLAlchemy's async PostgreSQL dialect.
+
+### How `DATABASE_URL` becomes a database engine
+
+OPE-273 froze the external variable name `DATABASE_URL`. OPE-275 does not rename it or require developers to know SQLAlchemy driver syntax. The database adapter accepts the normal `postgresql://...` form and converts only the internal SQLAlchemy scheme to `postgresql+psycopg://...`. It also accepts an already explicit Psycopg URL. Any non-PostgreSQL scheme is rejected with the safe message `DATABASE_URL must use the PostgreSQL scheme`; the rejected URL and its password are not copied into that error.
+
+`create_database_engine()` creates an `AsyncEngine` with `pool_pre_ping=True`. The pre-ping lets SQLAlchemy check a pooled connection before handing it back to application work, reducing the chance that an old/stale connection is reused after PostgreSQL or the network has interrupted it. OPE-275 deliberately does not choose production pool sizes yet because those values should be based on deployment capacity and measured workload rather than guesses.
+
+### One session factory
+
+`create_database_session_factory()` creates the approved `async_sessionmaker`. Sessions use `expire_on_commit=False` and `autoflush=False`, making commits and flush points explicit for future service/repository code. The process-wide engine and session factory are lazy and cached: importing the API does not immediately require a database connection or load every environment value, but the first database consumer receives the same engine/factory rather than inventing a new one.
+
+`get_database_session()` is the request/work-unit boundary. It opens one `AsyncSession` using an async context manager and guarantees that the session is closed when the caller finishes. It does not automatically commit business changes. Future services must decide when a transaction should commit or roll back, which prevents a generic infrastructure helper from silently deciding business semantics.
+
+`dispose_database_engine()` exists for controlled shutdown/tests. It disposes the cached engine and clears the factories so a new controlled environment can create a fresh connection boundary.
+
+### The model metadata root
+
+`services/api/app/models/base.py` contains one SQLAlchemy `DeclarativeBase`. No customer, tenant, role, invitation, order, or other product model is created in this ticket. The purpose of the base is to give all future models one metadata registry and to give Alembic one place to read schema metadata. That prevents later modules from creating independent model bases that Alembic cannot see together.
+
+### Alembic setup
+
+`services/api/alembic.ini` and `services/api/alembic/env.py` make Alembic the required schema-change mechanism. The environment uses the same typed `DATABASE_URL`, adapts it through the same database helper, imports the same `Base.metadata`, and runs migrations through an async SQLAlchemy engine with a temporary `NullPool`. In simple terms: application connections and migration connections use the same database technology and URL contract, but migrations do not keep a long-lived application-style pool.
+
+The first revision, `20260814_0001_database_baseline.py`, is intentionally empty. Upgrading it proves that Alembic can track a Serviq schema version; it does not create a Serviq product table. Downgrading it is equally empty and reversible. This is useful because OPE-277 and later tickets can now depend on a known migration head instead of combining infrastructure setup with the first business schema.
+
+### Real PostgreSQL test instead of SQLite
+
+The normal unit/quality job still runs without requiring a local database. The database integration test is skipped there unless `SERVIQ_DATABASE_INTEGRATION=1`. CI now has a separate `database-integration` job that launches the same PostgreSQL 18 + pgvector image family used by local Compose, loads safe test platform settings, installs the frozen API environment, runs `alembic upgrade head`, executes a real `SELECT 1` through the async session factory, inspects the public schema, and confirms that there are no product tables beyond Alembic's own version bookkeeping. It then runs `alembic downgrade base`.
+
+This separation matters. SQLite is excellent for many projects, but it would not prove PostgreSQL-specific migration behavior, PostgreSQL connection-driver behavior, or later PostgreSQL constraints. Serviq's persistence integration path therefore tests the database it is actually designed to run.
+
+### Dependency and reproducibility changes
+
+The API already depended on SQLAlchemy and Alembic. OPE-275 adds `psycopg[binary]>=3.3,<4` as the PostgreSQL driver and refreshes `services/api/uv.lock`, so CI and developer installs use a frozen compatible dependency graph. The binary package keeps development/CI setup self-contained; deployment packaging can be revisited later without changing the SQLAlchemy/Psycopg application contract.
+
+### What this improves
+
+After OPE-275, every upcoming repository and migration has a defined answer to five questions: which engine style is used, where sessions come from, which metadata base owns models, how schema changes are applied, and how PostgreSQL behavior is tested. Establishing those answers now removes a large class of accidental divergence before tenant/RBAC/invitation tables arrive.
+
+### What is intentionally not built
+
+OPE-275 creates no Serviq domain table, no repository classes, no RLS policy, no seed data, no connection-pool tuning, no read replica routing, and no auth or API behavior. The only database table Alembic may create for bookkeeping is `alembic_version`. Product schema work begins in later tickets.
+
+### Validation required before completion
+
+The branch must pass normal lint, mypy/type checking, unit tests, the Security workflow, and the permanent real-PostgreSQL integration job. The integration job must successfully upgrade to migration head, connect/query through the approved async session factory, confirm no product tables were introduced, and downgrade to base. The temporary OPE-275 finalizer is removed before merge.

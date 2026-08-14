@@ -1,0 +1,54 @@
+changelog:
+  exclude:
+    labels:
+      - release:skip
+
+  categories:
+    - title: Breaking Changes
+      labels:
+        - release:major
+        - breaking-change
+
+    - title: Security
+      labels:
+        - security
+
+    - title: Features
+      labels:
+        - release:minor
+        - feature
+        - enhancement
+
+    - title: Bug Fixes
+      labels:
+        - release:patch
+        - fix
+        - bug
+
+    - title: Performance
+      labels:
+        - performance
+
+    - title: Infrastructure
+      labels:
+        - infrastructure
+
+    - title: Testing and Quality
+      labels:
+        - testing
+
+    - title: Dependencies
+      labels:
+        - dependencies
+
+    - title: Documentation
+      labels:
+        - documentation
+
+    - title: Refactoring
+      labels:
+        - refactor
+
+    - title: Other Changes
+      labels:
+        - "*"

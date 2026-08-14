@@ -2284,3 +2284,56 @@ OPE-275 creates no Serviq domain table, no repository classes, no RLS policy, no
 ### Validation required before completion
 
 The branch must pass normal lint, mypy/type checking, unit tests, the Security workflow, and the permanent real-PostgreSQL integration job. The integration job must successfully upgrade to migration head, connect/query through the approved async session factory, confirm no product tables were introduced, and downgrade to base. The temporary OPE-275 finalizer is removed before merge.
+
+
+## OPE-276 — Database-backed API readiness health check
+
+### What this ticket adds
+
+OPE-276 gives Serviq two infrastructure health endpoints with deliberately different meanings. `GET /health/live` answers only “is this API process alive?” while `GET /health/ready` answers “is this API process currently able to reach PostgreSQL and therefore safe to receive work that depends on the database?” Those questions must stay separate. A process can still be running even when PostgreSQL is stopped, overloaded, restarting, or unreachable.
+
+The readiness contract is intentionally tiny. When PostgreSQL answers, the API returns HTTP 200 with exactly `{"status":"ready"}`. When PostgreSQL cannot be reached, raises an error, or takes too long, the API returns HTTP 503 with exactly `{"status":"not_ready","dependency":"database"}`. The public response never contains a database URL, hostname, username, password, SQL text, driver exception, or stack trace.
+
+### Architect decision before adding the route
+
+The repository had architecture text for `/health/live` and `/health/ready`, but there was no implemented health router or completed feature-module pattern. Rather than silently inventing a location, OPE-276 records `ADR-002-api-health-module-boundary.md`. The decision puts HTTP behavior in `services/api/app/modules/health/router.py`, dependency orchestration in `services/api/app/modules/health/service.py`, the low-level SQL ping in the existing `services/api/app/core/database.py` boundary, and leaves `services/api/app/main.py` responsible only for composing the router into FastAPI.
+
+Health routes deliberately live at `/health/*`, not `/api/v1/*`, because they are infrastructure probes rather than customer/business REST resources. The ADR also freezes an important rule: liveness can never gain a database dependency by accident.
+
+### What happens during readiness
+
+`ping_database()` reuses the single asynchronous SQLAlchemy engine established in OPE-275. It opens a connection and executes only `SELECT 1`. This query does not inspect a Serviq table, read customer data, run a migration, or mutate anything. Its purpose is simply to prove that the API can connect to PostgreSQL and receive a valid response.
+
+`database_is_ready()` wraps that ping in Python's async timeout mechanism with a frozen budget of 2.0 seconds. If the ping finishes normally, it returns `True`. If the timeout expires, it returns `False`. If database/config/driver code raises any dependency failure, it also returns `False`. The service intentionally normalizes those failures instead of allowing a raw SQLAlchemy or Psycopg exception to cross into the HTTP layer.
+
+The route then translates only that boolean into the frozen 200 or 503 response. This separation is useful because the public API contract never needs to know what kind of internal database exception occurred. Operators get a stable signal, and implementation details remain private.
+
+### Why the broad dependency failure catch is deliberate
+
+A readiness endpoint has a different job from a business endpoint. Its job is not to diagnose a PostgreSQL exception for an end user; its job is to say whether this process should receive traffic. A configuration error, unavailable host, refused connection, driver error, or unexpected database-layer exception all mean the same thing to readiness: this instance is not ready. For that reason, the health service catches the dependency failure boundary broadly and emits only the stable event `database_readiness_failed`. Timeouts emit `database_readiness_timeout`.
+
+The caught exception object is not attached to these warning logs. That is a security choice. Database exceptions can include server names, ports, SQL, or connection details. The repository's full structured-observability implementation is still future work, so ADR-002 allows a named Python logger now but freezes the rule that raw database details must not be logged from readiness.
+
+### Liveness stays independent
+
+`GET /health/live` does not call `database_is_ready()` or `ping_database()`. It returns HTTP 200 with `{"status":"live"}` based on the process being capable of serving the route. This matters for container/orchestrator behavior: if PostgreSQL is temporarily down, Serviq should be marked not-ready for traffic, but an orchestrator should not necessarily conclude that the API process itself is dead and continuously restart it.
+
+### Tests added
+
+`services/api/tests/test_health.py` covers the exact public contracts and the failure safety boundary. It proves that healthy readiness returns exactly the 200 body, an unavailable dependency returns exactly the 503 body, timeout logic cancels a deliberately slow ping, the production timeout constant remains exactly two seconds, fake connection credentials/host/SQL embedded in an exception never appear in captured health logs, and liveness does not call database readiness at all.
+
+HTTP contract tests use FastAPI's test client, so OPE-276 adds `httpx` only to the API development dependency group and refreshes the frozen `services/api/uv.lock`. It is not a production runtime dependency.
+
+The existing permanent PostgreSQL CI job is also widened from one individual integration-test file to the whole `tests/integration` directory. A new real-database test calls `/health/ready` against the PostgreSQL 18 + pgvector service used in CI and requires the real 200 readiness contract. This means the endpoint is not considered complete merely because a mock says the database is healthy.
+
+### What this improves
+
+Before OPE-276, infrastructure could know only that a FastAPI process existed. It could not distinguish “the API is alive and can use PostgreSQL” from “the API process is alive but its critical database is unavailable.” After OPE-276, future Docker/Kubernetes/load-balancer configuration can use liveness and readiness for their correct separate purposes. The endpoint also gives developers a very small diagnostic surface when starting the local stack.
+
+### What is intentionally not part of readiness yet
+
+Only PostgreSQL is checked. Valkey, Kafka/Redpanda, object storage, OIDC, the LLM gateway, model providers, webhooks, and other downstream integrations are not added to readiness by this ticket. Adding every dependency to one probe can make a service unnecessarily unavailable, so each future dependency should be considered deliberately. OPE-276 also does not alter migrations, connection-pool sizing, authentication, tenant behavior, product tables, Kubernetes manifests, probe intervals, or alerting.
+
+### Validation required before completion
+
+The final pull request must pass normal repository lint, mypy/type checks, unit tests, Compose validation, the real PostgreSQL integration job, and the OPE-272 Security workflow. The branch-specific finalizer exists only to refresh the API lock and append this cumulative documentation; it is removed before merge.

@@ -565,3 +565,12 @@ ADR-001 freezes the API on one async SQLAlchemy 2 + Psycopg 3 persistence patter
 `DATABASE_URL` remains the architecture-owned external name. The adapter converts `postgresql://` to `postgresql+psycopg://` internally and safely rejects non-PostgreSQL schemes without printing the URL. `services/api/alembic.ini` plus `services/api/alembic/` are the migration boundary; the first revision `20260814_0001` is intentionally empty and creates no product table.
 
 `.github/workflows/ci.yml` now has a permanent `database-integration` job using `pgvector/pgvector:0.8.6-pg18-bookworm`. It upgrades Alembic, runs the real PostgreSQL session integration test, and downgrades to base. Normal unit tests skip that integration test unless `SERVIQ_DATABASE_INTEGRATION=1`. Future database migrations and repository code must preserve this real-PostgreSQL path.
+
+
+### OPE-276 health/readiness reality
+
+ADR-002 establishes `services/api/app/modules/health/` as the infrastructure health module. `router.py` owns `/health/live` and `/health/ready`; `service.py` owns dependency orchestration and the 2.0-second PostgreSQL readiness budget; `services/api/app/core/database.py` owns `ping_database()` and executes only `SELECT 1`; `services/api/app/main.py` composes the router.
+
+`GET /health/live` is process-only and returns `{"status":"live"}`. It must not acquire dependency checks. `GET /health/ready` currently checks PostgreSQL only. Success is exactly HTTP 200 `{"status":"ready"}`. Database exception/unavailability/timeout is exactly HTTP 503 `{"status":"not_ready","dependency":"database"}`. Health failure logs use stable event names only and must not attach raw dependency exceptions or connection details.
+
+API HTTP contract tests now use `httpx` as a development-only dependency. The permanent CI `database-integration` job runs the entire `services/api/tests/integration` directory after Alembic upgrade and before downgrade, so readiness is exercised against real PostgreSQL in addition to mocked unit/contract tests.

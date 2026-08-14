@@ -556,3 +556,12 @@ The release labels defined by OPE-304 now exist in GitHub. Future builders shoul
 `services/api/app/core/config.py` is the authoritative API adapter for Architecture v1.3 platform environment names. `services/worker/app/core/config.py` mirrors the same frozen contract because that service already had an approved config boundary; the repository still has no approved cross-service Python package. Do not create one from a feature ticket. The LLM gateway did not have an existing core config path when OPE-273 was implemented, so it remains unchanged rather than inventing a new package boundary.
 
 Configuration is loaded through `load_settings()` rather than scattered `os.getenv()` calls. Startup errors expose invalid/missing field names only and must not echo raw values. Production requires non-empty object-storage credentials, OIDC client secret, session secret, and LLM gateway internal token. Tenant/provider BYOK keys are not platform environment variables. Root `.env.example` contains placeholders only and is the local-development template.
+
+
+### OPE-275 database persistence reality
+
+ADR-001 freezes the API on one async SQLAlchemy 2 + Psycopg 3 persistence pattern. `services/api/app/core/database.py` exclusively owns SQLAlchemy database URL adaptation, AsyncEngine construction, the process-cached `async_sessionmaker`, the session dependency, and engine disposal. Do not create a parallel sync SQLAlchemy engine/session path. `services/api/app/models/base.py` is the one declarative metadata root.
+
+`DATABASE_URL` remains the architecture-owned external name. The adapter converts `postgresql://` to `postgresql+psycopg://` internally and safely rejects non-PostgreSQL schemes without printing the URL. `services/api/alembic.ini` plus `services/api/alembic/` are the migration boundary; the first revision `20260814_0001` is intentionally empty and creates no product table.
+
+`.github/workflows/ci.yml` now has a permanent `database-integration` job using `pgvector/pgvector:0.8.6-pg18-bookworm`. It upgrades Alembic, runs the real PostgreSQL session integration test, and downgrades to base. Normal unit tests skip that integration test unless `SERVIQ_DATABASE_INTEGRATION=1`. Future database migrations and repository code must preserve this real-PostgreSQL path.

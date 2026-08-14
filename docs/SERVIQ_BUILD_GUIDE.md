@@ -2088,3 +2088,19 @@ Those capabilities have different security and operational consequences and shou
 
 The code/documentation portion of OPE-304 is complete only when the implementation PR passes baseline CI and merges to `main`. The ticket itself remains open until the post-merge Release workflow successfully creates `v0.1.0-alpha.1`, the release/tag are verified to point at the intended merged commit, and the release is visibly marked as a prerelease.
 
+## OPE-304 final verified result
+
+**Completed.** The release-system implementation merged through PR #67 into `main` at commit `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`.
+
+Baseline CI run `31832353639` completed successfully on that exact `main` commit. The new Release workflow then ran as `31832353708`. Its `bootstrap-foundation-release` job successfully completed dependency setup, linting, type checking, tests, Docker Compose configuration validation, release-label creation, and the first release publication.
+
+GitHub now contains the tag `v0.1.0-alpha.1`, and that tag points exactly to `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`. The corresponding GitHub Release is named `Serviq v0.1.0-alpha.1 — Platform Foundation`, is published rather than draft, and is explicitly marked as a prerelease. The release notes state that this is an alpha developer preview and not a production-ready customer release.
+
+The repository release labels now exist alongside the original GitHub default labels: `release:major`, `release:minor`, `release:patch`, `release:skip`, `breaking-change`, `feature`, `fix`, `security`, `infrastructure`, `testing`, `dependencies`, `refactor`, and `performance`.
+
+PR #67 was subsequently labelled `release:minor` and `infrastructure` so its repository metadata matches the release policy introduced by the ticket. The first generated release notes necessarily include the repository's historical merged pull requests under the catch-all category because those older pull requests predate the release-label convention. Future releases will become more structured as new pull requests use the new labels before merge.
+
+The first release tag is intentionally left pointing to the OPE-304 implementation merge commit. Later documentation-only reconciliation commits do not move or rewrite that published tag; this demonstrates the repository policy that published versions are permanent history.
+
+OPE-304 therefore established and exercised the complete first release loop: reviewed code -> green PR CI -> merge to `main` -> green `main` CI -> release quality gates -> immutable-by-policy semantic tag -> published GitHub prerelease -> verification.
+

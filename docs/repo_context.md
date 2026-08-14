@@ -536,3 +536,9 @@ Release publishing is not deployment. There is currently no release-triggered pr
 
 Builder start rule: when a later ticket changes release/versioning behavior, read `.github/workflows/release.yml`, `.github/release.yml`, `docs/RELEASING.md`, and the current PR template/CONTRIBUTING policy before editing. Release governance is repository behavior and must not be inferred from an old architecture snapshot.
 
+### OPE-304 verified release state
+
+The OPE-304 release system has now been exercised successfully, not merely configured. PR #67 merged to `main` at `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`; baseline CI run `31832353639` and Release workflow run `31832353708` both succeeded. The first repository tag and GitHub Release are `v0.1.0-alpha.1`, with the tag pointing to that exact merge commit and the release marked as a prerelease.
+
+The release labels defined by OPE-304 now exist in GitHub. Future builders should treat the release workflow, generated-release-note configuration, PR release-impact fields, `CONTRIBUTING.md`, and `docs/RELEASING.md` as implemented repository behavior rather than future planning.
+

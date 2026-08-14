@@ -50,6 +50,8 @@ jobs:
 
       - name: Scan Git history and current tree for secrets
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   filesystem:
     name: Trivy filesystem and configuration scan
@@ -57,6 +59,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      security-events: write
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -70,7 +73,15 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: '1'
-          format: table
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload Trivy report to code scanning
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-filesystem
 
   dependencies:
     name: Dependency vulnerability audit
@@ -86,7 +97,6 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       - name: Enable pinned pnpm
         run: |

@@ -2104,3 +2104,32 @@ The first release tag is intentionally left pointing to the OPE-304 implementati
 
 OPE-304 therefore established and exercised the complete first release loop: reviewed code -> green PR CI -> merge to `main` -> green `main` CI -> release quality gates -> immutable-by-policy semantic tag -> published GitHub prerelease -> verification.
 
+
+
+## OPE-272 — Baseline repository security scanning
+
+### What we changed
+
+Serviq now has a dedicated security workflow at `.github/workflows/security.yml`. Think of it as four independent security inspectors that automatically examine every pull request and every change merged to `main`. One inspector looks for risky code patterns, one looks for accidentally committed passwords or API keys, one checks the repository and infrastructure configuration for known high-severity problems, and one checks third-party software dependencies for publicly known vulnerabilities.
+
+The four gates are intentionally separate so a new contributor can tell *what kind* of problem failed instead of seeing one vague “security failed” result. CodeQL scans both the JavaScript/TypeScript and Python code. Gitleaks checks the complete Git history and current tree for secret-like material. Trivy scans the filesystem and configuration for HIGH and CRITICAL vulnerabilities or misconfigurations. The dependency job runs `pnpm audit` for production JavaScript dependencies and `pip-audit` against the frozen API and worker Python lockfiles.
+
+### Why we did it this way
+
+Serviq is designed to eventually handle customer information, organization credentials, uploaded documents, webhook data, LLM requests, and tenant-specific configuration. A security mistake becomes harder and more expensive to fix after many features depend on it. Adding automatic checks at the foundation stage means future code is examined before it reaches `main`.
+
+The workflow does not use `continue-on-error` for required findings. In ordinary language, that means a serious finding cannot be quietly ignored while GitHub still shows a green check. Scanner setup/network failures also fail the relevant job rather than pretending the repository was scanned successfully.
+
+### Supply-chain and permission safety
+
+The workflow pins the checkout, CodeQL, Gitleaks, Trivy, Node setup, and uv setup actions to exact commit SHAs. This prevents an upstream moving tag from silently changing the code Serviq executes in CI. The workflow is read-only by default. Only the CodeQL job receives `security-events: write`, because that job must upload analysis results to GitHub code scanning. No tenant provider key or paid security service is required.
+
+The local `make security` command is no longer a fake failing placeholder. It runs the dependency-audit portion locally and explicitly tells the developer that CodeQL, Gitleaks, and Trivy are enforced by GitHub Actions. This keeps local setup lightweight while preserving the full repository gate in CI.
+
+### What this improves
+
+Before OPE-272, a pull request could pass the normal lint/type/test workflow even if it accidentally contained a credential, introduced a known vulnerable dependency, or added a serious infrastructure misconfiguration. After OPE-272, those failure classes have dedicated automated checks. This does not make Serviq “secure by default” or replace human security review; it creates a repeatable baseline that future tickets can build on.
+
+### Validation and intentional limits
+
+The ticket is considered complete only after the new Security workflow runs on the pull request and all four categories report understandable results. The implementation deliberately does not add container-image scanning because Serviq does not yet publish product container images, and it does not add penetration testing, runtime WAF/security controls, or custom Semgrep rules. Those are different layers of security and belong to later work.

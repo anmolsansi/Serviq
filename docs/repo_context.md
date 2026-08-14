@@ -542,3 +542,10 @@ The OPE-304 release system has now been exercised successfully, not merely confi
 
 The release labels defined by OPE-304 now exist in GitHub. Future builders should treat the release workflow, generated-release-note configuration, PR release-impact fields, `CONTRIBUTING.md`, and `docs/RELEASING.md` as implemented repository behavior rather than future planning.
 
+
+
+### OPE-272 security-gate reality
+
+`.github/workflows/security.yml` is now the repository security gate. It runs on pull requests and pushes to `main` with separate CodeQL, Gitleaks, Trivy filesystem/configuration, and dependency-audit jobs. Scanner/setup actions are pinned to exact commits, required findings are not configured with blanket `continue-on-error`, and workflow permissions are read-only except CodeQL's job-scoped `security-events: write`.
+
+`make security` now runs the local dependency-audit subset (`pnpm audit` plus pinned `pip-audit` for the frozen API and worker lockfiles) and points contributors to the GitHub workflow for CodeQL/Gitleaks/Trivy. The LLM gateway still has no committed uv lockfile, so the Python lockfile audit intentionally covers only the API and worker until that repository landmine is resolved.

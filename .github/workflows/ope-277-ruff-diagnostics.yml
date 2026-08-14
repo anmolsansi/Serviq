@@ -1,0 +1,38 @@
+name: OPE-277 Ruff diagnostics
+
+on:
+  push:
+    branches:
+      - ope-277-tenant-workforce-rbac
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ticket branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ope-277-tenant-workforce-rbac
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.14.6'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+      - name: Install API
+        run: cd services/api && uv sync --frozen
+      - name: Capture Ruff output
+        run: |
+          cd services/api
+          uv run ruff check . > ../../ope-277-ruff-output.txt 2>&1 || true
+      - name: Commit diagnostics
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ope-277-ruff-output.txt
+          git commit -m "chore(ope-277): capture Ruff diagnostics"
+          git push

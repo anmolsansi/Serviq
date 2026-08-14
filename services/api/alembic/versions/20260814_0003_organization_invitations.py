@@ -135,9 +135,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["invitation_id"],
             ["organization_invitations.id"],
-            name=(
-                "fk_organization_invitation_roles_invitation_id_organization_invitations"
-            ),
+            name="fk_org_invitation_roles_invitation_id",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
@@ -164,7 +162,7 @@ def upgrade() -> None:
     )
 
     op.create_foreign_key(
-        "fk_memberships_created_by_invitation_id_organization_invitations",
+        "fk_memberships_created_by_invitation_id",
         "memberships",
         "organization_invitations",
         ["created_by_invitation_id"],
@@ -175,7 +173,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint(
-        "fk_memberships_created_by_invitation_id_organization_invitations",
+        "fk_memberships_created_by_invitation_id",
         "memberships",
         type_="foreignkey",
     )

@@ -74,7 +74,10 @@ async def list_tenant_invitations(
     result = await session.execute(
         select(OrganizationInvitation)
         .where(OrganizationInvitation.tenant_id == tenant_id)
-        .order_by(OrganizationInvitation.created_at.desc(), OrganizationInvitation.id.desc())
+        .order_by(
+            OrganizationInvitation.created_at.desc(),
+            OrganizationInvitation.id.desc(),
+        )
     )
     return tuple(result.scalars().all())
 

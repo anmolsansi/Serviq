@@ -1,0 +1,143 @@
+name: Temporary OPE-272 through OPE-278 guide reconciliation
+
+on:
+  push:
+    branches:
+      - docs-ope-272-278-final-completion-guide
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Append final completion reconciliation
+        shell: bash
+        run: |
+          cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
+
+---
+
+# OPE-272 through OPE-278 — final completion reconciliation
+
+This section closes the loop on the seven tickets from OPE-272 through OPE-278. The detailed sections immediately above explain each ticket in depth. This reconciliation records the final repository state after the work was merged, so a non-technical reader can tell the difference between work that was merely planned and work that is actually present on `main`.
+
+No duplicate GitHub issues or replacement implementation branches were created during this reconciliation. Each ticket already followed the intended one-ticket, one-branch, one-pull-request workflow and was already completed in both Linear and GitHub.
+
+## OPE-272 — baseline repository security scanning
+
+**Final status:** Completed. GitHub issue #69 was closed as completed through merged PR #76.
+
+OPE-272 added a permanent security workflow so Serviq checks the repository for common security problems before later product code builds on top of it. The workflow covers source-code analysis, accidental secret detection, filesystem and configuration scanning, and dependency vulnerability auditing. These checks use free repository tooling and fail when required findings are detected instead of silently treating serious findings as warnings.
+
+The practical improvement is that security is no longer a manual memory task. A developer does not have to remember to run every scanner before every change. The repository itself now has an automated baseline that can catch exposed credentials, known vulnerable dependencies, risky code patterns, and important configuration problems earlier in the development process.
+
+The ticket also turned the local `make security` command into a real developer check instead of a placeholder. Dependency updates required by the audit were included in the same ticket so the newly added gate began from a passing baseline.
+
+## OPE-273 — typed platform configuration and safe environment example
+
+**Final status:** Completed. GitHub issue #70 was closed as completed through merged PR #77.
+
+OPE-273 converted Serviq's platform environment-variable contract into typed Python configuration for both the API and worker. In plain language, the backend now has one controlled place that reads settings such as database URLs, service endpoints, environment names, and platform-owned secrets. Invalid values fail early with safe error messages instead of leaking secret values into logs.
+
+The root `.env.example` gives developers a safe template for local configuration. It contains placeholders rather than real credentials. Production-only secrets have no insecure production default, and tenant-provided AI provider keys were intentionally kept out because they belong to a different BYOK security boundary.
+
+The improvement is predictable startup behavior. Configuration mistakes are detected close to application startup instead of becoming confusing runtime failures later. It also reduces the chance of a secret being copied into source control simply because a developer needed an example configuration file.
+
+## OPE-274 — public README and reproducible local setup
+
+**Final status:** Completed. GitHub issue #71 was closed as completed through merged PR #78.
+
+OPE-274 replaced the placeholder README with a real public entry point to Serviq. It explains what the product is, what is and is not implemented yet, how the repository is organized, which documentation is authoritative, what software versions a developer needs, and which commands are currently verified.
+
+The README deliberately avoids pretending planned work is already finished. Commands such as future end-to-end or load testing are identified as planned when they are not yet implemented. The long-term 10-million concurrent-connection goal is described as an architecture target rather than a measured benchmark. DoorDash and Stripe references are described as non-affiliated reference domains using synthetic/private-safe demo data.
+
+The improvement is trust and reproducibility. A new developer, reviewer, recruiter, or future client can start at the repository root and understand the current state without guessing which commands work or which product claims are aspirational.
+
+## OPE-275 — SQLAlchemy database sessions and Alembic foundation
+
+**Final status:** Completed. GitHub issue #72 was closed as completed through merged PR #79.
+
+OPE-275 introduced the real PostgreSQL persistence foundation for the API without prematurely adding product tables. Because the architecture had not yet frozen whether database access should use a synchronous or asynchronous SQLAlchemy model, the ticket stopped and recorded ADR-001 before implementation. The chosen pattern is SQLAlchemy 2 asynchronous sessions with Psycopg 3.
+
+The API now has one engine/session boundary, one declarative model base, Alembic migration configuration, an empty baseline migration, focused unit tests, and a real PostgreSQL integration test. CI proves that a clean database can migrate forward and backward instead of relying only on mocked or SQLite behavior.
+
+The improvement is architectural consistency. Future database-backed features have one approved session pattern and one migration system to extend. That prevents different contributors from introducing competing database lifecycles that are difficult to debug, test, or operate.
+
+## OPE-276 — database-aware readiness health check
+
+**Final status:** Completed. GitHub issue #73 was closed as completed through merged PR #80.
+
+OPE-276 made API readiness depend on actual PostgreSQL connectivity while keeping liveness independent from the database. The readiness endpoint performs a simple `SELECT 1` through the database boundary established by OPE-275 and must finish within a two-second budget.
+
+When PostgreSQL is healthy, readiness returns the frozen success response. When the database is unavailable, errors, or times out, readiness returns the frozen 503 response without exposing the database URL, credentials, raw SQLAlchemy exception, or stack trace. Liveness continues to answer whether the process itself is alive and does not become unavailable simply because PostgreSQL is down.
+
+ADR-002 records where the health module belongs because that module boundary was not previously frozen. The improvement is operational correctness. A deployment platform can now distinguish an API process that exists from an API instance that is actually ready to serve database-dependent traffic.
+
+## OPE-277 — tenant, workforce, and RBAC database migration
+
+**Final status:** Completed. GitHub issue #74 was closed as completed through merged PR #81.
+
+OPE-277 created Serviq's first product-domain database migration for organizations, users, memberships, roles, permissions, and membership-role assignments. The migration creates exactly the six frozen tables required by the architecture and enforces important uniqueness, state, index, and foreign-key rules directly in PostgreSQL.
+
+A sequencing problem was discovered during implementation: memberships needed to remember the invitation that created them, but the invitation table belonged to OPE-278 and did not exist yet. Instead of inventing an invalid foreign key or expanding OPE-277 beyond its ticket, CCR-004 documented the two-step migration contract. OPE-277 created the membership invitation-origin column and index, while the final foreign key was intentionally deferred until OPE-278.
+
+Real PostgreSQL tests verify duplicate organizations, duplicate identities, duplicate memberships, invalid states, duplicate permission mappings, duplicate membership-role mappings, and the special global-role uniqueness behavior. The improvement is a database-enforced tenant and workforce foundation that future authorization code can rely on rather than reimplementing basic integrity rules in every API endpoint.
+
+## OPE-278 — secure organization invitation persistence
+
+**Final status:** Completed. GitHub issue #75 was closed as completed through merged PR #82.
+
+OPE-278 added the two invitation tables required for organization onboarding. The schema stores only a token hash, never a plaintext invitation token. It enforces globally unique token hashes, valid invitation lifecycle states, normalized email length rules, role mappings, required indexes, and a PostgreSQL partial unique index that allows only one pending invitation for the same organization and normalized email while still preserving invitation history.
+
+This migration also completed CCR-004 by adding the deferred membership-to-invitation foreign key with safe `ON DELETE SET NULL` behavior. Its downgrade removes that dependency in the correct order before removing the invitation tables.
+
+Real PostgreSQL tests verify that plaintext token columns do not exist, pending invitation uniqueness works, accepted history does not prevent a later pending invitation, token hashes cannot be reused, invalid states and email lengths fail, invalid role mappings fail, and deleting an invitation safely clears the membership-origin reference.
+
+The improvement is a secure database foundation for future invitation APIs. Runtime code still needs to generate tokens, hash them, send invitations, accept or revoke invitations, and assign roles. Those behaviors were intentionally not smuggled into this schema ticket.
+
+## What this seven-ticket batch changed overall
+
+Before OPE-272, Serviq had a repository and application foundation, but several production-oriented foundations were still missing. After OPE-278, the project has:
+
+- automated baseline security scanning;
+- typed and safely validated platform configuration;
+- a truthful public README with reproducible setup instructions;
+- one documented asynchronous PostgreSQL session pattern;
+- reversible Alembic migrations validated against real PostgreSQL;
+- a readiness endpoint that proves database connectivity without leaking sensitive details;
+- tenant, user, membership, role, and permission persistence with database-level integrity rules;
+- secure invitation persistence with hash-only tokens and controlled invitation uniqueness;
+- explicit architecture and contract-change records where the frozen documents did not provide enough information to implement safely.
+
+This does **not** mean Serviq is production-ready yet. These tickets deliberately build the safety, configuration, persistence, migration, and documentation foundation that later authentication, authorization, invitation APIs, tenant onboarding, AI-agent workflows, business tools, observability, and deployment work will depend on.
+
+## Completion evidence
+
+The final merged mapping is:
+
+| Linear ticket | GitHub issue | Merged PR | Final result |
+|---|---:|---:|---|
+| OPE-272 | #69 | #76 | Security scanning baseline |
+| OPE-273 | #70 | #77 | Typed platform configuration |
+| OPE-274 | #71 | #78 | Verified public README/setup guide |
+| OPE-275 | #72 | #79 | SQLAlchemy + Alembic persistence foundation |
+| OPE-276 | #73 | #80 | Database-aware API readiness |
+| OPE-277 | #74 | #81 | Tenant/workforce/RBAC schema |
+| OPE-278 | #75 | #82 | Secure organization invitation schema |
+
+All seven Linear tickets are in `Done`, all seven GitHub issues are closed as completed, and all seven implementation pull requests are merged. The detailed ticket sections earlier in this guide remain the technical and plain-language record of what changed, why it changed, how it works, what it improves, what was tested, and what remains intentionally out of scope.
+EOF
+
+          rm .github/workflows/tmp-ope-272-278-reconcile.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/tmp-ope-272-278-reconcile.yml
+          git commit -m "docs: reconcile OPE-272 through OPE-278 completion"
+          git push origin HEAD:docs-ope-272-278-final-completion-guide

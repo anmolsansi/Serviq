@@ -54,7 +54,7 @@ class OrganizationUpdateRequest(BaseModel):
         return _normalize_display_name(value)
 
     @model_validator(mode="after")
-    def require_change(self) -> "OrganizationUpdateRequest":
+    def require_change(self) -> OrganizationUpdateRequest:
         if self.display_name is None and self.default_locale is None:
             raise ValueError("At least one organization setting must be supplied")
         return self

@@ -15,6 +15,7 @@ from app.modules.workforce.errors import (
     WorkforceIdentityProfileError,
 )
 from app.modules.workforce.models import User
+from app.modules.workforce.schemas import InternalWorkforceUser
 from app.modules.workforce.service import upsert_verified_workforce_user
 
 pytestmark = pytest.mark.skipif(
@@ -141,7 +142,7 @@ def test_concurrent_first_login_resolves_one_stable_user() -> None:
         subject = f"race-{suffix}"
         identity = _identity(issuer=issuer, subject=subject)
 
-        async def login_once() -> object:
+        async def login_once() -> InternalWorkforceUser:
             async with session_factory() as session:
                 return await upsert_verified_workforce_user(session, identity)
 

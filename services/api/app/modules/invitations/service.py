@@ -7,36 +7,46 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import VerifiedWorkforceIdentity
 from app.modules.invitations.errors import (
+    InvitationAcceptanceRejectedError,
     InvitationAccessNotFoundError,
     InvitationConflictError,
     InvitationForbiddenError,
     InvitationLifecycleConflictError,
     InvitationRoleInvalidError,
+    InvitationVerifiedEmailRequiredError,
 )
 from app.modules.invitations.models import OrganizationInvitation
 from app.modules.invitations.repository import (
     add_invitation,
     add_invitation_role,
     find_assignable_roles,
+    find_invitation_by_token_hash_for_update,
     find_tenant_invitation,
     list_invitation_roles,
     list_tenant_invitations,
 )
 from app.modules.invitations.schemas import (
+    InvitationAcceptRequest,
     InvitationCreateRequest,
     InvitationCreateView,
     InvitationRoleView,
     InvitationView,
 )
 from app.modules.invitations.security import (
+    InvitationEmailError,
     build_invitation_url,
     generate_invitation_token,
     hash_invitation_token,
+    normalize_invitation_email,
 )
 from app.modules.tenancy.errors import TenantMembershipAccessError
 from app.modules.tenancy.models import Role
-from app.modules.tenancy.service import resolve_tenant_membership
+from app.modules.tenancy.service import (
+    activate_membership_from_invitation,
+    resolve_tenant_membership,
+)
 
 INVITATION_MANAGE_PERMISSION = "organization.members.manage"
 INVITATION_LIFETIME = timedelta(days=7)
@@ -103,6 +113,70 @@ async def create_invitation(
         **safe_view.model_dump(),
         inviteUrl=build_invitation_url(public_base_url, plaintext_token),
     )
+
+
+async def accept_invitation(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    identity: VerifiedWorkforceIdentity,
+    request: InvitationAcceptRequest,
+    clock: Clock = utc_now,
+) -> InvitationView:
+    """Accept one bearer invitation exactly once for its verified workforce email."""
+
+    if not identity.email_verified or identity.email is None:
+        raise InvitationVerifiedEmailRequiredError
+    try:
+        verified_email = normalize_invitation_email(identity.email)
+    except InvitationEmailError:
+        raise InvitationVerifiedEmailRequiredError from None
+
+    plaintext_token = request.token.get_secret_value()
+    token_hash = hash_invitation_token(plaintext_token)
+    del plaintext_token
+    now = clock()
+
+    async with session.begin():
+        invitation = await find_invitation_by_token_hash_for_update(
+            session,
+            token_hash=token_hash,
+        )
+        if not _is_acceptable_invitation(
+            invitation,
+            verified_email=verified_email,
+            now=now,
+        ):
+            raise InvitationAcceptanceRejectedError
+        assert invitation is not None
+
+        roles = await list_invitation_roles(session, invitation_id=invitation.id)
+        role_ids = tuple(role.id for role in roles)
+        if not role_ids:
+            raise InvitationAcceptanceRejectedError
+        assignable_roles = await find_assignable_roles(
+            session,
+            tenant_id=invitation.tenant_id,
+            role_ids=list(role_ids),
+        )
+        if {role.id for role in assignable_roles} != set(role_ids):
+            raise InvitationAcceptanceRejectedError
+
+        await activate_membership_from_invitation(
+            session,
+            tenant_id=invitation.tenant_id,
+            user_id=user_id,
+            invitation_id=invitation.id,
+            role_ids=role_ids,
+            now=now,
+        )
+
+        invitation.accepted_by_user_id = user_id
+        invitation.accepted_at = now
+        invitation.status = "accepted"
+        invitation.updated_at = now
+        await session.flush()
+        return _to_view(invitation, roles)
 
 
 async def list_invitations(
@@ -174,6 +248,23 @@ async def _require_manage_permission(
 
     if INVITATION_MANAGE_PERMISSION not in membership.permissions:
         raise InvitationForbiddenError
+
+
+def _is_acceptable_invitation(
+    invitation: OrganizationInvitation | None,
+    *,
+    verified_email: str,
+    now: datetime,
+) -> bool:
+    return bool(
+        invitation is not None
+        and invitation.status == "pending"
+        and invitation.revoked_at is None
+        and invitation.accepted_at is None
+        and invitation.accepted_by_user_id is None
+        and invitation.expires_at > now
+        and invitation.email_normalized == verified_email
+    )
 
 
 def _to_view(

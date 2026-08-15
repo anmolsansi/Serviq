@@ -18,7 +18,7 @@ from uuid import UUID
 import httpx
 from joserfc import jwt
 from joserfc.errors import JoseError
-from joserfc.jwk import KeySet
+from joserfc.jwk import KeySet, KeySetSerialization
 from joserfc.jwt import JWTClaimsRegistry
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -128,6 +128,15 @@ def _metadata_url_allowed(url: str, environment: ServiqEnvironment) -> bool:
     )
 
 
+def _as_key_set_serialization(payload: dict[str, Any]) -> KeySetSerialization:
+    keys = payload.get("keys")
+    if not isinstance(keys, list) or not keys:
+        raise AuthenticationError
+    if not all(isinstance(key, dict) for key in keys):
+        raise AuthenticationError
+    return cast(KeySetSerialization, payload)
+
+
 class OidcMetadataCache:
     """Small process-local, single-flight cache for trusted issuer discovery/JWKS."""
 
@@ -177,7 +186,7 @@ class OidcMetadataCache:
                     raise AuthenticationError
 
                 jwks = await self._fetcher(jwks_uri)
-                key_set = KeySet.import_key_set(jwks)
+                key_set = KeySet.import_key_set(_as_key_set_serialization(jwks))
             except AuthenticationError:
                 raise
             except Exception:

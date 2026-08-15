@@ -125,12 +125,12 @@ async def update_provider(
         )
         if current is None:
             raise ProviderNotFoundError
-        old_secret_ref = current.secret_ref
 
     new_secret_ref: str | None = None
     if request.api_key is not None:
         new_secret_ref = secret_store.put_secret(tenant_id, request.api_key)
 
+    old_secret_ref: str | None = None
     try:
         async with session.begin():
             connection = await find_provider_connection_for_update(
@@ -143,6 +143,9 @@ async def update_provider(
             if request.display_name is not None:
                 connection.display_name = request.display_name
             if new_secret_ref is not None:
+                # Capture the predecessor only after the row lock is held. A concurrent
+                # rotation may have committed after the preflight existence check.
+                old_secret_ref = connection.secret_ref
                 # A connectivity test is required before a replacement key may return
                 # to active; replacement therefore resets safe status metadata.
                 connection.secret_ref = new_secret_ref
@@ -171,7 +174,7 @@ async def update_provider(
             )
         raise
 
-    if new_secret_ref is not None and new_secret_ref != old_secret_ref:
+    if old_secret_ref is not None and new_secret_ref != old_secret_ref:
         try:
             secret_store.delete_secret(tenant_id, old_secret_ref)
         except SecretNotFoundError:

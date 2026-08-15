@@ -5,8 +5,9 @@ between provider objects and these models at the adapter boundary.
 """
 
 from enum import StrEnum
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 MAX_OUTPUT_TOKENS = 1_500
 MAX_TIMEOUT_MS = 20_000
@@ -53,7 +54,7 @@ class GatewayMessage(_StrictContractModel):
 
 
 class GatewayRequest(_StrictContractModel):
-    tenant_id: str = Field(alias="tenantId", min_length=1)
+    tenant_id: UUID = Field(alias="tenantId")
     model_alias: str = Field(alias="modelAlias", min_length=1)
     purpose: GatewayPurpose
     messages: list[GatewayMessage] = Field(min_length=1)
@@ -75,19 +76,6 @@ class GatewayRequest(_StrictContractModel):
     )
     stream: bool = False
     correlation_id: str = Field(alias="correlationId", min_length=1)
-
-    @field_validator("tenant_id")
-    @classmethod
-    def validate_tenant_id(cls, value: str) -> str:
-        # Contract C-4 freezes the wire field as "uuid". Keeping validation local to
-        # the gateway avoids leaking API-service ORM/identity types into this package.
-        from uuid import UUID
-
-        try:
-            UUID(value)
-        except ValueError:
-            raise ValueError("tenantId must be a UUID") from None
-        return value
 
 
 class GatewayUsage(_StrictContractModel):
@@ -124,7 +112,7 @@ class GatewayStreamEvent(_StrictContractModel):
     request_id: str | None = Field(default=None, alias="requestId")
 
     @model_validator(mode="after")
-    def require_event_payload(self) -> "GatewayStreamEvent":
+    def require_event_payload(self) -> GatewayStreamEvent:
         if (
             self.content_delta is None
             and self.structured_delta is None

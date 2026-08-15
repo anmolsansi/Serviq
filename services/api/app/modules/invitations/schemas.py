@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.modules.invitations.security import (
     InvitationEmailError,
@@ -31,6 +31,14 @@ class InvitationCreateRequest(BaseModel):
         if len(set(value)) != len(value):
             raise ValueError("roleIds must not contain duplicates")
         return value
+
+
+class InvitationAcceptRequest(BaseModel):
+    """One-time bearer token request with safe repr/serialization behavior."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: SecretStr = Field(min_length=1, max_length=512)
 
 
 class InvitationRoleView(BaseModel):

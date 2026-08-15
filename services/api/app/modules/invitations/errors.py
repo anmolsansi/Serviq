@@ -38,3 +38,19 @@ class InvitationLifecycleConflictError(InvitationError):
 
     def __init__(self) -> None:
         super().__init__("Invitation cannot be revoked from its current state.")
+
+
+class InvitationAcceptanceRejectedError(InvitationError):
+    """Non-disclosing failure for invalid or unusable invitation bearer material."""
+
+    error_code = "INVITATION_ACCEPTANCE_REJECTED"
+
+    def __init__(self) -> None:
+        super().__init__("Invitation cannot be accepted.")
+
+
+class InvitationVerifiedEmailRequiredError(InvitationError):
+    error_code = "VERIFIED_EMAIL_REQUIRED"
+
+    def __init__(self) -> None:
+        super().__init__("A verified workforce email is required to accept an invitation.")

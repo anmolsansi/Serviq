@@ -109,3 +109,18 @@ async def find_tenant_invitation(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def find_invitation_by_token_hash_for_update(
+    session: AsyncSession,
+    *,
+    token_hash: str,
+) -> OrganizationInvitation | None:
+    """Lock one invitation selected only by its persisted one-way token digest."""
+
+    result = await session.execute(
+        select(OrganizationInvitation)
+        .where(OrganizationInvitation.token_hash == token_hash)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()

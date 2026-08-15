@@ -2683,3 +2683,24 @@ The PATCH schema exposes only trimmed `displayName` and V1 `defaultLocale=en`, r
 Real PostgreSQL/API tests cover member read, Owner/Admin updates, support-role denial, cross-tenant 404 behavior, unsupported locale, invalid display names, immutable `slug`/`status`, empty PATCH, and unauthenticated access.
 
 A focused review is recorded at `docs/security-reviews/OPE-284-organization-detail-update.md`; the detailed narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+
+---
+
+# OPE-285 — secure invitation create, list, and revoke APIs
+
+OPE-285 adds workforce invitation management without ever storing a plaintext invitation token. The new routes are GET/POST `/api/v1/organizations/{organizationId}/invitations` and DELETE `/api/v1/organizations/{organizationId}/invitations/{invitationId}`.
+
+ADR-006 resolves the ticket's security stop conditions before implementation. Serviq now has one deterministic invitation-email normalization rule, 256-bit `secrets.token_urlsafe(32)` bearer-token generation, SHA-256 storage of the random token, a one-time `{SERVIQ_PUBLIC_BASE_URL}/invite?token=...` response URL, and an explicit assignable-role policy. Tenant-owned roles are allowed, while global roles are assignable only when they are the approved workforce `owner` or `admin` roles. Foreign and other global system/platform-like roles are rejected.
+
+All invitation operations require an active target-tenant membership plus `organization.members.manage`. Missing membership is non-disclosing 404; a same-tenant member without the capability receives 403.
+
+Create validates authorization and roles before generating the secret, then hashes the token immediately. Invitation metadata and all role mappings are one transaction, and PostgreSQL's partial unique index remains the authority for one pending invitation per normalized tenant/email. The invitation expires exactly seven days after creation. Only the successful create response contains `inviteUrl`; normal list/revoke serializers contain no token, token hash, or invite URL.
+
+Revoke is tenant-scoped and pending-only. Accepted, already-revoked, or time-expired invitations return lifecycle conflict rather than being treated as pending. A foreign tenant cannot probe an invitation ID through revoke.
+
+Real PostgreSQL/API tests verify Owner/Admin creation, support denial, foreign-tenant isolation, foreign/global-platform role rejection, duplicate pending-email conflict, normalized email, one-time token URL, stored SHA-256 digest, seven-day expiry, log redaction, secret-free list/revoke responses, successful pending revoke, repeated-revoke conflict, accepted-invite conflict, strict input validation, and unauthenticated access.
+
+The premium security review is recorded at `docs/security-reviews/OPE-285-invitation-management.md`. The full non-technical implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+This ticket does not implement invitation acceptance or email delivery. Those later workflows must reuse the exact normalization and hashing helpers established here.

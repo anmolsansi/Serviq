@@ -2501,3 +2501,73 @@ This ticket does not generate secure random tokens, hash presented tokens, send 
 ### Validation required before completion
 
 The final pull request must pass the normal repository quality job, including lint, strict type checking, tests, and Compose validation; the real PostgreSQL integration job with upgrade/downgrade/re-upgrade coverage; and the OPE-272 Security workflow. The temporary OPE-278 documentation workflow is removed before merge.
+
+---
+
+# OPE-272 through OPE-278 — final completion reconciliation
+
+This section closes the loop on OPE-272 through OPE-278. The detailed sections above remain the main plain-language implementation record. This final reconciliation confirms which work is actually present on `main`, which GitHub issue and pull request delivered it, and what the seven-ticket batch improved as a whole.
+
+No duplicate GitHub issues or replacement implementation branches were created during this reconciliation. Each ticket had already followed the intended one-ticket, one-branch, one-pull-request workflow and was already completed in Linear and GitHub.
+
+## OPE-272 — baseline repository security scanning
+
+**Final status:** Completed. GitHub issue #69 was closed as completed through merged PR #76.
+
+This ticket added permanent automated security checks for source code, accidentally committed secrets, filesystem and configuration risks, and vulnerable dependencies. It also turned the local `make security` command into a real check instead of a placeholder. The practical improvement is that basic repository security no longer depends on a developer remembering to run several unrelated tools manually before every change.
+
+## OPE-273 — typed platform configuration and safe environment example
+
+**Final status:** Completed. GitHub issue #70 was closed as completed through merged PR #77.
+
+This ticket created typed configuration boundaries for the API and worker and added a safe root `.env.example`. Invalid settings now fail early with messages that identify the bad field without printing secret values. Production-only secrets have no unsafe production defaults, and tenant-owned provider keys remain outside this platform configuration boundary. The improvement is predictable startup behavior and a much lower chance of confusing configuration bugs or accidental credential exposure.
+
+## OPE-274 — public README and reproducible local setup
+
+**Final status:** Completed. GitHub issue #71 was closed as completed through merged PR #78.
+
+This ticket replaced the placeholder README with a real public project entry point. It explains the product, current implementation status, repository map, prerequisites, verified setup and validation commands, documentation links, and important limitations. Planned commands are labeled as planned, the 10-million-connection goal is described as a future architecture target rather than a proven benchmark, and DoorDash/Stripe references are clearly non-affiliated. The improvement is trust: a new reader can understand what exists today without being misled by aspirational product claims.
+
+## OPE-275 — SQLAlchemy database sessions and Alembic foundation
+
+**Final status:** Completed. GitHub issue #72 was closed as completed through merged PR #79.
+
+This ticket introduced Serviq's real PostgreSQL persistence foundation without prematurely creating product tables. Because the architecture had not frozen synchronous versus asynchronous SQLAlchemy usage, ADR-001 recorded the decision before code was written. The project now has one asynchronous SQLAlchemy/Psycopg session pattern, one model base, Alembic configuration, a reversible baseline migration, and real PostgreSQL integration validation. The improvement is that future database-backed features have one approved persistence pattern instead of competing connection/session designs.
+
+## OPE-276 — database-aware readiness health check
+
+**Final status:** Completed. GitHub issue #73 was closed as completed through merged PR #80.
+
+This ticket made `/health/ready` prove that PostgreSQL can actually answer a simple query within the two-second readiness budget while keeping `/health/live` independent from the database. Failure and timeout responses use the frozen safe contract and do not expose credentials, database URLs, raw SQLAlchemy exceptions, or stack traces. ADR-002 records the health-module boundary that had not previously been frozen. The improvement is operational correctness: infrastructure can distinguish a process that is alive from an API instance that is truly ready for database-dependent traffic.
+
+## OPE-277 — tenant, workforce, and RBAC database migration
+
+**Final status:** Completed. GitHub issue #74 was closed as completed through merged PR #81.
+
+This ticket created the six frozen tenant/workforce/RBAC tables and enforced their important uniqueness, state, index, and foreign-key rules directly in PostgreSQL. A migration sequencing conflict was discovered because memberships needed to reference invitations that would not exist until OPE-278. CCR-004 documented the safe two-step contract instead of silently expanding the ticket or creating an invalid dependency. Real PostgreSQL tests verify duplicate and invalid-state behavior. The improvement is a database-enforced identity and authorization foundation that later API code can rely on.
+
+## OPE-278 — secure organization invitation persistence
+
+**Final status:** Completed. GitHub issue #75 was closed as completed through merged PR #82.
+
+This ticket created organization invitation and invitation-role persistence. Invitation secrets are represented only by a stored token hash, never a plaintext token. PostgreSQL enforces token-hash uniqueness, invitation lifecycle states, email constraints, role mappings, and one pending invitation per tenant and normalized email while preserving historical invitations. The migration also completes CCR-004 by adding the deferred membership-to-invitation foreign key with safe `ON DELETE SET NULL` behavior. The improvement is a secure persistence boundary that future invitation APIs can build on without weakening token or data-integrity rules.
+
+## What the seven-ticket batch changes overall
+
+After OPE-272 through OPE-278, Serviq has automated baseline security scanning, typed platform configuration, a truthful public setup guide, one documented PostgreSQL session pattern, reversible Alembic migrations tested against real PostgreSQL, database-aware API readiness, tenant/workforce/RBAC persistence, and secure invitation persistence.
+
+These are foundation capabilities. They do **not** mean Serviq is production-ready yet. Authentication flows, authorization services, invitation runtime APIs, tenant onboarding, AI-agent workflows, business tools, deeper observability, production deployment, and later product behavior still need their own tickets and validation.
+
+## Completion evidence
+
+| Linear ticket | GitHub issue | Merged PR | Final result |
+|---|---:|---:|---|
+| OPE-272 | #69 | #76 | Security scanning baseline |
+| OPE-273 | #70 | #77 | Typed platform configuration |
+| OPE-274 | #71 | #78 | Verified public README/setup guide |
+| OPE-275 | #72 | #79 | SQLAlchemy + Alembic persistence foundation |
+| OPE-276 | #73 | #80 | Database-aware API readiness |
+| OPE-277 | #74 | #81 | Tenant/workforce/RBAC schema |
+| OPE-278 | #75 | #82 | Secure organization invitation schema |
+
+All seven Linear tickets are in `Done`, all seven GitHub issues are closed as completed, and all seven implementation pull requests are merged. The detailed ticket sections earlier in this guide explain what changed, how it works, why it was done, what it improves, how it was validated, and what remains intentionally out of scope.

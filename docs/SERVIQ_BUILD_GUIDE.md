@@ -2668,3 +2668,18 @@ GET lists only tenants reached through the current user's active memberships. PO
 Real PostgreSQL/API tests cover empty/two-organization lists, cross-user isolation, Owner mappings, duplicate slug, all specified validation failures, unauthenticated access, and a forced mapping failure proving atomic rollback.
 
 A focused security review is recorded at `docs/security-reviews/OPE-283-organization-list-create.md`, and the detailed implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+
+---
+
+# OPE-284 — organization detail and update APIs
+
+OPE-284 adds GET and PATCH `/api/v1/organizations/{organizationId}` while preserving tenant non-disclosure. Both routes first prove that the current server-owned workforce user has an active membership before returning organization metadata. A foreign user receives 404 rather than learning whether another tenant's UUID exists.
+
+PATCH then reuses OPE-282 capability resolution and requires the exact CCR-005 permission `organization.settings.write`. Owner/Admin can update, while same-tenant roles without that capability receive 403.
+
+The PATCH schema exposes only trimmed `displayName` and V1 `defaultLocale=en`, rejects unknown fields, and rejects an empty change set. `slug` and `status` are therefore immutable through this API. The membership check, capability check, mutation, and flush run inside one transaction.
+
+Real PostgreSQL/API tests cover member read, Owner/Admin updates, support-role denial, cross-tenant 404 behavior, unsupported locale, invalid display names, immutable `slug`/`status`, empty PATCH, and unauthenticated access.
+
+A focused review is recorded at `docs/security-reviews/OPE-284-organization-detail-update.md`; the detailed narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.

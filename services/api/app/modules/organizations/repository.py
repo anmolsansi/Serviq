@@ -26,6 +26,26 @@ async def list_active_organizations_for_user(
     return tuple(result.scalars().all())
 
 
+async def find_organization_for_active_member(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    user_id: UUID,
+) -> Organization | None:
+    """Return organization metadata only after active membership is proven."""
+
+    result = await session.execute(
+        select(Organization)
+        .join(Membership, Membership.tenant_id == Organization.id)
+        .where(
+            Organization.id == organization_id,
+            Membership.user_id == user_id,
+            Membership.status == "active",
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def find_global_system_role(
     session: AsyncSession,
     *,

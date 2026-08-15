@@ -1,11 +1,19 @@
 """Organization API request and response schemas."""
 
 import re
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+
+
+def _normalize_display_name(value: str) -> str:
+    normalized = value.strip()
+    if not 1 <= len(normalized) <= 120:
+        raise ValueError("displayName must be 1-120 characters after trimming")
+    return normalized
 
 
 class OrganizationCreateRequest(BaseModel):
@@ -27,10 +35,29 @@ class OrganizationCreateRequest(BaseModel):
     @field_validator("display_name")
     @classmethod
     def validate_display_name(cls, value: str) -> str:
-        normalized = value.strip()
-        if not 1 <= len(normalized) <= 120:
-            raise ValueError("displayName must be 1-120 characters after trimming")
-        return normalized
+        return _normalize_display_name(value)
+
+
+class OrganizationUpdateRequest(BaseModel):
+    """Only V1-safe mutable organization settings."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    display_name: str | None = Field(default=None, alias="displayName")
+    default_locale: Literal["en"] | None = Field(default=None, alias="defaultLocale")
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_display_name(value)
+
+    @model_validator(mode="after")
+    def require_change(self) -> OrganizationUpdateRequest:
+        if self.display_name is None and self.default_locale is None:
+            raise ValueError("At least one organization setting must be supplied")
+        return self
 
 
 class OrganizationView(BaseModel):

@@ -1,0 +1,26 @@
+name: Temporary OPE-283 documentation sync
+
+on:
+  push:
+    branches:
+      - ope-283-organization-list-create
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append ticket documentation and clean helper
+        run: |
+          python .github/scripts/tmp_append_ope283_docs.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-ope-283-docs.yml
+          git rm .github/scripts/tmp_append_ope283_docs.py
+          git add docs/OPE_279_285_IMPLEMENTATION_GUIDE.md docs/SERVIQ_BUILD_GUIDE.md
+          git commit -m "docs(ope-283): explain organization onboarding APIs"
+          git push origin HEAD:${GITHUB_REF_NAME}

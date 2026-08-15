@@ -2651,3 +2651,20 @@ Real PostgreSQL tests deliberately map a Tenant A membership to a Tenant B role 
 A dedicated security review is recorded at `docs/security-reviews/OPE-282-tenant-capability-resolution.md`. No HTTP route or middleware behavior is added in this ticket.
 
 The detailed implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+
+---
+
+# OPE-283 — organization list and create APIs
+
+OPE-283 exposes the first tenant-management workforce endpoints: GET and POST `/api/v1/organizations`.
+
+Two explicit stop conditions were resolved before route code. CCR-005 freezes and seeds global workforce system roles `owner` and `admin`, each with `organization.settings.write` and `organization.members.manage`. ADR-005 freezes the protected-route principal handoff as server-owned `request.state.serviq_user_id`; organization routes never accept a client-supplied user ID.
+
+The API now mirrors Serviq's frozen `{data:...}` and `{error:{...}}` envelopes in Python and maps authentication/request-validation failures into those shapes. Organization creation validates the exact slug/display-name contract and rejects unknown fields.
+
+GET lists only tenants reached through the current user's active memberships. POST performs one transaction that creates the tenant, the creator's active membership, and the mapping to the pre-seeded Owner role. Duplicate slug maps to 409. Any later mapping failure rolls the whole transaction back.
+
+Real PostgreSQL/API tests cover empty/two-organization lists, cross-user isolation, Owner mappings, duplicate slug, all specified validation failures, unauthenticated access, and a forced mapping failure proving atomic rollback.
+
+A focused security review is recorded at `docs/security-reviews/OPE-283-organization-list-create.md`, and the detailed implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.

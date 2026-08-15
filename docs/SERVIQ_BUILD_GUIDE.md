@@ -2634,3 +2634,20 @@ Concurrent first login is handled using the database unique constraint plus a ne
 Real PostgreSQL integration tests cover first/repeat login, multiple issuers, profile synchronization, disabled-user behavior, concurrent first-login contention, and incomplete verified profile input.
 
 The detailed implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+
+---
+
+# OPE-282 — tenant membership and effective capability resolution
+
+OPE-282 adds the tenant-scoped authorization resolver that sits between a stable internal workforce user and later protected organization APIs. The resolver requires the exact trusted `(user_id, tenant_id)` pair and accepts only an `active` membership. Missing and suspended memberships fail closed.
+
+ADR-004 resolves the previously unstated system-role rule before coding: a tenant-owned role contributes only to its own tenant, while a global role is reusable only when `tenant_id IS NULL` and `is_system = true`. A role owned by another tenant is filtered out even if a malformed mapping row points to it. Global system roles remain workforce RBAC and cannot create platform-operator access.
+
+The new tenancy module maps the existing membership/RBAC tables without changing the schema, performs tenant-safe joins, deduplicates permission keys, and returns one immutable `ResolvedTenantMembership` DTO.
+
+Real PostgreSQL tests deliberately map a Tenant A membership to a Tenant B role and prove the foreign permission is excluded. They also cover overlapping permission deduplication, approved global system roles, global non-system exclusion, suspended membership, and missing membership.
+
+A dedicated security review is recorded at `docs/security-reviews/OPE-282-tenant-capability-resolution.md`. No HTTP route or middleware behavior is added in this ticket.
+
+The detailed implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.

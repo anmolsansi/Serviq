@@ -41,7 +41,7 @@ class MemberUpdateRequest(BaseModel):
     status: MembershipStatus | None = None
 
     @model_validator(mode="after")
-    def validate_update(self) -> "MemberUpdateRequest":
+    def validate_update(self) -> MemberUpdateRequest:
         if self.role_ids is None and self.status is None:
             raise ValueError("At least one of roleIds or status is required")
         if self.role_ids is not None and len(self.role_ids) != len(set(self.role_ids)):

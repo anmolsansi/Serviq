@@ -5,7 +5,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.invitations.security import InvitationEmailError, normalize_invitation_email
+from app.modules.invitations.security import (
+    InvitationEmailError,
+    normalize_invitation_email,
+)
 
 
 class InvitationCreateRequest(BaseModel):

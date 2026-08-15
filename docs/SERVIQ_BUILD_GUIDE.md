@@ -2617,3 +2617,20 @@ Automated tests cover success plus wrong issuer, wrong audience, expiry, invalid
 This ticket does not implement browser PKCE/session handling, user persistence, membership lookup, tenant resolution, or RequestContext construction. Those remain separate trust boundaries in later tickets.
 
 The detailed implementation narrative for OPE-280 is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+
+---
+
+# OPE-281 — stable internal workforce user identity
+
+OPE-281 connects the verified OIDC identity from OPE-280 to Serviq's existing `users` table. The primary identity is always the exact `(oidc_issuer, oidc_subject)` pair, never email.
+
+The ticket adds a workforce domain module with an ORM mapping for the already-created users table, an exact identity repository query, a frozen internal-user DTO, typed disabled/profile errors, and a transaction-owning upsert service. No database migration or membership logic is added.
+
+On first login, the service inserts an active user. On repeat login, it returns the same internal UUID and safely synchronizes changed email/display-name profile data. A missing email fails before persistence because the frozen database contract requires a non-null email. A disabled internal user remains disabled even when the external OIDC identity is valid.
+
+Concurrent first login is handled using the database unique constraint plus a nested savepoint. If two callers race, one insert wins. The losing savepoint rolls back and reloads the winning row, so both successful callers resolve the same `users.id` instead of creating duplicates or returning an avoidable 500.
+
+Real PostgreSQL integration tests cover first/repeat login, multiple issuers, profile synchronization, disabled-user behavior, concurrent first-login contention, and incomplete verified profile input.
+
+The detailed implementation narrative is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.

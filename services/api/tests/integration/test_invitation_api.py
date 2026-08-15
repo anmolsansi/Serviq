@@ -30,6 +30,14 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _collection_path(tenant_id: UUID) -> str:
+    return f"/api/v1/organizations/{tenant_id}/invitations"
+
+
+def _item_path(tenant_id: UUID, invitation_id: UUID) -> str:
+    return f"{_collection_path(tenant_id)}/{invitation_id}"
+
+
 def _install_overrides(
     session_factory: async_sessionmaker[AsyncSession],
     user_id: UUID | None,
@@ -215,14 +223,17 @@ def _ids() -> dict[str, UUID]:
     }
 
 
-async def _insert_accepted_invitation(
+async def _insert_nonpending_invitation(
     session: AsyncSession,
     *,
     tenant_id: UUID,
     user_id: UUID,
     invitation_id: UUID,
+    status: str,
 ) -> None:
     now = datetime.now(UTC)
+    accepted = status == "accepted"
+    expires_at = now - timedelta(minutes=1) if status == "pending" else now + timedelta(days=7)
     await session.execute(
         text(
             """
@@ -231,19 +242,21 @@ async def _insert_accepted_invitation(
                 invited_by_user_id, accepted_by_user_id, expires_at, accepted_at
             )
             VALUES (
-                :id, :tenant_id, :email, :token_hash, 'accepted',
-                :user_id, :user_id, :expires_at, :accepted_at
+                :id, :tenant_id, :email, :token_hash, :status,
+                :user_id, :accepted_by, :expires_at, :accepted_at
             )
             """
         ),
         {
             "id": invitation_id,
             "tenant_id": tenant_id,
-            "email": f"accepted-{invitation_id.hex}@example.com",
-            "token_hash": "a" * 64,
+            "email": f"{status}-{invitation_id.hex}@example.com",
+            "token_hash": invitation_id.hex * 2,
+            "status": status,
             "user_id": user_id,
-            "expires_at": now + timedelta(days=7),
-            "accepted_at": now,
+            "accepted_by": user_id if accepted else None,
+            "expires_at": expires_at,
+            "accepted_at": now if accepted else None,
         },
     )
 
@@ -281,7 +294,7 @@ def test_invitation_create_list_revoke_security_matrix(
             _install_overrides(session_factory, ids["owner"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 created = await client.post(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                    _collection_path(ids["tenant_a"]),
                     json={
                         "email": " Invitee@Example.COM ",
                         "roleIds": [str(ids["tenant_role_a"]), str(admin_role_id)],
@@ -305,7 +318,7 @@ def test_invitation_create_list_revoke_security_matrix(
                 token_hash = hash_invitation_token(plaintext_token)
 
                 duplicate = await client.post(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                    _collection_path(ids["tenant_a"]),
                     json={
                         "email": "invitee@example.com",
                         "roleIds": [str(ids["tenant_role_a"])],
@@ -315,7 +328,7 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert duplicate.json()["error"]["code"] == "INVITATION_CONFLICT"
 
                 foreign_role = await client.post(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                    _collection_path(ids["tenant_a"]),
                     json={
                         "email": "foreign-role@example.com",
                         "roleIds": [str(ids["tenant_role_b"])],
@@ -325,7 +338,7 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert foreign_role.json()["error"]["code"] == "INVITATION_ROLE_INVALID"
 
                 platform_role = await client.post(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                    _collection_path(ids["tenant_a"]),
                     json={
                         "email": "platform-role@example.com",
                         "roleIds": [str(ids["platform_role"])],
@@ -334,9 +347,7 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert platform_role.status_code == 422
                 assert platform_role.json()["error"]["code"] == "INVITATION_ROLE_INVALID"
 
-                listed = await client.get(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations"
-                )
+                listed = await client.get(_collection_path(ids["tenant_a"]))
                 assert listed.status_code == 200
                 listed_text = listed.text
                 assert plaintext_token not in listed_text
@@ -355,7 +366,8 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert plaintext_token != stored.token_hash
                 delta = stored.expires_at - stored.created_at
                 assert timedelta(days=6, hours=23, minutes=59) < delta < timedelta(
-                    days=7, minutes=1
+                    days=7,
+                    minutes=1,
                 )
 
             assert plaintext_token not in caplog.text
@@ -364,7 +376,7 @@ def test_invitation_create_list_revoke_security_matrix(
             _install_overrides(session_factory, ids["admin"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 admin_create = await client.post(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                    _collection_path(ids["tenant_a"]),
                     json={
                         "email": "admin-created@example.com",
                         "roleIds": [str(owner_role_id)],
@@ -375,7 +387,7 @@ def test_invitation_create_list_revoke_security_matrix(
             _install_overrides(session_factory, ids["support"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 denied = await client.post(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                    _collection_path(ids["tenant_a"]),
                     json={
                         "email": "denied@example.com",
                         "roleIds": [str(ids["tenant_role_a"])],
@@ -386,20 +398,16 @@ def test_invitation_create_list_revoke_security_matrix(
 
             _install_overrides(session_factory, ids["foreign"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                foreign_list = await client.get(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations"
-                )
+                foreign_list = await client.get(_collection_path(ids["tenant_a"]))
                 foreign_revoke = await client.delete(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations/{created_id}"
+                    _item_path(ids["tenant_a"], created_id)
                 )
                 assert foreign_list.status_code == 404
                 assert foreign_revoke.status_code == 404
 
             _install_overrides(session_factory, ids["owner"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                revoked = await client.delete(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations/{created_id}"
-                )
+                revoked = await client.delete(_item_path(ids["tenant_a"], created_id))
                 assert revoked.status_code == 200
                 assert revoked.json()["data"]["status"] == "revoked"
                 assert revoked.json()["data"]["revokedAt"] is not None
@@ -408,7 +416,7 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert token_hash not in revoked.text
 
                 repeated_revoke = await client.delete(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations/{created_id}"
+                    _item_path(ids["tenant_a"], created_id)
                 )
                 assert repeated_revoke.status_code == 409
                 assert (
@@ -417,20 +425,37 @@ def test_invitation_create_list_revoke_security_matrix(
                 )
 
                 accepted_id = uuid4()
+                expired_id = uuid4()
                 async with session_factory() as session, session.begin():
-                    await _insert_accepted_invitation(
+                    await _insert_nonpending_invitation(
                         session,
                         tenant_id=ids["tenant_a"],
                         user_id=ids["owner"],
                         invitation_id=accepted_id,
+                        status="accepted",
+                    )
+                    await _insert_nonpending_invitation(
+                        session,
+                        tenant_id=ids["tenant_a"],
+                        user_id=ids["owner"],
+                        invitation_id=expired_id,
+                        status="pending",
                     )
 
                 accepted_revoke = await client.delete(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations/{accepted_id}"
+                    _item_path(ids["tenant_a"], accepted_id)
+                )
+                expired_revoke = await client.delete(
+                    _item_path(ids["tenant_a"], expired_id)
                 )
                 assert accepted_revoke.status_code == 409
+                assert expired_revoke.status_code == 409
                 assert (
                     accepted_revoke.json()["error"]["code"]
+                    == "INVITATION_LIFECYCLE_CONFLICT"
+                )
+                assert (
+                    expired_revoke.json()["error"]["code"]
                     == "INVITATION_LIFECYCLE_CONFLICT"
                 )
         finally:
@@ -458,7 +483,10 @@ def test_invitation_input_validation_and_authentication() -> None:
                 {"email": "user@example.com", "roleIds": []},
                 {
                     "email": "user@example.com",
-                    "roleIds": [str(ids["tenant_role_a"]), str(ids["tenant_role_a"])],
+                    "roleIds": [
+                        str(ids["tenant_role_a"]),
+                        str(ids["tenant_role_a"]),
+                    ],
                 },
                 {
                     "email": "user@example.com",
@@ -469,7 +497,7 @@ def test_invitation_input_validation_and_authentication() -> None:
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 for body in invalid_bodies:
                     response = await client.post(
-                        f"/api/v1/organizations/{ids['tenant_a']}/invitations",
+                        _collection_path(ids["tenant_a"]),
                         json=body,
                     )
                     assert response.status_code == 422
@@ -477,9 +505,7 @@ def test_invitation_input_validation_and_authentication() -> None:
 
             _install_overrides(session_factory, None)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                unauthenticated = await client.get(
-                    f"/api/v1/organizations/{ids['tenant_a']}/invitations"
-                )
+                unauthenticated = await client.get(_collection_path(ids["tenant_a"]))
                 assert unauthenticated.status_code == 401
                 assert unauthenticated.json()["error"]["code"] == "UNAUTHENTICATED"
         finally:

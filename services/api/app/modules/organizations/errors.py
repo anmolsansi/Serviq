@@ -17,3 +17,17 @@ class OwnerRoleUnavailableError(OrganizationError):
 
     def __init__(self) -> None:
         super().__init__("Organization owner role is unavailable.")
+
+
+class OrganizationNotFoundError(OrganizationError):
+    error_code = "ORGANIZATION_NOT_FOUND"
+
+    def __init__(self) -> None:
+        super().__init__("Organization was not found.")
+
+
+class OrganizationSettingsForbiddenError(OrganizationError):
+    error_code = "ORGANIZATION_SETTINGS_FORBIDDEN"
+
+    def __init__(self) -> None:
+        super().__init__("Organization settings access is forbidden.")

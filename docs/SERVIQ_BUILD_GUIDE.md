@@ -2594,3 +2594,26 @@ Focused unit tests cover valid workforce, verified-customer, and anonymous-custo
 This ticket does **not** validate OIDC tokens, create sessions, query memberships, add route guards, or read tenant IDs from client input. Its purpose is narrower: provide one safe shape that later trusted auth and tenancy code can populate.
 
 The detailed file-by-file explanation for this ticket is also recorded in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.
+
+
+---
+
+# OPE-280 — workforce OIDC token validation
+
+OPE-280 adds Serviq's first real cryptographic workforce identity-verification boundary. A workforce JWT is not trusted because it contains familiar-looking fields. The API now verifies the signature against the configured issuer's JWKS, allows only RS256, requires exact issuer and audience, validates expiry, and requires a non-empty subject before identity data is considered trusted.
+
+The API scaffold did not previously contain an approved JOSE/JWT package, so the ticket's architecture stop condition was triggered. ADR-003 resolves that deliberately by approving `joserfc` and moving the already-used `httpx` client into runtime dependencies for OIDC metadata retrieval. The dependency lockfile was regenerated so every environment installs the same resolved packages.
+
+OIDC discovery always starts from configured `OIDC_ISSUER_URL`, never from an issuer supplied by the token. Discovery must repeat that exact issuer. Its `jwks_uri` is then validated before fetching. Production/staging metadata must use HTTPS, while local/test HTTP is limited to loopback development hosts. Redirects are disabled, requests have a five-second timeout, and metadata bodies are bounded.
+
+Discovery and JWKS are cached for at most five minutes under one async lock. This prevents authentication from performing two identity-provider network requests for every API request and prevents a cold-cache burst from starting many identical refreshes.
+
+Successful validation returns only `VerifiedWorkforceIdentity`: issuer, subject, optional normalized email, email verification state, and optional display name. Even a valid signed token cannot inject a Serviq tenant ID or permission list because those fields are not copied into the trusted DTO. Tenant membership and authorization remain database-owned.
+
+All failures become the stable internal `UNAUTHENTICATED` category with the generic message `Authentication failed.` Raw token text and raw JOSE/network exceptions are not logged, stored, or returned.
+
+Automated tests cover success plus wrong issuer, wrong audience, expiry, invalid signature, missing/blank subject, malformed token, discovery mismatch, caching, email verification behavior, claim filtering, and token redaction. A dedicated security review is recorded at `docs/security-reviews/OPE-280-workforce-oidc-validation.md`.
+
+This ticket does not implement browser PKCE/session handling, user persistence, membership lookup, tenant resolution, or RequestContext construction. Those remain separate trust boundaries in later tickets.
+
+The detailed implementation narrative for OPE-280 is in `docs/OPE_279_285_IMPLEMENTATION_GUIDE.md`.

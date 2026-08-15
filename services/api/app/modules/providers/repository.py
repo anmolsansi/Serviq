@@ -37,6 +37,23 @@ async def find_provider_connection(
     return result.scalar_one_or_none()
 
 
+async def find_provider_connection_for_update(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    provider_connection_id: UUID,
+) -> ProviderConnection | None:
+    result = await session.execute(
+        select(ProviderConnection)
+        .where(
+            ProviderConnection.id == provider_connection_id,
+            ProviderConnection.tenant_id == tenant_id,
+        )
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
 def add_provider_connection(
     session: AsyncSession,
     *,

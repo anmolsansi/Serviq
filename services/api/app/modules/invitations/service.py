@@ -58,10 +58,6 @@ async def create_invitation(
 ) -> InvitationCreateView:
     """Create one invitation while keeping plaintext bearer material out of storage."""
 
-    plaintext_token = generate_invitation_token()
-    token_hash = hash_invitation_token(plaintext_token)
-    now = clock()
-
     async with session.begin():
         await _require_manage_permission(
             session,
@@ -75,6 +71,10 @@ async def create_invitation(
         )
         if {role.id for role in roles} != set(request.role_ids):
             raise InvitationRoleInvalidError
+
+        plaintext_token = generate_invitation_token()
+        token_hash = hash_invitation_token(plaintext_token)
+        now = clock()
 
         invitation = add_invitation(
             session,

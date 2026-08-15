@@ -1,4 +1,4 @@
-"""Protected organization invitation management routes."""
+"""Protected organization invitation management and acceptance routes."""
 
 from typing import Annotated
 from uuid import UUID
@@ -8,22 +8,30 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.api import SuccessEnvelope
+from app.core.auth import VerifiedWorkforceIdentity
 from app.core.config import load_settings
 from app.core.database import get_database_session
-from app.core.principal import require_workforce_user_id
+from app.core.principal import (
+    require_verified_workforce_identity,
+    require_workforce_user_id,
+)
 from app.modules.invitations.errors import (
+    InvitationAcceptanceRejectedError,
     InvitationAccessNotFoundError,
     InvitationConflictError,
     InvitationForbiddenError,
     InvitationLifecycleConflictError,
     InvitationRoleInvalidError,
+    InvitationVerifiedEmailRequiredError,
 )
 from app.modules.invitations.schemas import (
+    InvitationAcceptRequest,
     InvitationCreateRequest,
     InvitationCreateView,
     InvitationView,
 )
 from app.modules.invitations.service import (
+    accept_invitation,
     create_invitation,
     list_invitations,
     revoke_invitation,
@@ -33,8 +41,13 @@ router = APIRouter(
     prefix="/api/v1/organizations/{organization_id}/invitations",
     tags=["invitations"],
 )
+accept_router = APIRouter(prefix="/api/v1/invitations", tags=["invitations"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_database_session)]
 WorkforceUserId = Annotated[UUID, Depends(require_workforce_user_id)]
+VerifiedIdentity = Annotated[
+    VerifiedWorkforceIdentity,
+    Depends(require_verified_workforce_identity),
+]
 
 
 @router.get("", response_model=SuccessEnvelope[list[InvitationView]])
@@ -131,6 +144,46 @@ async def delete_invitation(
                 "error": {
                     "code": "INVITATION_LIFECYCLE_CONFLICT",
                     "message": "Invitation cannot be revoked from its current state.",
+                }
+            },
+        )
+    return SuccessEnvelope(data=invitation)
+
+
+@accept_router.post(
+    "/accept",
+    response_model=SuccessEnvelope[InvitationView],
+)
+async def post_invitation_acceptance(
+    request: InvitationAcceptRequest,
+    session: DatabaseSession,
+    user_id: WorkforceUserId,
+    identity: VerifiedIdentity,
+) -> SuccessEnvelope[InvitationView] | JSONResponse:
+    try:
+        invitation = await accept_invitation(
+            session,
+            user_id=user_id,
+            identity=identity,
+            request=request,
+        )
+    except InvitationVerifiedEmailRequiredError:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "code": "VERIFIED_EMAIL_REQUIRED",
+                    "message": "A verified workforce email is required.",
+                }
+            },
+        )
+    except InvitationAcceptanceRejectedError:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "INVITATION_ACCEPTANCE_REJECTED",
+                    "message": "Invitation cannot be accepted.",
                 }
             },
         )

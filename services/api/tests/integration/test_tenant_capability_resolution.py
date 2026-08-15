@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
@@ -18,9 +19,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def _insert_fixture(session: object, ids: dict[str, UUID]) -> None:
-    # The integration fixture intentionally includes a cross-tenant role mapping that
-    # the database FKs permit structurally. The resolver must still filter it out.
+async def _insert_fixture(session: AsyncSession, ids: dict[str, UUID]) -> None:
+    # This fixture intentionally includes a cross-tenant role mapping that the FKs
+    # permit structurally. The resolver still must filter it out.
     await session.execute(
         text(
             """
@@ -56,8 +57,8 @@ async def _insert_fixture(session: object, ids: dict[str, UUID]) -> None:
         text(
             """
             INSERT INTO memberships (id, tenant_id, user_id, status)
-            VALUES (:membership_a, :tenant_a, :user_id, 'active'),
-                   (:membership_b, :tenant_b, :user_id, 'suspended')
+            VALUES (:membership_a, :tenant_a, :user, 'active'),
+                   (:membership_b, :tenant_b, :user, 'suspended')
             """
         ),
         ids,
@@ -102,6 +103,55 @@ async def _insert_fixture(session: object, ids: dict[str, UUID]) -> None:
             """
         ),
         ids,
+    )
+
+
+async def _cleanup_fixture(session: AsyncSession, ids: dict[str, UUID]) -> None:
+    await session.execute(
+        text("DELETE FROM membership_roles WHERE membership_id IN (:a, :b)"),
+        {"a": ids["membership_a"], "b": ids["membership_b"]},
+    )
+    await session.execute(
+        text(
+            """
+            DELETE FROM role_permissions
+            WHERE role_id IN (:a1, :a2, :b, :system_role, :invalid_global_role)
+            """
+        ),
+        {
+            "a1": ids["role_a1"],
+            "a2": ids["role_a2"],
+            "b": ids["role_b"],
+            "system_role": ids["system_role"],
+            "invalid_global_role": ids["invalid_global_role"],
+        },
+    )
+    await session.execute(
+        text(
+            """
+            DELETE FROM roles
+            WHERE id IN (:a1, :a2, :b, :system_role, :invalid_global_role)
+            """
+        ),
+        {
+            "a1": ids["role_a1"],
+            "a2": ids["role_a2"],
+            "b": ids["role_b"],
+            "system_role": ids["system_role"],
+            "invalid_global_role": ids["invalid_global_role"],
+        },
+    )
+    await session.execute(
+        text("DELETE FROM memberships WHERE id IN (:a, :b)"),
+        {"a": ids["membership_a"], "b": ids["membership_b"]},
+    )
+    await session.execute(
+        text("DELETE FROM users WHERE id = :user"),
+        {"user": ids["user"]},
+    )
+    await session.execute(
+        text("DELETE FROM tenants WHERE id IN (:a, :b, :c)"),
+        {"a": ids["tenant_a"], "b": ids["tenant_b"], "c": ids["tenant_c"]},
     )
 
 
@@ -152,10 +202,7 @@ def test_tenant_capabilities_are_deduplicated_and_tenant_safe() -> None:
             assert "invalid.global" not in resolved.permissions
         finally:
             async with session_factory() as session, session.begin():
-                await session.execute(
-                    text("DELETE FROM tenants WHERE id IN (:a, :b, :c)"),
-                    {"a": ids["tenant_a"], "b": ids["tenant_b"], "c": ids["tenant_c"]},
-                )
+                await _cleanup_fixture(session, ids)
             await engine.dispose()
 
     asyncio.run(scenario())
@@ -187,10 +234,7 @@ def test_suspended_and_missing_memberships_fail_closed() -> None:
                     )
         finally:
             async with session_factory() as session, session.begin():
-                await session.execute(
-                    text("DELETE FROM tenants WHERE id IN (:a, :b, :c)"),
-                    {"a": ids["tenant_a"], "b": ids["tenant_b"], "c": ids["tenant_c"]},
-                )
+                await _cleanup_fixture(session, ids)
             await engine.dispose()
 
     asyncio.run(scenario())

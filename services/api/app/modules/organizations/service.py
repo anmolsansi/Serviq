@@ -9,6 +9,7 @@ from app.modules.organizations.errors import (
     OrganizationSlugConflictError,
     OwnerRoleUnavailableError,
 )
+from app.modules.organizations.models import Organization
 from app.modules.organizations.repository import (
     add_active_membership,
     add_membership_role,
@@ -69,7 +70,7 @@ async def create_organization(
         return _to_view(organization)
 
 
-def _to_view(organization: object) -> OrganizationView:
+def _to_view(organization: Organization) -> OrganizationView:
     return OrganizationView(
         id=organization.id,
         slug=organization.slug,

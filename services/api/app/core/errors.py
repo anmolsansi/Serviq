@@ -6,6 +6,15 @@ provider/library details.
 """
 
 
+class AuthenticationError(RuntimeError):
+    """Stable fail-closed category for untrusted/invalid authentication input."""
+
+    error_code = "UNAUTHENTICATED"
+
+    def __init__(self) -> None:
+        super().__init__("Authentication failed.")
+
+
 class AuthorizationContextError(RuntimeError):
     """Base class for trusted authentication/authorization-context failures."""
 

@@ -1,13 +1,9 @@
 """Python mirrors of Serviq's frozen baseline API envelopes."""
 
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel, ConfigDict
 
-T = TypeVar("T")
 
-
-class SuccessEnvelope(BaseModel, Generic[T]):
+class SuccessEnvelope[T](BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: T

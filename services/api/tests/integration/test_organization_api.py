@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import load_settings
 from app.core.database import (
     create_database_engine,
     create_database_session_factory,
@@ -50,28 +51,29 @@ async def _insert_users(session: AsyncSession, user_ids: tuple[UUID, ...]) -> No
 
 
 async def _cleanup(session: AsyncSession, user_ids: tuple[UUID, ...], prefix: str) -> None:
-    await session.execute(
-        text(
-            """
-            DELETE FROM membership_roles
-            WHERE membership_id IN (
-                SELECT id FROM memberships WHERE user_id = ANY(:user_ids)
-            )
-            """
-        ),
-        {"user_ids": list(user_ids)},
-    )
-    await session.execute(
-        text("DELETE FROM memberships WHERE user_id = ANY(:user_ids)"),
-        {"user_ids": list(user_ids)},
-    )
+    for user_id in user_ids:
+        await session.execute(
+            text(
+                """
+                DELETE FROM membership_roles
+                WHERE membership_id IN (
+                    SELECT id FROM memberships WHERE user_id = :user_id
+                )
+                """
+            ),
+            {"user_id": user_id},
+        )
+        await session.execute(
+            text("DELETE FROM memberships WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        await session.execute(
+            text("DELETE FROM users WHERE id = :user_id"),
+            {"user_id": user_id},
+        )
     await session.execute(
         text("DELETE FROM tenants WHERE slug LIKE :prefix"),
         {"prefix": f"{prefix}%"},
-    )
-    await session.execute(
-        text("DELETE FROM users WHERE id = ANY(:user_ids)"),
-        {"user_ids": list(user_ids)},
     )
 
 
@@ -97,8 +99,6 @@ def _clear_overrides() -> None:
 
 def test_organization_list_create_and_cross_user_isolation() -> None:
     async def scenario() -> None:
-        from app.core.config import load_settings
-
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
         user_a = uuid4()
@@ -193,8 +193,6 @@ def test_organization_list_create_and_cross_user_isolation() -> None:
 )
 def test_organization_create_validation_uses_frozen_error_envelope(body: dict[str, object]) -> None:
     async def scenario() -> None:
-        from app.core.config import load_settings
-
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
         user_id = uuid4()
@@ -218,8 +216,6 @@ def test_organization_create_validation_uses_frozen_error_envelope(body: dict[st
 
 def test_organization_routes_reject_missing_server_owned_principal() -> None:
     async def scenario() -> None:
-        from app.core.config import load_settings
-
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
         try:
@@ -242,7 +238,6 @@ def test_owner_mapping_failure_rolls_back_organization_and_membership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def scenario() -> None:
-        from app.core.config import load_settings
         from app.modules.organizations import service as organization_service
 
         engine = create_database_engine(load_settings())

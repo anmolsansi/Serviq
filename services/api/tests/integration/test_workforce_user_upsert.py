@@ -89,11 +89,10 @@ def test_verified_workforce_user_lifecycle_and_identity_key() -> None:
                 )
                 assert count == 2
         finally:
-            async with session_factory() as session:
-                async with session.begin():
-                    await session.execute(
-                        delete(User).where(User.oidc_issuer.like(f"{TEST_ISSUER_PREFIX}%"))
-                    )
+            async with session_factory() as session, session.begin():
+                await session.execute(
+                    delete(User).where(User.oidc_issuer.like(f"{TEST_ISSUER_PREFIX}%"))
+                )
             await engine.dispose()
 
     asyncio.run(scenario())
@@ -111,11 +110,10 @@ def test_disabled_user_fails_closed_and_is_not_reenabled() -> None:
             async with session_factory() as session:
                 created = await upsert_verified_workforce_user(session, identity)
 
-            async with session_factory() as session:
-                async with session.begin():
-                    await session.execute(
-                        update(User).where(User.id == created.id).values(status="disabled")
-                    )
+            async with session_factory() as session, session.begin():
+                await session.execute(
+                    update(User).where(User.id == created.id).values(status="disabled")
+                )
 
             async with session_factory() as session:
                 with pytest.raises(DisabledWorkforceUserError):
@@ -125,9 +123,8 @@ def test_disabled_user_fails_closed_and_is_not_reenabled() -> None:
                 status = await session.scalar(select(User.status).where(User.id == created.id))
                 assert status == "disabled"
         finally:
-            async with session_factory() as session:
-                async with session.begin():
-                    await session.execute(delete(User).where(User.oidc_issuer == issuer))
+            async with session_factory() as session, session.begin():
+                await session.execute(delete(User).where(User.oidc_issuer == issuer))
             await engine.dispose()
 
     asyncio.run(scenario())
@@ -159,9 +156,8 @@ def test_concurrent_first_login_resolves_one_stable_user() -> None:
                 )
                 assert count == 1
         finally:
-            async with session_factory() as session:
-                async with session.begin():
-                    await session.execute(delete(User).where(User.oidc_issuer == issuer))
+            async with session_factory() as session, session.begin():
+                await session.execute(delete(User).where(User.oidc_issuer == issuer))
             await engine.dispose()
 
     asyncio.run(scenario())

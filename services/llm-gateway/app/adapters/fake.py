@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
 
+from pydantic import JsonValue
+
 from app.adapters.base import AdapterContext
 from app.schemas import (
     GatewayErrorCode,
@@ -21,8 +23,11 @@ from app.schemas import (
 
 FAKE_UPSTREAM_MODEL = "serviq-fake-v1"
 _TEXT = "Serviq deterministic fake response."
-_STRUCTURED = {"answer": "deterministic", "confidence": 1.0}
-_MALFORMED_STRUCTURED = {"answer": 123, "confidence": "not-a-number"}
+_STRUCTURED: dict[str, JsonValue] = {"answer": "deterministic", "confidence": 1.0}
+_MALFORMED_STRUCTURED: dict[str, JsonValue] = {
+    "answer": 123,
+    "confidence": "not-a-number",
+}
 
 
 class FakeScenario(StrEnum):
@@ -39,7 +44,7 @@ class FakeScenario(StrEnum):
 @dataclass(frozen=True)
 class FakeScenarioDefinition:
     content: str | None = None
-    structured: dict[str, object] | None = None
+    structured: dict[str, JsonValue] | None = None
     stream_chunks: tuple[str, ...] = ()
     error_code: GatewayErrorCode | None = None
     error_message: str | None = None

@@ -1,6 +1,7 @@
 """Tenant member listing, authorization, and atomic role/status updates."""
 
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,7 @@ from app.modules.members.repository import (
 )
 from app.modules.members.schemas import (
     MemberRoleView,
+    MembershipStatus,
     MemberUpdateRequest,
     MemberView,
 )
@@ -173,7 +175,7 @@ def _to_view(
         userId=user.id,
         email=user.email,
         displayName=user.display_name,
-        status=membership.status,
+        status=cast(MembershipStatus, membership.status),
         roles=tuple(
             MemberRoleView(id=role.id, key=role.key, displayName=role.display_name)
             for role in roles

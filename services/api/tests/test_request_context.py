@@ -17,12 +17,12 @@ def test_valid_workforce_context_preserves_contract_and_permissions() -> None:
     tenant_id = uuid4()
     user_id = uuid4()
     context = RequestContext(
-        request_id="req-workforce-1",
-        tenant_id=tenant_id,
+        requestId="req-workforce-1",
+        tenantId=tenant_id,
         actor=RequestActor(type=ActorType.TENANT_USER, id=str(user_id)),
-        user_id=user_id,
+        userId=user_id,
         permissions=("organization.read", "organization.settings.write"),
-        assurance_level=AssuranceLevel.WORKFORCE,
+        assuranceLevel=AssuranceLevel.WORKFORCE,
     )
 
     assert context.tenant_id == tenant_id
@@ -43,11 +43,11 @@ def test_valid_workforce_context_preserves_contract_and_permissions() -> None:
 def test_valid_verified_customer_context() -> None:
     customer_id = uuid4()
     context = RequestContext(
-        request_id="req-customer-1",
-        tenant_id=uuid4(),
+        requestId="req-customer-1",
+        tenantId=uuid4(),
         actor=RequestActor(type=ActorType.CUSTOMER, id=str(customer_id)),
-        customer_id=customer_id,
-        assurance_level=AssuranceLevel.VERIFIED,
+        customerId=customer_id,
+        assuranceLevel=AssuranceLevel.VERIFIED,
     )
 
     assert context.user_id is None
@@ -57,10 +57,10 @@ def test_valid_verified_customer_context() -> None:
 
 def test_anonymous_customer_does_not_invent_user_identity() -> None:
     context = RequestContext(
-        request_id="req-anonymous-1",
-        tenant_id=uuid4(),
+        requestId="req-anonymous-1",
+        tenantId=uuid4(),
         actor=RequestActor(type=ActorType.CUSTOMER, id="anonymous-session"),
-        assurance_level=AssuranceLevel.ANONYMOUS,
+        assuranceLevel=AssuranceLevel.ANONYMOUS,
     )
 
     assert context.user_id is None
@@ -99,10 +99,10 @@ def test_required_tenant_helper_fails_closed_without_trusted_context() -> None:
 def test_required_tenant_helper_returns_only_trusted_context_tenant() -> None:
     tenant_id = uuid4()
     context = RequestContext(
-        request_id="req-tenant-1",
-        tenant_id=tenant_id,
+        requestId="req-tenant-1",
+        tenantId=tenant_id,
         actor=RequestActor(type=ActorType.SERVICE, id="worker"),
-        assurance_level=AssuranceLevel.WORKFORCE,
+        assuranceLevel=AssuranceLevel.WORKFORCE,
     )
 
     resolved: UUID = require_tenant_id(context)
@@ -111,17 +111,17 @@ def test_required_tenant_helper_returns_only_trusted_context_tenant() -> None:
 
 def test_context_and_nested_actor_are_immutable_after_construction() -> None:
     context = RequestContext(
-        request_id="req-frozen",
-        tenant_id=uuid4(),
+        requestId="req-frozen",
+        tenantId=uuid4(),
         actor=RequestActor(type=ActorType.SERVICE, id="service-1"),
         permissions=("audit.read",),
-        assurance_level=AssuranceLevel.WORKFORCE,
+        assuranceLevel=AssuranceLevel.WORKFORCE,
     )
 
     with pytest.raises(ValidationError):
-        context.request_id = "changed"  # type: ignore[misc]
+        context.request_id = "changed"
 
     with pytest.raises(ValidationError):
-        context.actor.id = "changed"  # type: ignore[misc]
+        context.actor.id = "changed"
 
     assert context.permissions == ("audit.read",)

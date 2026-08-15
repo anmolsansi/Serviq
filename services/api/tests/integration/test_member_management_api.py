@@ -239,8 +239,14 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
                 assert first_page.status_code == 200
                 first_items = first_page.json()["data"]
                 assert len(first_items) == 2
-                assert all("oidc_subject" not in item and "oidcSubject" not in item for item in first_items)
-                assert all("oidc_issuer" not in item and "oidcIssuer" not in item for item in first_items)
+                assert all(
+                    "oidc_subject" not in item and "oidcSubject" not in item
+                    for item in first_items
+                )
+                assert all(
+                    "oidc_issuer" not in item and "oidcIssuer" not in item
+                    for item in first_items
+                )
 
                 second_page = await client.get(list_url, params={"limit": 100, "offset": 2})
                 assert second_page.status_code == 200

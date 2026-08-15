@@ -114,8 +114,8 @@ def test_valid_token_returns_only_normalized_trusted_identity() -> None:
         "email_verified": True,
         "display_name": "Test User",
     }
-    assert "tenant_id" not in identity.model_fields
-    assert "permissions" not in identity.model_fields
+    assert "tenant_id" not in type(identity).model_fields
+    assert "permissions" not in type(identity).model_fields
 
 
 @pytest.mark.parametrize(

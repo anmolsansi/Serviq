@@ -1,4 +1,4 @@
-"""Workforce organization list and creation routes."""
+"""Workforce organization routes."""
 
 from typing import Annotated
 from uuid import UUID
@@ -11,11 +11,22 @@ from app.core.api import SuccessEnvelope
 from app.core.database import get_database_session
 from app.core.principal import require_workforce_user_id
 from app.modules.organizations.errors import (
+    OrganizationNotFoundError,
+    OrganizationSettingsForbiddenError,
     OrganizationSlugConflictError,
     OwnerRoleUnavailableError,
 )
-from app.modules.organizations.schemas import OrganizationCreateRequest, OrganizationView
-from app.modules.organizations.service import create_organization, list_organizations
+from app.modules.organizations.schemas import (
+    OrganizationCreateRequest,
+    OrganizationUpdateRequest,
+    OrganizationView,
+)
+from app.modules.organizations.service import (
+    create_organization,
+    get_organization,
+    list_organizations,
+    update_organization,
+)
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["organizations"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_database_session)]
@@ -68,3 +79,61 @@ async def post_organization(
             },
         )
     return SuccessEnvelope(data=organization)
+
+
+@router.get("/{organization_id}", response_model=SuccessEnvelope[OrganizationView])
+async def get_organization_detail(
+    organization_id: UUID,
+    session: DatabaseSession,
+    user_id: WorkforceUserId,
+) -> SuccessEnvelope[OrganizationView] | JSONResponse:
+    try:
+        organization = await get_organization(
+            session,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+    except OrganizationNotFoundError:
+        return _not_found_response()
+    return SuccessEnvelope(data=organization)
+
+
+@router.patch("/{organization_id}", response_model=SuccessEnvelope[OrganizationView])
+async def patch_organization(
+    organization_id: UUID,
+    request: OrganizationUpdateRequest,
+    session: DatabaseSession,
+    user_id: WorkforceUserId,
+) -> SuccessEnvelope[OrganizationView] | JSONResponse:
+    try:
+        organization = await update_organization(
+            session,
+            user_id=user_id,
+            organization_id=organization_id,
+            request=request,
+        )
+    except OrganizationNotFoundError:
+        return _not_found_response()
+    except OrganizationSettingsForbiddenError:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message": "You do not have permission to update organization settings.",
+                }
+            },
+        )
+    return SuccessEnvelope(data=organization)
+
+
+def _not_found_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": {
+                "code": "ORGANIZATION_NOT_FOUND",
+                "message": "Organization was not found.",
+            }
+        },
+    )

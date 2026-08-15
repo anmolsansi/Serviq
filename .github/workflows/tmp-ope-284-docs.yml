@@ -1,0 +1,26 @@
+name: Temporary OPE-284 documentation sync
+
+on:
+  push:
+    branches:
+      - ope-284-organization-detail-update
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append ticket documentation and clean helper
+        run: |
+          python .github/scripts/tmp_append_ope284_docs.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tmp-ope-284-docs.yml
+          git rm .github/scripts/tmp_append_ope284_docs.py
+          git add docs/OPE_279_285_IMPLEMENTATION_GUIDE.md docs/SERVIQ_BUILD_GUIDE.md
+          git commit -m "docs(ope-284): explain organization detail and update APIs"
+          git push origin HEAD:${GITHUB_REF_NAME}

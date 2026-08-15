@@ -119,9 +119,9 @@ def test_context_and_nested_actor_are_immutable_after_construction() -> None:
     )
 
     with pytest.raises(ValidationError):
-        setattr(context, "request_id", "changed")
+        context.request_id = "changed"  # type: ignore[misc]
 
     with pytest.raises(ValidationError):
-        setattr(context.actor, "id", "changed")
+        context.actor.id = "changed"  # type: ignore[misc]
 
     assert context.permissions == ("audit.read",)

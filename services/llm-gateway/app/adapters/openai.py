@@ -18,8 +18,12 @@ from openai import (
     RateLimitError,
     UnprocessableEntityError,
 )
-from openai.types import ResponseFormatJSONSchema
-from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessageParam,
+    ChatCompletionStreamOptionsParam,
+    completion_create_params,
+)
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
@@ -148,13 +152,14 @@ async def _create_completion(
     messages: list[ChatCompletionMessageParam],
 ) -> ChatCompletion:
     if request.response_schema:
-        return await client.chat.completions.create(
+        result = await client.chat.completions.create(
             model=context.upstream_model,
             messages=messages,
             max_completion_tokens=request.max_output_tokens,
             response_format=_response_format(request),
             timeout=request.timeout_ms / 1000.0,
         )
+        return result
     return await client.chat.completions.create(
         model=context.upstream_model,
         messages=messages,
@@ -170,23 +175,25 @@ async def _create_stream(
     messages: list[ChatCompletionMessageParam],
 ) -> AsyncIterator[ChatCompletionChunk]:
     if request.response_schema:
-        return await client.chat.completions.create(
+        result = await client.chat.completions.create(
             model=context.upstream_model,
             messages=messages,
             max_completion_tokens=request.max_output_tokens,
             response_format=_response_format(request),
             stream=True,
-            stream_options={"include_usage": True},
+            stream_options=_stream_options(),
             timeout=request.timeout_ms / 1000.0,
         )
-    return await client.chat.completions.create(
+        return result
+    result = await client.chat.completions.create(
         model=context.upstream_model,
         messages=messages,
         max_completion_tokens=request.max_output_tokens,
         stream=True,
-        stream_options={"include_usage": True},
+        stream_options=_stream_options(),
         timeout=request.timeout_ms / 1000.0,
     )
+    return result
 
 
 def _messages(request: GatewayRequest) -> list[ChatCompletionMessageParam]:
@@ -199,9 +206,9 @@ def _messages(request: GatewayRequest) -> list[ChatCompletionMessageParam]:
     ]
 
 
-def _response_format(request: GatewayRequest) -> ResponseFormatJSONSchema:
+def _response_format(request: GatewayRequest) -> completion_create_params.ResponseFormat:
     return cast(
-        ResponseFormatJSONSchema,
+        completion_create_params.ResponseFormat,
         {
             "type": "json_schema",
             "json_schema": {
@@ -211,6 +218,10 @@ def _response_format(request: GatewayRequest) -> ResponseFormatJSONSchema:
             },
         },
     )
+
+
+def _stream_options() -> ChatCompletionStreamOptionsParam:
+    return {"include_usage": True}
 
 
 def _normalize_completion(

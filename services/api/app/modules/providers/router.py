@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.contracts import SuccessEnvelope
+from app.core.api import SuccessEnvelope
 from app.core.database import get_database_session
-from app.core.principal import require_workforce_user_id
+from app.core.principal import require_tenant_id, require_workforce_user_id
 from app.core.secret_store import TenantSecretStore, build_local_secret_store
-from app.core.tenancy import require_tenant_id
 from app.modules.providers.errors import (
     ProviderConflictError,
     ProviderForbiddenError,
@@ -40,17 +39,19 @@ WorkforceUserId = Annotated[UUID, Depends(require_workforce_user_id)]
 TenantId = Annotated[UUID, Depends(require_tenant_id)]
 
 
-def get_secret_store(request: Request) -> TenantSecretStore:
+def get_provider_secret_store(request: Request) -> TenantSecretStore:
+    """Resolve the app-owned store or build the local V1 adapter."""
+
     configured = getattr(request.app.state, "secret_store", None)
     if configured is not None:
-        return configured
+        return cast(TenantSecretStore, configured)
     return build_local_secret_store(request.app.state.settings)
 
 
-SecretStore = Annotated[TenantSecretStore, Depends(get_secret_store)]
+SecretStore = Annotated[TenantSecretStore, Depends(get_provider_secret_store)]
 
 
-@router.get("")
+@router.get("", response_model=SuccessEnvelope[list[ProviderView]])
 async def list_provider_connections(
     session: DatabaseSession,
     user_id: WorkforceUserId,
@@ -67,7 +68,11 @@ async def list_provider_connections(
     return SuccessEnvelope(data=providers)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=SuccessEnvelope[ProviderView],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_provider_connection(
     request: ProviderCreateRequest,
     session: DatabaseSession,
@@ -92,7 +97,10 @@ async def create_provider_connection(
     return SuccessEnvelope(data=provider)
 
 
-@router.get("/{provider_connection_id}")
+@router.get(
+    "/{provider_connection_id}",
+    response_model=SuccessEnvelope[ProviderView],
+)
 async def get_provider_by_id(
     provider_connection_id: UUID,
     session: DatabaseSession,
@@ -113,7 +121,10 @@ async def get_provider_by_id(
     return SuccessEnvelope(data=provider)
 
 
-@router.patch("/{provider_connection_id}")
+@router.patch(
+    "/{provider_connection_id}",
+    response_model=SuccessEnvelope[ProviderView],
+)
 async def update_provider_by_id(
     provider_connection_id: UUID,
     request: ProviderUpdateRequest,

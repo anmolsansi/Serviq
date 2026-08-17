@@ -18,39 +18,31 @@ jobs:
         with:
           ref: docs-ope-286-295-final-reconciliation
 
-      - name: Append final implementation documentation
-        env:
-          DEDICATED_APPEND_B64: "LS0tCgojIE9QRS0yODkg4oCUIENyZWF0ZSBwcm92aWRlciBhbmQgbW9kZWwgbWV0YWRhdGEgbWlncmF0aW9uCgojIyBUaGUgcHJvYmxlbSBpbiBzaW1wbGUgdGVybXMKClNlcnZpcSdzIEFJIGdhdGV3YXkgbmVlZHMgdG8ga25vdyB0d28gZGlmZmVyZW50IGtpbmRzIG9mIGluZm9ybWF0aW9uOgoKMS4gKipIb3cgYSB0ZW5hbnQgY29ubmVjdHMgdG8gYW4gQUkgcHJvdmlkZXIqKiwgc3VjaCBhcyBPcGVuQUkgb3IgQW50aHJvcGljLgoyLiAqKldoaWNoIHN0YWJsZSBTZXJ2aXEgbW9kZWwgbmFtZSBwb2ludHMgdG8gd2hpY2ggcmVhbCBwcm92aWRlciBtb2RlbCoqLCBzbyB0aGUgcmVzdCBvZiB0aGUgcHJvZHVjdCBjYW4gYXNrIGZvciBzb21ldGhpbmcgbGlrZSBgc3VwcG9ydC1kZWZhdWx0YCB3aXRob3V0IGhhcmQtY29kaW5nIGBncHQtKmAgb3IgYGNsYXVkZS0qYCBuYW1lcyBldmVyeXdoZXJlLgoKVGhlIGRhbmdlcm91cyBzaG9ydGN1dCB3b3VsZCBiZSB0byBwdXQgdGhlIHByb3ZpZGVyIEFQSSBrZXkgZGlyZWN0bHkgaW50byB0aGUgbm9ybWFsIFBvc3RncmVTUUwgcm93LiBPUEUtMjg5IGRlbGliZXJhdGVseSBkb2VzIG5vdCBkbyB0aGF0LiBQb3N0Z3JlU1FMIHN0b3JlcyBvbmx5IHByb3ZpZGVyIG1ldGFkYXRhIGFuZCBhbiBvcGFxdWUgYHNlY3JldF9yZWZgLiBUaGUgYWN0dWFsIHNlY3JldCBpcyBoYW5kbGVkIGJ5IHRoZSBzZWNyZXQtc3RvcmUgYm91bmRhcnkgYWRkZWQgaW4gT1BFLTI5MC4KClRoaXMgc2VwYXJhdGlvbiBpcyBpbXBvcnRhbnQgYmVjYXVzZSBub3JtYWwgcmVsYXRpb25hbCB0YWJsZXMgYXJlIGNvcGllZCBpbnRvIGJhY2t1cHMsIGluc3BlY3RlZCBkdXJpbmcgZGVidWdnaW5nLCBxdWVyaWVkIGJ5IGFkbWluaXN0cmF0b3JzLCBhbmQgb2Z0ZW4gaW5jbHVkZWQgaW4gYW5hbHl0aWNzIG9yIGRhdGFiYXNlIHRvb2xpbmcuIEEgcHJvdmlkZXIgQVBJIGtleSBzaG91bGQgbm90IGJlY29tZSBvcmRpbmFyeSBhcHBsaWNhdGlvbiBkYXRhLgoKIyMgV2hhdCB3YXMgYnVpbHQKCk1pZ3JhdGlvbiBgMjAyNjA4MTVfMDAwNV9wcm92aWRlcl9tb2RlbF9tZXRhZGF0YS5weWAgYWRkcyB0d28gdGVuYW50LW93bmVkIHRhYmxlcy4KCiMjIyBgcHJvdmlkZXJfY29ubmVjdGlvbnNgCgpBIHByb3ZpZGVyIGNvbm5lY3Rpb24gcmVjb3JkczoKCi0gaXRzIFVVSUQ7Ci0gb3duaW5nIGB0ZW5hbnRfaWRgOwotIHByb3ZpZGVyIHR5cGU6IGBvcGVuYWlgLCBgYW50aHJvcGljYCwgYGdlbWluaWAsIG9yIGBvcGVucm91dGVyYDsKLSBodW1hbi1yZWFkYWJsZSBgZGlzcGxheV9uYW1lYDsKLSBvcGFxdWUgYHNlY3JldF9yZWZgOwotIGxpZmVjeWNsZSBzdGF0dXM6IGB1bnRlc3RlZGAsIGBhY3RpdmVgLCBgaW52YWxpZGAsIG9yIGBkaXNhYmxlZGA7Ci0gb3B0aW9uYWwgYGxhc3RfdGVzdGVkX2F0YDsKLSBvcHRaW9uYWwgc2FmZSBgbGFzdF9lcnJvcl9jb2RlYDsKLSB0aGUgaW50ZXJuYWwgdXNlciB3aG8gY3JlYXRlZCBpdDsKLSBjcmVhdGVkL3VwZGF0ZWQgdGltZXN0YW1wcy4KClRoZSBkYXRhYmFzZSBlbmZvcmNlcyBvbmUgZGlzcGxheSBuYW1lIHBlciB0ZW5hbnQgYW5kIGluZGV4ZXMgYCh0ZW5hbnRfaWQsIHByb3ZpZGVyLCBzdGF0dXMpYCBmb3IgbGF0ZXIgcHJvdmlkZXItbWFuYWdlbWVudCBhbmQgcm91dGluZyBxdWVyaWVzLgoKVGhlIGltcG9ydGFudCBzZWN1cml0eSBwcm9wZXJ0eSBpcyB3aGF0IGlzICoqbm90KiogcHJlc2VudDogdGhlcmUgaXMgbm8gcGxhaW50ZXh0IEFQSS1rZXkgY29sdW1uLgoKIyMjIGBtb2RlbF9jb25maWd1cmF0aW9uc2AKCkEgbW9kZWwgY29uZmlndXJhdGlvbiByZWNvcmRzOgoKLSBpdHMgVVVJRDsKLSBvd25pbmcgdGVuYW50OwotIHRoZSBwcm92aWRlciBjb25uZWN0aW9uIGl0IHVzZXM7Ci0gc3RhYmxlIHRlbmFudC1zY29wZWQgYWxpYXM7Ci0gcmVhbCB1cHN0cmVhbSBwcm92aWRlciBtb2RlbCBzdHJpbmc7Ci0gcHVycG9zZTogYGdlbmVyYXRpb25gLCBgZW1iZWRkaW5nYCwgb3IgYHJlcmFua2A7Ci0gZW5hYmxlZC9kaXNhYmxlZCBzdGF0ZTsKLSBjcmVhdGVkL3VwZGF0ZWQgdGltZXN0YW1wcy4KClRoZSBhbGlhcyBpcyB1bmlxdWUgaW5zaWRlIGEgdGVuYW50LiBUaGlzIGlzIHRoZSBrZXkgYWJzdHJhY3Rpb24gdGhhdCBhbGxvd3MgbGF0ZXIgZG9tYWluIGNvZGUgdG8gc2F5IOKAnHVzZSB0aGUgc3VwcG9ydCBtb2RlbOKAnSByYXRoZXIgdGhhbiBkZXBlbmRpbmcgZGlyZWN0bHkgb24gYSBwcm92aWRlcidzIHByb2R1Y3QgbmFtaW5nLgoKIyMgV2h5IHRoZSBkYXRhYmFzZSBvd25zIHRoZXNlIHJ1bGVzCgpBcHBsaWNhdGlvbiB2YWxpZGF0aW9uIGdpdmVzIGZyaWVuZGx5IGVycm9ycywgYnV0IGl0IGlzIG5vdCBlbm91Z2ggZm9yIGRhdGEgaW50ZWdyaXR5LiBCYWNrZ3JvdW5kIGpvYnMsIG1pZ3JhdGlvbnMsIGFkbWluIHNjcmlwdHMsIGZ1dHVyZSBzZXJ2aWNlcywgb3IgYSBwcm9ncmFtbWluZyBtaXN0YWtlIGNvdWxkIGJ5cGFzcyBvbmUgYXBwbGljYXRpb24gZW5kcG9pbnQuCgpPUEUtMjg5IHRoZXJlZm9yZSBwdXRzIHRoZSBpbXBvcnRhbnQgY29uc3RyYWludHMgaW4gUG9zdGdyZVNRTCBpdHNlbGY6Cg...32908 chars truncated..." 
-          BUILD_APPEND_B64: "LS0tCgojIE9QRS0yODYgdGhyb3VnaCBPUEUtMjk1IOKAlCBmaW5hbCBpbXBsZW1lbnRhdGlvbiByZWNvbmNpbGlhdGlvbgoKVGhpcyByZWNvbmNpbGlhdGlvbiByZWNvcmRzIHRoZSBmaW5hbCwgYWN0dWFsbHkgbWVyZ2VkIHN0YXRlIG9mIHRoZSB0ZW4tdGlja2V0IE9QRS0yODYgdGhyb3VnaCBPUEUtMjk1IGJhdGNoLiBJdCBjb21wbGVtZW50cyB0aGUgZGV0YWlsZWQgdGlja2V0IG5hcnJhdGl2ZXMgaW4gdGhpcyBidWlsZCBndWlkZSBhbmQgYGRvY3MvT1BFXzI4Nl8yOTVfSU1QTEVNRU5UQVRJT05fR1VJREUubWRgLgoKVGhlIGltcG9ydGFudCBkaXN0aW5jdGlvbiBpcyAqKm1lcmdlZCBhbmQgdmFsaWRhdGVkIG9uIGBtYWluYCoqLCBub3QgbWVyZWx5IOKAnGNvZGUgZXhpc3RlZCBvbiBhIGZlYXR1cmUgYnJhbmNoLuKAnSBE...13464 chars truncated..."
+      - name: Append staged Markdown fragments and clean helpers
         run: |
-          python - <<'PY'
-          import base64
-          import os
-          from pathlib import Path
+          set -euo pipefail
+          detailed="docs/OPE_286_295_IMPLEMENTATION_GUIDE.md"
+          build="docs/SERVIQ_BUILD_GUIDE.md"
+          fragments=".github/ope-286-295-doc-fragments"
 
-          updates = [
-              (
-                  Path("docs/OPE_286_295_IMPLEMENTATION_GUIDE.md"),
-                  "# OPE-289 — Create provider and model metadata migration",
-                  os.environ["DEDICATED_APPEND_B64"],
-              ),
-              (
-                  Path("docs/SERVIQ_BUILD_GUIDE.md"),
-                  "# OPE-286 through OPE-295 — final implementation reconciliation",
-                  os.environ["BUILD_APPEND_B64"],
-              ),
-          ]
-          for path, marker, encoded in updates:
-              existing = path.read_text(encoding="utf-8")
-              if marker in existing:
-                  continue
-              addition = base64.b64decode(encoded).decode("utf-8")
-              path.write_text(existing.rstrip() + "\n\n" + addition.lstrip(), encoding="utf-8")
-          PY
+          if ! grep -Fq '# OPE-289 — Create provider and model metadata migration' "$detailed"; then
+            printf '\n\n' >> "$detailed"
+            for part in "$fragments"/0*.md; do
+              cat "$part" >> "$detailed"
+              printf '\n' >> "$detailed"
+            done
+          fi
+
+          if ! grep -Fq '# OPE-286 through OPE-295 — final implementation reconciliation' "$build"; then
+            printf '\n\n' >> "$build"
+            cat "$fragments/10-build-guide.md" >> "$build"
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/OPE_286_295_IMPLEMENTATION_GUIDE.md docs/SERVIQ_BUILD_GUIDE.md
+          git add "$detailed" "$build"
+          git rm -r "$fragments"
+          git rm -f .github/.ope-286-295-doc-trigger || true
           git rm .github/workflows/_finalize_ope_286_295_docs.yml
-          git commit -m "docs: finalize OPE-286 through OPE-295 implementation record"
+          git commit -m 'docs: finalize OPE-286 through OPE-295 implementation record'
           git push

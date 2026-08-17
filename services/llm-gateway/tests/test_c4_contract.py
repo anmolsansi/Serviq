@@ -51,6 +51,22 @@ def test_valid_response_round_trips_exact_wire_shape() -> None:
     assert response.model_dump(mode="json", by_alias=True) == fixture
 
 
+def test_provider_generated_text_preserves_boundary_whitespace() -> None:
+    response = GatewayResponse(
+        content="  indented answer  ",
+        structured={},
+        provider=GatewayProvider.OPENAI,
+        upstreamModel="gpt-test",
+        usage=GatewayUsage(inputTokens=1, outputTokens=2),
+        finishReason="stop",
+        requestId="req-whitespace",
+    )
+    event = GatewayStreamEvent(contentDelta=" word ")
+
+    assert response.content == "  indented answer  "
+    assert event.content_delta == " word "
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

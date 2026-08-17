@@ -4,12 +4,14 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Text
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.core.database import Base
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
-class ProviderConnection(Base):
+class ProviderMetadataBase(DeclarativeBase):
+    """Declarative registry for the provider metadata mappings."""
+
+
+class ProviderConnection(ProviderMetadataBase):
     __tablename__ = "provider_connections"
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
@@ -25,7 +27,7 @@ class ProviderConnection(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-class ModelConfiguration(Base):
+class ModelConfiguration(ProviderMetadataBase):
     __tablename__ = "model_configurations"
 
     id: Mapped[UUID] = mapped_column(primary_key=True)

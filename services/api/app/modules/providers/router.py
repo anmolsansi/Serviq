@@ -1,18 +1,19 @@
-"""Protected BYOK provider connection CRUD routes."""
+"""Tenant-scoped provider connection routes."""
 
-from functools import lru_cache
+from __future__ import annotations
+
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.api import SuccessEnvelope
-from app.core.config import load_settings
+from app.contracts import SuccessEnvelope
 from app.core.database import get_database_session
-from app.core.principal import require_tenant_id, require_workforce_user_id
+from app.core.principal import require_workforce_user_id
 from app.core.secret_store import TenantSecretStore, build_local_secret_store
+from app.core.tenancy import require_tenant_id
 from app.modules.providers.errors import (
     ProviderConflictError,
     ProviderForbiddenError,
@@ -39,22 +40,18 @@ WorkforceUserId = Annotated[UUID, Depends(require_workforce_user_id)]
 TenantId = Annotated[UUID, Depends(require_tenant_id)]
 
 
-@lru_cache(maxsize=1)
-def _default_secret_store() -> TenantSecretStore:
-    return build_local_secret_store(load_settings())
+def get_secret_store(request: Request) -> TenantSecretStore:
+    configured = getattr(request.app.state, "secret_store", None)
+    if configured is not None:
+        return configured
+    return build_local_secret_store(request.app.state.settings)
 
 
-def get_provider_secret_store() -> TenantSecretStore:
-    """Replaceable dependency; tests and production adapters override this boundary."""
-
-    return _default_secret_store()
+SecretStore = Annotated[TenantSecretStore, Depends(get_secret_store)]
 
 
-SecretStore = Annotated[TenantSecretStore, Depends(get_provider_secret_store)]
-
-
-@router.get("", response_model=SuccessEnvelope[list[ProviderView]])
-async def get_providers(
+@router.get("")
+async def list_provider_connections(
     session: DatabaseSession,
     user_id: WorkforceUserId,
     tenant_id: TenantId,
@@ -65,19 +62,13 @@ async def get_providers(
             user_id=user_id,
             tenant_id=tenant_id,
         )
-    except ProviderNotFoundError:
-        return _not_found()
     except ProviderForbiddenError:
         return _forbidden()
-    return SuccessEnvelope(data=list(providers))
+    return SuccessEnvelope(data=providers)
 
 
-@router.post(
-    "",
-    response_model=SuccessEnvelope[ProviderView],
-    status_code=status.HTTP_201_CREATED,
-)
-async def post_provider(
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_provider_connection(
     request: ProviderCreateRequest,
     session: DatabaseSession,
     user_id: WorkforceUserId,
@@ -92,8 +83,6 @@ async def post_provider(
             request=request,
             secret_store=secret_store,
         )
-    except ProviderNotFoundError:
-        return _not_found()
     except ProviderForbiddenError:
         return _forbidden()
     except ProviderConflictError:
@@ -103,7 +92,7 @@ async def post_provider(
     return SuccessEnvelope(data=provider)
 
 
-@router.get("/{provider_connection_id}", response_model=SuccessEnvelope[ProviderView])
+@router.get("/{provider_connection_id}")
 async def get_provider_by_id(
     provider_connection_id: UUID,
     session: DatabaseSession,
@@ -124,8 +113,8 @@ async def get_provider_by_id(
     return SuccessEnvelope(data=provider)
 
 
-@router.patch("/{provider_connection_id}", response_model=SuccessEnvelope[ProviderView])
-async def patch_provider(
+@router.patch("/{provider_connection_id}")
+async def update_provider_by_id(
     provider_connection_id: UUID,
     request: ProviderUpdateRequest,
     session: DatabaseSession,
@@ -153,7 +142,12 @@ async def patch_provider(
     return SuccessEnvelope(data=provider)
 
 
-@router.delete("/{provider_connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{provider_connection_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 async def delete_provider_by_id(
     provider_connection_id: UUID,
     session: DatabaseSession,
@@ -193,21 +187,24 @@ def _not_found() -> JSONResponse:
 def _forbidden() -> JSONResponse:
     return JSONResponse(
         status_code=403,
-        content={"error": {"code": "FORBIDDEN", "message": "Provider access is forbidden."}},
+        content={"error": {"code": "FORBIDDEN", "message": "Permission denied."}},
     )
 
 
 def _conflict(code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=409, content={"error": {"code": code, "message": message}})
+    return JSONResponse(
+        status_code=409,
+        content={"error": {"code": code, "message": message}},
+    )
 
 
 def _cleanup_failure() -> JSONResponse:
     return JSONResponse(
-        status_code=500,
+        status_code=503,
         content={
             "error": {
-                "code": "PROVIDER_SECRET_CLEANUP_FAILED",
-                "message": "Provider secret cleanup requires attention.",
+                "code": "SECRET_STORE_CLEANUP_FAILED",
+                "message": "Provider secret cleanup did not complete.",
             }
         },
     )

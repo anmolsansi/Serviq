@@ -6,10 +6,10 @@ from collections.abc import AsyncIterator, Callable
 from typing import cast
 
 from anthropic import (
+    AnthropicError,
     APIConnectionError,
     APIStatusError,
     APITimeoutError,
-    AnthropicError,
     AsyncAnthropic,
     AuthenticationError,
     BadRequestError,

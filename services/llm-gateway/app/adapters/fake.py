@@ -58,7 +58,9 @@ FAKE_SCENARIOS: Mapping[FakeScenario, FakeScenarioDefinition] = MappingProxyType
         ),
         FakeScenario.STREAM_SUCCESS: FakeScenarioDefinition(
             content=_TEXT,
-            stream_chunks=("Serviq ", "deterministic ", "fake response."),
+            # C-4 strips whitespace at string boundaries. Keep spaces inside chunks so
+            # validating each event cannot change the reconstructed deterministic text.
+            stream_chunks=("Serviq deter", "ministic fake r", "esponse."),
         ),
         FakeScenario.TIMEOUT: FakeScenarioDefinition(
             error_code=GatewayErrorCode.PROVIDER_TIMEOUT,

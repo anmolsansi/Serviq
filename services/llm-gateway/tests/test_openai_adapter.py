@@ -11,12 +11,12 @@ import pytest
 from openai import (
     APIConnectionError,
     APITimeoutError,
+    AsyncOpenAI,
     AuthenticationError,
     BadRequestError,
     InternalServerError,
     RateLimitError,
 )
-from openai import AsyncOpenAI
 from pydantic import SecretStr
 
 from app.adapters import AdapterContext, OpenAIAdapter

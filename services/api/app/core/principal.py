@@ -24,3 +24,12 @@ def require_verified_workforce_identity(request: Request) -> VerifiedWorkforceId
     if not isinstance(value, VerifiedWorkforceIdentity):
         raise AuthenticationError
     return value
+
+
+def require_tenant_id(request: Request) -> UUID:
+    """Read only server-owned tenant context; never derive it from client input."""
+
+    value = getattr(request.state, "serviq_tenant_id", None)
+    if not isinstance(value, UUID):
+        raise AuthenticationError
+    return value

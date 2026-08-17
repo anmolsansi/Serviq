@@ -18,14 +18,20 @@ from app.core.secret_store import (
 FAKE_SECRET = "sk-fake-serviq-do-not-use-123456"
 
 
-def _store(path: Path, bootstrap: str = "bootstrap-secret-for-tests-only") -> LocalEncryptedSecretStore:
+def _store(
+    path: Path,
+    bootstrap: str = "bootstrap-secret-for-tests-only",
+) -> LocalEncryptedSecretStore:
     return LocalEncryptedSecretStore(
         bootstrap_secret=SecretStr(bootstrap),
         path=path,
     )
 
 
-def test_put_get_delete_and_tenant_isolation(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_put_get_delete_and_tenant_isolation(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     path = tmp_path / "tenant-secrets.json"
     tenant_a = uuid4()
     tenant_b = uuid4()

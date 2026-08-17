@@ -1,0 +1,12 @@
+{
+  "content": "The customer needs a delivery-status update.",
+  "structured": {},
+  "provider": "openai",
+  "upstreamModel": "fake-upstream-model",
+  "usage": {
+    "inputTokens": 24,
+    "outputTokens": 9
+  },
+  "finishReason": "stop",
+  "requestId": "req-c4-fixture-001"
+}

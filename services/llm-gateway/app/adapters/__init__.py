@@ -8,6 +8,7 @@ from app.adapters.fake import (
     FakeScenario,
     FakeScenarioDefinition,
 )
+from app.adapters.openai import OpenAIAdapter
 
 __all__ = [
     "AdapterContext",
@@ -17,4 +18,5 @@ __all__ = [
     "FakeScenario",
     "FakeScenarioDefinition",
     "LLMAdapter",
+    "OpenAIAdapter",
 ]

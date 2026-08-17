@@ -65,7 +65,7 @@ async def list_provider_connections(
         )
     except ProviderForbiddenError:
         return _forbidden()
-    return SuccessEnvelope(data=providers)
+    return SuccessEnvelope(data=list(providers))
 
 
 @router.post(

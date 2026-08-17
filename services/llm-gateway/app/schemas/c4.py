@@ -48,6 +48,16 @@ class _StrictContractModel(BaseModel):
     )
 
 
+class _ProviderOutputContractModel(BaseModel):
+    """Strict output model that must not mutate provider-generated text."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        str_strip_whitespace=False,
+    )
+
+
 class GatewayMessage(_StrictContractModel):
     role: MessageRole
     content: str = Field(min_length=1)
@@ -83,7 +93,7 @@ class GatewayUsage(_StrictContractModel):
     output_tokens: int | None = Field(default=None, alias="outputTokens", ge=0)
 
 
-class GatewayResponse(_StrictContractModel):
+class GatewayResponse(_ProviderOutputContractModel):
     content: str | None
     structured: dict[str, JsonValue]
     provider: GatewayProvider
@@ -93,7 +103,7 @@ class GatewayResponse(_StrictContractModel):
     request_id: str | None = Field(alias="requestId")
 
 
-class GatewayStreamEvent(_StrictContractModel):
+class GatewayStreamEvent(_ProviderOutputContractModel):
     """Provider-neutral incremental event used only when `request.stream` is true.
 
     Contract C-4 freezes the request flag and normalized response semantics but does

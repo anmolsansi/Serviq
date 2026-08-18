@@ -79,7 +79,11 @@ def _require_internal_token(authorization: str | None) -> None:
         )
 
     prefix = "Bearer "
-    supplied = authorization[len(prefix) :] if authorization and authorization.startswith(prefix) else ""
+    supplied = (
+        authorization[len(prefix) :]
+        if authorization and authorization.startswith(prefix)
+        else ""
+    )
     if not supplied or not hmac.compare_digest(supplied, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

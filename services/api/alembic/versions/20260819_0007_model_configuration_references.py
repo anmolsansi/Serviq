@@ -20,6 +20,13 @@ UUID = postgresql.UUID(as_uuid=True)
 
 
 def upgrade() -> None:
+    # The redundant tenant/id uniqueness lets the reference registry enforce that
+    # its tenant and model UUID belong to the same tenant at the database boundary.
+    op.create_unique_constraint(
+        "uq_model_configurations_tenant_id_id",
+        "model_configurations",
+        ["tenant_id", "id"],
+    )
     op.create_table(
         "model_configuration_references",
         sa.Column(
@@ -50,9 +57,9 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["model_configuration_id"],
-            ["model_configurations.id"],
-            name="fk_model_configuration_references_model_configuration",
+            ["tenant_id", "model_configuration_id"],
+            ["model_configurations.tenant_id", "model_configurations.id"],
+            name="fk_model_configuration_references_tenant_model",
             ondelete="RESTRICT",
         ),
         sa.UniqueConstraint(
@@ -76,3 +83,8 @@ def downgrade() -> None:
         table_name="model_configuration_references",
     )
     op.drop_table("model_configuration_references")
+    op.drop_constraint(
+        "uq_model_configurations_tenant_id_id",
+        "model_configurations",
+        type_="unique",
+    )

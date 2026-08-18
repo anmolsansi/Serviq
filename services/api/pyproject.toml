@@ -5,6 +5,7 @@ description = "Serviq Production V1 API service"
 requires-python = ">=3.14,<3.15"
 dependencies = [
   "alembic>=1.16,<2",
+  "botocore>=1.42.89,<1.43",
   "fastapi>=0.140.13,<0.141",
   "httpx>=0.28,<1",
   "joserfc>=1.7.4,<2",

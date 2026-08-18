@@ -227,10 +227,13 @@ Every cache key has a TTL unless a ticket explicitly documents why it does not. 
 
 ### 6.4 Object Storage
 
-- Local: MinIO or another S3-compatible implementation frozen in Compose.
+- Local: the S3-compatible implementation frozen in Compose, currently SeaweedFS.
 - AWS: Amazon S3.
 - Access always goes through the Serviq object-storage adapter.
+- Python API S3 client: AWS-maintained `botocore` 1.42.x, exact patch locked by `services/api/uv.lock`, as frozen by ADR-016.
+- The adapter uses explicit connect/read timeouts and one total SDK attempt. Feature modules do not own SDK retry behavior.
 - Bucket layout, MIME allowlists, file limits, and generated object keys are defined in `ARCHITECTURE.md`.
+- Application code uses typed UUID-based key helpers. It does not accept user filenames or arbitrary full object keys as storage paths.
 
 ## 7. Events and Background Work
 

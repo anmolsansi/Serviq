@@ -1,17 +1,20 @@
 name: OPE-301 one-shot documentation correction
 
 on:
-  push:
+  pull_request:
     branches:
-      - ope301
-    paths:
-      - .github/ope301-doc-sync
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
 
 jobs:
   sync:
+    if: github.head_ref == 'ope301' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

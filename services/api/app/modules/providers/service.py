@@ -1,4 +1,4 @@
-"""Provider CRUD authorization and cross-store compensation rules."""
+"""Provider CRUD and connectivity-test authorization/compensation rules."""
 
 from datetime import UTC, datetime
 from typing import cast
@@ -7,6 +7,10 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limits import (
+    ProviderTestRateLimiter,
+    RateLimitUnavailableError,
+)
 from app.core.secret_store import SecretNotFoundError, TenantSecretStore
 from app.modules.providers.errors import (
     ProviderConflictError,
@@ -14,7 +18,11 @@ from app.modules.providers.errors import (
     ProviderNotFoundError,
     ProviderReferencedError,
     ProviderSecretCleanupError,
+    ProviderTestRateLimitedError,
+    ProviderTestStaleError,
+    ProviderTestUnavailableError,
 )
+from app.modules.providers.gateway import ProviderConnectivityGateway
 from app.modules.providers.models import ProviderConnection
 from app.modules.providers.repository import (
     add_provider_connection,
@@ -25,6 +33,8 @@ from app.modules.providers.repository import (
     list_provider_connections,
 )
 from app.modules.providers.schemas import (
+    ProviderConnectivityErrorCode,
+    ProviderConnectivityView,
     ProviderCreateRequest,
     ProviderKey,
     ProviderStatus,
@@ -220,6 +230,95 @@ async def delete_provider(
         # Relational metadata is already safely absent, so no live model can resolve
         # this orphaned secret. Surface the cleanup failure instead of hiding it.
         raise ProviderSecretCleanupError from None
+
+
+async def test_provider_connectivity(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    provider_connection_id: UUID,
+    secret_store: TenantSecretStore,
+    gateway: ProviderConnectivityGateway,
+    rate_limiter: ProviderTestRateLimiter,
+) -> ProviderConnectivityView:
+    """Run one bounded provider test without holding a database transaction open."""
+
+    # Phase 1: authorize and capture immutable identifiers in a short transaction.
+    async with session.begin():
+        await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+        current = await find_provider_connection(
+            session,
+            tenant_id=tenant_id,
+            provider_connection_id=provider_connection_id,
+        )
+        if current is None:
+            raise ProviderNotFoundError
+        if current.status == "disabled":
+            return ProviderConnectivityView(status="disabled", errorCode=None)
+        tested_secret_ref = current.secret_ref
+        tested_provider = cast(ProviderKey, current.provider)
+
+    # Shared abuse controls run before plaintext secret resolution or any provider call.
+    try:
+        rate_decision = await rate_limiter.check_and_consume(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            provider_connection_id=provider_connection_id,
+        )
+    except RateLimitUnavailableError:
+        raise ProviderTestUnavailableError from None
+    if not rate_decision.allowed:
+        raise ProviderTestRateLimitedError(rate_decision.retry_after_seconds or 1)
+
+    try:
+        api_key = secret_store.get_secret(tenant_id, tested_secret_ref)
+    except SecretNotFoundError:
+        raise ProviderTestUnavailableError from None
+    except Exception:
+        raise ProviderTestUnavailableError from None
+
+    # External network/model work is deliberately outside both database transactions.
+    outcome = await gateway.test(
+        tenant_id=tenant_id,
+        provider=tested_provider,
+        api_key=api_key,
+        correlation_id=f"provider-test:{provider_connection_id}:{uuid4()}",
+    )
+    now = datetime.now(UTC)
+
+    # Phase 2: lock and verify the credential still matches the one that was tested.
+    async with session.begin():
+        connection = await find_provider_connection_for_update(
+            session,
+            tenant_id=tenant_id,
+            provider_connection_id=provider_connection_id,
+        )
+        if connection is None:
+            raise ProviderNotFoundError
+        if connection.secret_ref != tested_secret_ref or connection.provider != tested_provider:
+            raise ProviderTestStaleError
+        if connection.status == "disabled":
+            return ProviderConnectivityView(status="disabled", errorCode=None)
+
+        error_code = cast(ProviderConnectivityErrorCode | None, outcome.error_code)
+        connection.last_tested_at = now
+        connection.updated_at = now
+        if outcome.ok:
+            connection.status = "active"
+            connection.last_error_code = None
+            error_code = None
+        else:
+            connection.last_error_code = error_code
+            if error_code == "PROVIDER_AUTH_FAILED":
+                connection.status = "invalid"
+            # All other normalized failures preserve the status currently protected
+            # by this row lock. Temporary upstream incidents are not credential proof.
+        await session.flush()
+        return ProviderConnectivityView(
+            status=cast(ProviderStatus, connection.status),
+            errorCode=error_code,
+        )
 
 
 async def _require_permission(

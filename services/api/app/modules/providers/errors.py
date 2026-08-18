@@ -1,4 +1,4 @@
-"""Stable provider-management domain failures."""
+"""Stable provider/model-management domain failures."""
 
 
 class ProviderManagementError(RuntimeError):
@@ -60,3 +60,31 @@ class ProviderTestStaleError(ProviderManagementError):
 
     def __init__(self) -> None:
         super().__init__("Provider credential changed while the connectivity test was running.")
+
+
+class ModelConfigurationNotFoundError(ProviderManagementError):
+    error_code = "MODEL_CONFIGURATION_NOT_FOUND"
+
+    def __init__(self) -> None:
+        super().__init__("Model configuration was not found.")
+
+
+class ModelConfigurationAliasConflictError(ProviderManagementError):
+    error_code = "MODEL_ALIAS_CONFLICT"
+
+    def __init__(self) -> None:
+        super().__init__("Model alias already exists for this tenant.")
+
+
+class ModelConfigurationProviderIneligibleError(ProviderManagementError):
+    error_code = "MODEL_PROVIDER_INELIGIBLE"
+
+    def __init__(self) -> None:
+        super().__init__("Model configuration requires an active provider connection.")
+
+
+class ModelConfigurationReferencedError(ProviderManagementError):
+    error_code = "MODEL_CONFIGURATION_IN_USE"
+
+    def __init__(self) -> None:
+        super().__init__("Model configuration is still referenced by production configuration.")

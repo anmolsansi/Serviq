@@ -127,26 +127,3 @@ jobs:
 
       - name: Downgrade full migration chain to base
         run: cd services/api && uv run alembic downgrade base
-
-  ope299-documentation-sync:
-    if: github.event_name == 'pull_request' && github.head_ref == 'ope299'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check out source branch
-        uses: actions/checkout@v4
-        with:
-          ref: ope299
-          fetch-depth: 0
-
-      - name: Execute temporary OPE-299 documentation synchronizer
-        shell: bash
-        run: |
-          set -euo pipefail
-          sed -n '/^        run: |$/,$p' .github/workflows/ope299-build-guide-append.yml \
-            | tail -n +2 \
-            | sed 's/^          //' \
-            > /tmp/ope299-doc-sync.sh
-          bash /tmp/ope299-doc-sync.sh

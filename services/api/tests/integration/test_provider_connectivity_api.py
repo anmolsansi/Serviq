@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
@@ -510,12 +509,16 @@ def test_provider_connectivity_route_persistence_security_and_isolation(
                 stored_codes = (
                     await session.execute(
                         text(
-                            "SELECT last_error_code FROM provider_connections WHERE tenant_id=:tenant"
+                            "SELECT last_error_code FROM provider_connections "
+                            "WHERE tenant_id=:tenant"
                         ),
                         {"tenant": ids["tenant_a"]},
                     )
                 ).scalars().all()
-            assert all(code is None or RAW_PROVIDER_DETAIL not in str(code) for code in stored_codes)
+            assert all(
+                code is None or RAW_PROVIDER_DETAIL not in str(code)
+                for code in stored_codes
+            )
         finally:
             _clear_overrides()
             if ids:

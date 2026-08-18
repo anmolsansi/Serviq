@@ -566,3 +566,17 @@ The following **product features are not completed**:
 - model configuration CRUD and safe reference-aware deletion.
 
 Those features must remain open until their architecture prerequisites are approved and their actual acceptance tests pass.
+
+---
+
+# OPE-299 current status correction — implementation resumed and completed
+
+The earlier OPE-299 blocker section remains an accurate historical explanation of why the first implementation attempt stopped. It is no longer the current feature status.
+
+On 2026-08-19, the missing model reference and mutability rules were frozen in `docs/architecture-decisions/ADR-015-model-configuration-reference-and-mutation-semantics.md`.
+
+OPE-299 then resumed on branch `ope299`. The implementation added the frozen model CRUD routes, active-provider eligibility, tenant isolation, immutable alias/purpose semantics, the tenant-safe `model_configuration_references` registry, deterministic alias conflicts, reference-aware deletion, and real PostgreSQL integration tests.
+
+Runtime PR #145 was merged only after exact head `0fc1bfd0922175193e3857afb6a16cb6ea0e91ed` passed CI #236 and Security #212.
+
+The older statement that model configuration CRUD is blocked should therefore be read as historical context, not as the current state of OPE-299.

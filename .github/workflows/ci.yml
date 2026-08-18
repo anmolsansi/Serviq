@@ -153,6 +153,7 @@ jobs:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
       LOG_LEVEL: INFO
       SERVIQ_LOCAL_WEBHOOK_ALLOWLIST: ""
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: test-placeholder
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

@@ -7,7 +7,7 @@ from uuid import UUID
 import httpx
 from pydantic import SecretStr
 
-from app.core.config import load_settings
+from app.core.config import PlatformSettings, load_settings
 from app.modules.providers.gateway import HttpProviderConnectivityGateway
 
 TENANT_ID = UUID("00000000-0000-0000-0000-000000000298")
@@ -16,7 +16,7 @@ INTERNAL_TOKEN = "internal-token-never-real"
 RAW_UPSTREAM = "RAW-UPSTREAM-BODY-MUST-NOT-ESCAPE"
 
 
-def _settings() -> object:
+def _settings() -> PlatformSettings:
     return load_settings(
         {
             "SERVIQ_ENV": "test",
@@ -55,7 +55,7 @@ def test_internal_gateway_request_is_fixed_and_normalized() -> None:
             )
 
         gateway = HttpProviderConnectivityGateway(
-            _settings(),  # type: ignore[arg-type]
+            _settings(),
             transport=httpx.MockTransport(handler),
         )
         outcome = await gateway.test(
@@ -97,7 +97,7 @@ def test_internal_gateway_raw_http_failures_are_redacted() -> None:
             )
 
         gateway = HttpProviderConnectivityGateway(
-            _settings(),  # type: ignore[arg-type]
+            _settings(),
             transport=httpx.MockTransport(handler),
         )
         outcome = await gateway.test(
@@ -126,7 +126,7 @@ def test_internal_gateway_timeout_is_normalized_without_retry() -> None:
             raise httpx.ReadTimeout("unsafe timeout detail", request=request)
 
         gateway = HttpProviderConnectivityGateway(
-            _settings(),  # type: ignore[arg-type]
+            _settings(),
             transport=httpx.MockTransport(handler),
         )
         outcome = await gateway.test(

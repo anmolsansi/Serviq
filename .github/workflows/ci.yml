@@ -7,61 +7,9 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  ope301-doc-finalizer:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'ope301'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check out OPE-301 branch
-        uses: actions/checkout@v4
-        with:
-          ref: ope301
-          fetch-depth: 0
-
-      - name: Correct OPE-301 adapter operation documentation
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('docs/SERVIQ_BUILD_GUIDE.md')
-          text = path.read_text()
-          old = """The adapter deliberately supports only four operations:
-
-1. `put_object` stores bytes or a binary stream and records the supplied content type.
-2. `get_object` reads an object and returns its bytes plus the small amount of metadata downstream code needs today, including content type, content length, and ETag when the backend provides one.
-3. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
-4. `exists` performs a HEAD-style check. It returns `False` when an object is missing without downloading the object body.
-"""
-          new = """The adapter exposes the four required storage operations plus one convenience helper:
-
-1. `put_object` stores bytes or a binary stream and records the supplied content type.
-2. `get_object` reads an object and returns its bytes plus the small amount of metadata downstream code needs today, including content type, content length, and ETag when the backend provides one.
-3. `head` reads object metadata such as content type, content length, ETag, and custom metadata without downloading the object body.
-4. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
-5. `exists` is a convenience helper implemented on top of `head`. It returns `False` when an object is missing without downloading the object body.
-"""
-          if text.count(old) != 1:
-              raise SystemExit('Expected exactly one OPE-301 adapter-operation block to update.')
-          path.write_text(text.replace(old, new, 1))
-          PY
-
-      - name: Restore normal CI workflow
-        run: |
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/ci.yml
-
-      - name: Commit permanent OPE-301 documentation correction
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/ci.yml
-          git diff --cached --check
-          git commit -m "docs(OPE-301): document required head operation"
-          git push origin HEAD:ope301
-
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 20

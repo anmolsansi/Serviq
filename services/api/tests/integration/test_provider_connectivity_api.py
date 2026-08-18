@@ -4,6 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
+from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
@@ -23,6 +24,7 @@ from app.core.rate_limits import RateLimitDecision, RateLimitUnavailableError
 from app.core.secret_store import LocalEncryptedSecretStore
 from app.main import app
 from app.modules.providers.gateway import ProviderConnectivityOutcome
+from app.modules.providers.schemas import ProviderConnectivityErrorCode
 from app.modules.providers.router import (
     get_provider_connectivity_gateway,
     get_provider_connectivity_rate_limiter,
@@ -389,7 +391,10 @@ def test_provider_connectivity_route_persistence_security_and_isolation(
                     "PROVIDER_INVALID_REQUEST",
                 ):
                     await _set_status(session_factory, ids["provider"], status_value="active")
-                    gateway.outcome = ProviderConnectivityOutcome(ok=False, error_code=code)  # type: ignore[arg-type]
+                    gateway.outcome = ProviderConnectivityOutcome(
+                        ok=False,
+                        error_code=cast(ProviderConnectivityErrorCode, code),
+                    )
                     transient = await client.post(f"/api/v1/providers/{ids['provider']}/test")
                     assert transient.status_code == 200
                     assert transient.json()["data"] == {"status": "active", "errorCode": code}

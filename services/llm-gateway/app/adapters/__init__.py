@@ -9,6 +9,7 @@ from app.adapters.fake import (
     FakeScenario,
     FakeScenarioDefinition,
 )
+from app.adapters.gemini import GeminiAdapter
 from app.adapters.openai import OpenAIAdapter
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "FakeLLMAdapter",
     "FakeScenario",
     "FakeScenarioDefinition",
+    "GeminiAdapter",
     "LLMAdapter",
     "OpenAIAdapter",
 ]

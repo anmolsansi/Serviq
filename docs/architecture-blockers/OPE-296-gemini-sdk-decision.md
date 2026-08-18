@@ -2,69 +2,63 @@
 
 ## Status
 
-**Needs Architect Decision.** No Gemini adapter code was added because the ticket's explicit stop condition is currently true.
+**Resolved by ADR-012 and PR #136.**
 
-## What OPE-296 is trying to build
+The original stop was correct: OPE-296 required an architect-approved Gemini SDK before implementation, while ADR-011 explicitly approved only OpenAI and Anthropic. The missing dependency/transport decision has now been made and merged into `main`.
 
-OPE-296 is meant to add Gemini as another implementation behind Serviq's provider-neutral Contract C-4. Once implemented, the rest of Serviq should be able to ask the gateway for generation or streaming without importing Gemini SDK types or learning Gemini-specific request and response shapes.
+## What OPE-296 is building
 
-The adapter must translate Serviq messages and budgets into the approved Gemini client, normalize the response back into C-4, translate provider failures into Serviq error codes, and prevent API keys, raw provider exceptions, or provider-specific objects from escaping the adapter boundary.
+OPE-296 adds Gemini as another implementation behind Serviq's provider-neutral Contract C-4. The rest of Serviq can ask the gateway for generation or streaming without importing Gemini SDK types or learning Gemini-specific request and response shapes.
 
-## What was inspected before coding
+The adapter translates Serviq messages and bounded request options into the approved Gemini client, normalizes provider responses back into C-4, maps provider failures into Serviq's five error categories, and prevents API keys, raw provider exceptions, and provider-specific objects from escaping the adapter boundary.
 
-The builder inspected:
+## Original blocking fact
 
-- Linear OPE-296 and its stop conditions;
-- `docs/repo_context.md`;
-- `docs/TECH_STACK.md`;
-- `docs/ARCHITECTURE.md` Contract C-4;
-- `docs/architecture-decisions/ADR-011-provider-sdk-baseline.md`;
-- `services/llm-gateway/pyproject.toml`;
-- the existing `services/llm-gateway/app/adapters/base.py` interface;
-- the implemented OpenAI adapter pattern.
-
-## Blocking fact
-
-ADR-011 freezes only these official provider SDKs for the current gateway:
+Before ADR-012, `docs/architecture-decisions/ADR-011-provider-sdk-baseline.md` froze only:
 
 - `openai==2.53.0`
 - `anthropic==0.121.0`
 
-ADR-011 also explicitly states that its scope does **not** approve Gemini dependencies. The current LLM Gateway manifest therefore contains no approved Gemini SDK dependency.
+ADR-011 explicitly excluded Gemini. OPE-296 therefore reached its `Needs Architect Decision` stop condition and correctly did not guess a dependency inside feature code.
 
-OPE-296 says to stop with `Needs Architect Decision` when no approved Gemini SDK exists in repository context. That condition is satisfied exactly.
+## Decision that resolved the blocker
 
-## Why no dependency was added from this ticket
+`docs/architecture-decisions/ADR-012-gemini-sdk-baseline.md`, merged through PR #136, freezes the following rules:
 
-A feature-builder ticket is not allowed to silently decide which third-party package becomes part of Serviq's production dependency surface. Choosing `google-genai`, another Google package, a raw HTTP implementation, or a compatibility layer would affect:
+1. official Google package `google-genai==2.17.0`;
+2. Gemini Developer API with server-resolved tenant BYOK credentials;
+3. Python 3.14 compatibility as a prerequisite;
+4. explicit Developer API mode rather than caller/environment-selected enterprise routing;
+5. Serviq-owned timeout and retry policy, with one upstream attempt and no hidden SDK retries;
+6. leading C-4 system messages mapped to Gemini `system_instruction`;
+7. C-4 user messages mapped to `user` and assistant messages mapped internally to Gemini's `model` role;
+8. native JSON Schema structured output where C-4 requests a response schema;
+9. asynchronous generation/streaming behind the existing C-4 boundary;
+10. safe normalization into the five existing C-4 error categories;
+11. mock/fake-only required CI tests;
+12. no Gemini-specific extension to C-4.
 
-- dependency provenance and security review;
-- Python 3.14 compatibility;
-- request/streaming behavior;
-- timeout and retry semantics;
-- exception types and error normalization;
-- lockfile/reproducibility policy;
-- future upgrade and maintenance responsibility.
+## Why this matters
 
-Making that decision inside OPE-296 would bypass the repository's contract-change discipline and would directly violate the ticket's stop condition.
+The architecture decision makes the implementation reproducible and reviewable. The feature code is no longer making an implicit package or transport choice. A future engineer can tell exactly why this SDK is installed, which API mode it is permitted to use, who owns retry/timeout policy, and which behaviors must remain provider-neutral.
 
-## Decision required to unblock OPE-296
+## Current implementation status
 
-An architect-approved change must freeze:
+The architecture blocker is closed. Runtime implementation is being completed in branch `agent/ope-296-gemini-adapter-implementation` and PR #137.
 
-1. the official Gemini SDK/package or explicitly approved alternative transport;
-2. the exact compatible version or version policy;
-3. Python 3.14 support expectations;
-4. timeout/retry ownership consistent with C-4;
-5. dependency locking/reproducibility expectations for the LLM Gateway;
-6. any known unsupported C-4 capabilities that the adapter must reject explicitly.
+The ticket must remain open until the following are true:
 
-After that decision is merged, OPE-296 can implement only the provider adapter, mocked SDK tests, and required security review without changing C-4.
+- Gemini non-stream generation passes C-4 tests;
+- Gemini streaming passes C-4 tests;
+- system/user/assistant translation is verified;
+- structured output is verified;
+- auth, rate-limit, timeout, unavailable, and invalid-request mappings are verified;
+- secret/raw-provider leakage checks pass;
+- provider SDK types remain contained;
+- premium security review is recorded;
+- repository CI and Security workflows pass;
+- implementation PR is merged.
 
 ## Product impact
 
-Stopping here protects Serviq from an accidental provider-specific architecture decision. It keeps the provider-neutral gateway real rather than nominal and ensures that a future Gemini implementation is reproducible, reviewable, and replaceable instead of depending on an arbitrary package choice made during feature coding.
-
-## What changed in this branch
-
-Only this architecture-blocker record was added. No production code, dependency, C-4 schema, provider routing, model alias, secret handling, or agent runtime behavior was changed.
+Resolving the blocker lets Serviq add Gemini without weakening the provider-neutral design. Product and agent code still talk only to Serviq's own C-4 objects. Gemini becomes replaceable implementation detail rather than a dependency that leaks into the rest of the platform.

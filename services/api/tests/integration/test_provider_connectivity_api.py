@@ -24,12 +24,12 @@ from app.core.rate_limits import RateLimitDecision, RateLimitUnavailableError
 from app.core.secret_store import LocalEncryptedSecretStore
 from app.main import app
 from app.modules.providers.gateway import ProviderConnectivityOutcome
-from app.modules.providers.schemas import ProviderConnectivityErrorCode
 from app.modules.providers.router import (
     get_provider_connectivity_gateway,
     get_provider_connectivity_rate_limiter,
     get_provider_secret_store,
 )
+from app.modules.providers.schemas import ProviderConnectivityErrorCode
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SERVIQ_DATABASE_INTEGRATION") != "1",

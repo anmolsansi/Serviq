@@ -27,6 +27,7 @@ EXPECTED_TABLES = {
     "organization_invitation_roles",
     "provider_connections",
     "model_configurations",
+    "model_configuration_references",
 }
 
 

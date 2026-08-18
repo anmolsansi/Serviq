@@ -38,3 +38,25 @@ class ProviderSecretCleanupError(ProviderManagementError):
 
     def __init__(self) -> None:
         super().__init__("Provider metadata changed but secret cleanup requires attention.")
+
+
+class ProviderTestRateLimitedError(ProviderManagementError):
+    error_code = "PROVIDER_TEST_RATE_LIMITED"
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        self.retry_after_seconds = max(retry_after_seconds, 1)
+        super().__init__("Provider connectivity-test rate limit exceeded.")
+
+
+class ProviderTestUnavailableError(ProviderManagementError):
+    error_code = "PROVIDER_TEST_UNAVAILABLE"
+
+    def __init__(self) -> None:
+        super().__init__("Provider connectivity testing is temporarily unavailable.")
+
+
+class ProviderTestStaleError(ProviderManagementError):
+    error_code = "PROVIDER_TEST_STALE"
+
+    def __init__(self) -> None:
+        super().__init__("Provider credential changed while the connectivity test was running.")

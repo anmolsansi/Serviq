@@ -12,6 +12,7 @@ dependencies = [
   "pydantic>=2,<3",
   "sqlalchemy>=2,<3",
   "uvicorn[standard]>=0.35,<1",
+  "valkey>=6.1,<7",
 ]
 
 [dependency-groups]

@@ -70,9 +70,7 @@ class ProviderConnectivityResponse(BaseModel):
         return self
 
 
-def _require_internal_token(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
+def _require_internal_token(authorization: str | None) -> None:
     expected = os.getenv(_INTERNAL_TOKEN_ENV, "")
     if not expected:
         raise HTTPException(
@@ -137,15 +135,12 @@ async def run_connectivity_test(
 @router.post(
     "/provider-connectivity-test",
     response_model=ProviderConnectivityResponse,
-    dependencies=[],
 )
 async def provider_connectivity_test(
     request: ProviderConnectivityRequest,
-    _: Annotated[None, Header(alias="x-serviq-internal-auth-placeholder")] = None,
     authorization: Annotated[str | None, Header()] = None,
 ) -> ProviderConnectivityResponse:
     """Private endpoint used only by Serviq API provider-management code."""
 
-    del _
     _require_internal_token(authorization)
     return await run_connectivity_test(request)

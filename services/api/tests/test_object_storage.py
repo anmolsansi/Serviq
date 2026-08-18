@@ -46,10 +46,7 @@ class _FakeS3Client:
         metadata = cast(dict[str, str], kwargs["Metadata"])
         if self.fail:
             raise _unsafe_client_error("PutObject")
-        if isinstance(body, bytes):
-            data = body
-        else:
-            data = cast(BytesIO, body).read()
+        data = body if isinstance(body, bytes) else cast(BytesIO, body).read()
         self.objects[(bucket, key)] = (data, content_type, dict(metadata))
         self.calls.append(("put", bucket, key))
         return {"ETag": "test-etag"}

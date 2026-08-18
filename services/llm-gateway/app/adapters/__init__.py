@@ -11,6 +11,7 @@ from app.adapters.fake import (
 )
 from app.adapters.gemini import GeminiAdapter
 from app.adapters.openai import OpenAIAdapter
+from app.adapters.openrouter import OpenRouterAdapter
 
 __all__ = [
     "AdapterContext",
@@ -23,4 +24,5 @@ __all__ = [
     "GeminiAdapter",
     "LLMAdapter",
     "OpenAIAdapter",
+    "OpenRouterAdapter",
 ]

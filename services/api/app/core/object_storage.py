@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import IO, Any, Protocol, cast
 from uuid import UUID
@@ -130,11 +131,20 @@ def evaluation_key(*, tenant_id: UUID, evaluation_run_id: UUID) -> EvaluationObj
 
 
 @dataclass(frozen=True, slots=True)
+class StoredObjectMetadata:
+    content_type: str | None
+    content_length: int
+    etag: str | None
+    metadata: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class StoredObject:
     data: bytes
     content_type: str | None
     content_length: int
     etag: str | None
+    metadata: dict[str, str]
 
 
 class ObjectStorage(Protocol):
@@ -144,9 +154,12 @@ class ObjectStorage(Protocol):
         data: bytes | IO[bytes],
         *,
         content_type: str,
+        metadata: Mapping[str, str] | None = None,
     ) -> None: ...
 
     def get_object(self, key: ObjectStorageKey) -> StoredObject: ...
+
+    def head(self, key: ObjectStorageKey) -> StoredObjectMetadata: ...
 
     def delete_object(self, key: ObjectStorageKey) -> None: ...
 
@@ -168,7 +181,7 @@ class _S3Session(Protocol):
 
 
 class S3ObjectStorage:
-    """Small S3-compatible adapter for the four operations Serviq currently owns."""
+    """Small S3-compatible adapter for Serviq-owned storage operations."""
 
     def __init__(self, *, client: _S3Client, bucket: str) -> None:
         normalized_bucket = bucket.strip()
@@ -186,16 +199,19 @@ class S3ObjectStorage:
         data: bytes | IO[bytes],
         *,
         content_type: str,
+        metadata: Mapping[str, str] | None = None,
     ) -> None:
         normalized_content_type = content_type.strip()
         if not normalized_content_type:
             raise ValueError("Object content type must not be blank.")
+        safe_metadata = _copy_metadata(metadata)
         try:
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key.value,
                 Body=data,
                 ContentType=normalized_content_type,
+                Metadata=safe_metadata,
             )
         except (BotoCoreError, ClientError):
             raise ObjectStorageError from None
@@ -224,22 +240,25 @@ class S3ObjectStorage:
         if not isinstance(data, bytes):
             raise ObjectStorageError
 
-        content_type = response.get("ContentType")
-        if not isinstance(content_type, str):
-            content_type = None
-        content_length = response.get("ContentLength")
-        if not isinstance(content_length, int):
-            content_length = len(data)
-        etag = response.get("ETag")
-        if not isinstance(etag, str):
-            etag = None
-
+        object_metadata = _metadata_from_response(response, fallback_length=len(data))
         return StoredObject(
             data=data,
-            content_type=content_type,
-            content_length=content_length,
-            etag=etag,
+            content_type=object_metadata.content_type,
+            content_length=object_metadata.content_length,
+            etag=object_metadata.etag,
+            metadata=object_metadata.metadata,
         )
+
+    def head(self, key: ObjectStorageKey) -> StoredObjectMetadata:
+        try:
+            response = self._client.head_object(Bucket=self._bucket, Key=key.value)
+        except ClientError as exc:
+            if _is_not_found(exc):
+                raise ObjectNotFoundError from None
+            raise ObjectStorageError from None
+        except BotoCoreError:
+            raise ObjectStorageError from None
+        return _metadata_from_response(response)
 
     def delete_object(self, key: ObjectStorageKey) -> None:
         try:
@@ -253,13 +272,9 @@ class S3ObjectStorage:
 
     def exists(self, key: ObjectStorageKey) -> bool:
         try:
-            self._client.head_object(Bucket=self._bucket, Key=key.value)
-        except ClientError as exc:
-            if _is_not_found(exc):
-                return False
-            raise ObjectStorageError from None
-        except BotoCoreError:
-            raise ObjectStorageError from None
+            self.head(key)
+        except ObjectNotFoundError:
+            return False
         return True
 
 
@@ -303,6 +318,58 @@ def build_object_storage(
 def _require_uuid(*values: object) -> None:
     if any(not isinstance(value, UUID) for value in values):
         raise TypeError("Object key identifiers must be UUID values.")
+
+
+def _copy_metadata(metadata: Mapping[str, str] | None) -> dict[str, str]:
+    if metadata is None:
+        return {}
+    copied: dict[str, str] = {}
+    for key, value in metadata.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("Object metadata keys and values must be strings.")
+        normalized_key = key.strip().lower()
+        if not normalized_key:
+            raise ValueError("Object metadata keys must not be blank.")
+        if "\r" in normalized_key or "\n" in normalized_key or "\0" in normalized_key:
+            raise ValueError("Object metadata keys contain unsupported control characters.")
+        if "\r" in value or "\n" in value or "\0" in value:
+            raise ValueError("Object metadata values contain unsupported control characters.")
+        copied[normalized_key] = value
+    return copied
+
+
+def _metadata_from_response(
+    response: Mapping[str, Any],
+    *,
+    fallback_length: int | None = None,
+) -> StoredObjectMetadata:
+    content_type = response.get("ContentType")
+    if not isinstance(content_type, str):
+        content_type = None
+
+    content_length = response.get("ContentLength")
+    if not isinstance(content_length, int):
+        if fallback_length is None:
+            raise ObjectStorageError
+        content_length = fallback_length
+
+    etag = response.get("ETag")
+    if not isinstance(etag, str):
+        etag = None
+
+    raw_metadata = response.get("Metadata")
+    metadata: dict[str, str] = {}
+    if isinstance(raw_metadata, Mapping):
+        for key, value in raw_metadata.items():
+            if isinstance(key, str) and isinstance(value, str):
+                metadata[key] = value
+
+    return StoredObjectMetadata(
+        content_type=content_type,
+        content_length=content_length,
+        etag=etag,
+        metadata=metadata,
+    )
 
 
 def _is_not_found(exc: ClientError) -> bool:

@@ -392,9 +392,15 @@ The older design workflow remains at `.github/workflows/build-4k-designs.yml` an
 
 S3-compatible local object storage exists through SeaweedFS in the Docker stack.
 
-This is infrastructure only. There is no implemented production file-upload workflow, presigned-URL contract, MIME/extension/size validation pipeline, knowledge-ingestion upload API, export writer, or production AWS S3 integration yet.
+OPE-301 adds the application-owned object-storage boundary at `services/api/app/core/object_storage.py`. The API uses the AWS-maintained low-level `botocore` S3 client behind Serviq's own interface, with the exact dependency patch frozen by `services/api/uv.lock`. The adapter exposes only put, get, delete, and exists operations. It uses explicit 5-second connect and 30-second read timeouts, one total SDK attempt, path-style S3 addressing for local compatibility, and stable Serviq-owned errors instead of leaking SDK details.
 
-Future application code should depend on the architecture-owned S3-compatible storage contract, not vendor-specific SeaweedFS behavior.
+Object keys are generated only through typed UUID-based helpers for the exact architecture-owned knowledge raw, knowledge normalized, export, and evaluation layouts. User-controlled filenames are not accepted by the key helpers and cannot become storage paths. Every tenant-owned key begins with `tenants/{tenantId}/...`.
+
+The local bucket is `serviq-local-objects`, matching both Architecture and Docker Compose. `.env.example` now uses that same local bucket and the Compose development credentials so the API and local infrastructure agree out of the box.
+
+There is still no implemented production file-upload workflow, presigned-URL contract, MIME/extension/size validation pipeline, knowledge-ingestion upload API, export writer, customer attachment workflow, or production AWS S3 deployment yet. Those remain separate tickets.
+
+Future application code must depend on the Serviq object-storage interface and typed key helpers, not vendor-specific SeaweedFS behavior or arbitrary full object-key strings. ADR-016 owns the Python S3 client, timeout, retry, and error-boundary decision.
 
 ## 15. Eventing reality
 

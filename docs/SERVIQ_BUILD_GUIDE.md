@@ -5313,3 +5313,165 @@ The larger engineering improvement is sequencing: Serviq can now build ingestion
 ## Completion gate
 
 The implementation is considered complete when the final `ope300` branch head passes the repository quality checks and real PostgreSQL integration workflow, including migration upgrade/downgrade coverage, with the permanent build-guide section present and the temporary documentation helper absent.
+
+## OPE-301 — S3-Compatible Storage Adapter and Generated Object Keys
+
+**Completed on branch:** `ope301`  
+**Linear ticket:** `OPE-301`  
+**Architecture decision:** `docs/architecture-decisions/ADR-016-s3-compatible-object-storage-client.md`
+
+### What this ticket was trying to solve
+
+Serviq already had a local object-storage server in Docker. That server is SeaweedFS, and it exposes an S3-compatible interface. In simple terms, the infrastructure could hold files, but the Python application did not yet have a safe, reusable way to talk to it.
+
+Without an application-owned adapter, every future feature that needs to save a file could make its own S3 calls. One developer might use a filename as the storage path. Another might retry failed requests many times. Another might leak the internal storage URL in an exception. Another might call a SeaweedFS-specific API that would later make an AWS S3 migration difficult. All of those approaches would work in a small demo and become expensive security or maintenance problems later.
+
+OPE-301 creates one narrow storage doorway for the API. Future feature code uses that doorway instead of talking directly to the storage vendor.
+
+### The storage adapter we added
+
+The main implementation is `services/api/app/core/object_storage.py`.
+
+The adapter deliberately supports only four operations:
+
+1. `put_object` stores bytes or a binary stream and records the supplied content type.
+2. `get_object` reads an object and returns its bytes plus the small amount of metadata downstream code needs today, including content type, content length, and ETag when the backend provides one.
+3. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
+4. `exists` performs a HEAD-style check. It returns `False` when an object is missing without downloading the object body.
+
+We intentionally did **not** add object listing, public buckets, presigned URLs, multipart-upload policy, ACL management, retention policy, lifecycle policy, or customer attachments. Those features carry additional product and security decisions and OPE-301 was not allowed to guess them.
+
+### Why Serviq now uses botocore
+
+The ticket required an approved S3-compatible client, but the repository did not actually name one. That was an architecture gap, so we resolved it explicitly in ADR-016 instead of silently choosing a dependency inside the code.
+
+The API now uses the AWS-maintained low-level `botocore` S3 client in the 1.42 release line. The exact patch is stored in `services/api/uv.lock`.
+
+We chose the low-level client because this adapter needs only basic S3 requests. Adding the full boto3 resource and transfer layers would increase dependency surface without helping these four operations. The important design point is that feature code still does not depend on botocore. Botocore stays inside the Serviq adapter. If the infrastructure changes later, the rest of the product keeps calling the same Serviq interface.
+
+### How network failures are bounded
+
+Storage calls are external network calls, even when the storage server is running on the developer's laptop. An external dependency must never be allowed to wait or retry forever.
+
+OPE-301 therefore configures the S3 client with:
+
+- a 5-second connection timeout;
+- a 30-second read timeout;
+- one total SDK attempt;
+- S3 Signature Version 4;
+- path-style S3 addressing for the local SeaweedFS endpoint.
+
+The one-attempt setting is important. It prevents an SDK from quietly multiplying retries underneath a future worker's own retry policy. A higher-level ingestion or export workflow can own its business retry strategy later without two retry systems fighting each other.
+
+### Why object keys are generated instead of supplied as strings
+
+An object key is similar to a path inside an S3 bucket. Letting a browser filename become that path creates several problems. Filenames can contain slashes, repeated names, unusual characters, or text chosen by an attacker. They can also reveal personal or business information in logs and storage tooling.
+
+OPE-301 does not accept a filename when it builds an object key. Instead, it accepts trusted UUID identifiers generated or validated by Serviq and produces one of four exact layouts:
+
+```text
+tenants/{tenantId}/knowledge/{sourceId}/raw/{objectId}
+tenants/{tenantId}/knowledge/{sourceId}/normalized/{documentId}/{version}
+tenants/{tenantId}/exports/{exportId}
+tenants/{tenantId}/evaluation/{evaluationRunId}
+```
+
+The Python code represents these as typed key objects rather than a generic full-key string. The constructors also reject non-UUID identifiers at runtime. This gives us two safety layers: type checking catches normal developer mistakes, and runtime validation prevents an accidental string such as `../../another-tenant` from becoming an object path.
+
+A user-facing filename can still be stored later as metadata when a dedicated upload feature is implemented. It simply cannot decide where the object lives.
+
+### Tenant isolation at the storage-key layer
+
+Every supported object key starts with `tenants/{tenantId}/`.
+
+That does not replace database authorization, permission checks, or future bucket/IAM policy. It adds another clear isolation boundary. Two tenants using the same source ID or document ID still produce different storage paths because their tenant IDs are different.
+
+The tests build otherwise-identical keys for two tenant UUIDs and verify that the prefixes and final keys are different.
+
+### Stable errors instead of SDK internals
+
+Raw S3 errors can include internal endpoint names, bucket information, request details, and sometimes values that should not escape the infrastructure boundary. Passing those exceptions directly to routers or logs would make future redaction much harder.
+
+The adapter therefore normalizes failures into Serviq-owned errors:
+
+```text
+OBJECT_STORAGE_UNAVAILABLE
+OBJECT_NOT_FOUND
+```
+
+A missing `get_object` becomes `OBJECT_NOT_FOUND`. A missing `exists` becomes `False`. Repeated delete remains successful. Other SDK or network failures become `OBJECT_STORAGE_UNAVAILABLE` with a generic message.
+
+Unit tests deliberately create an SDK error containing a fake credential and fake internal URL, then verify neither value appears in the Serviq exception representation.
+
+### Local configuration was corrected
+
+Before this ticket, the repository had a subtle local configuration mismatch:
+
+- `ARCHITECTURE.md` defined the local bucket as `serviq-local-objects`.
+- Docker Compose also defaulted to `serviq-local-objects`.
+- `.env.example` still used `serviq-local`.
+
+OPE-301 aligns `.env.example` with the architecture and Compose source of truth. The example also uses the same development-only access-key and secret-key defaults as the local Compose service. These values are local placeholders, not production credentials.
+
+This matters because a new developer can now copy `.env.example`, start the local storage service, and have the API point to the same bucket instead of debugging a configuration disagreement that had nothing to do with application code.
+
+### Real local integration coverage
+
+Unit tests are necessary, but an S3 adapter can look correct with a fake client and still fail against the real local service because of signing, addressing style, endpoint behavior, or bucket configuration.
+
+OPE-301 therefore adds `services/api/tests/integration/test_object_storage_integration.py`. The test performs a complete round trip against the Compose object-storage service:
+
+1. make sure the test object is absent;
+2. store known bytes;
+3. confirm the object exists;
+4. read it back and compare the content and metadata;
+5. delete it;
+6. confirm it no longer exists;
+7. delete it again to prove cleanup is idempotent.
+
+`.github/workflows/ci.yml` now has a dedicated `object-storage-integration` job. It starts only the local object-storage service, waits for the S3 endpoint to accept connections, runs the real integration test, and tears the service down even when the test fails.
+
+### Files changed for OPE-301
+
+- `services/api/app/core/object_storage.py` adds the adapter, typed keys, factory, metadata result, and stable errors.
+- `services/api/tests/test_object_storage.py` covers exact keys, tenant separation, runtime key validation, adapter behavior, configuration, retries/timeouts, and error redaction.
+- `services/api/tests/integration/test_object_storage_integration.py` proves a real local S3-compatible round trip.
+- `services/api/pyproject.toml` adds the approved low-level S3 client dependency.
+- `services/api/uv.lock` freezes the resolved dependency graph.
+- `.github/workflows/ci.yml` adds the object-storage integration gate.
+- `.env.example` aligns the local bucket and development credentials with Compose.
+- `docs/architecture-decisions/ADR-016-s3-compatible-object-storage-client.md` records the missing client/retry decision.
+- `docs/repo_context.md` records the storage adapter as implemented repository reality.
+- `docs/TECH_STACK.md` records botocore as the Python object-storage client behind the Serviq adapter.
+- `docs/SERVIQ_BUILD_GUIDE.md` contains this implementation explanation.
+
+### What this improves
+
+For a non-technical reader, the main improvement is consistency. Serviq now has one controlled place that decides how application code stores and reads objects. A future knowledge upload, export, or evaluation feature does not need to solve S3 connectivity, path generation, timeout behavior, retry behavior, and error redaction again.
+
+For developers, this reduces duplicate infrastructure code and makes storage behavior testable.
+
+For security, it prevents user filenames from becoming object paths, keeps tenant IDs at the start of every supported key, limits automatic retry behavior, and hides raw SDK failure details behind stable errors.
+
+For operations, local development now uses one bucket convention and CI proves the real S3-compatible path instead of relying only on mocks.
+
+For future AWS deployment, the application remains behind an S3-compatible abstraction instead of depending on SeaweedFS-specific behavior. Production IAM, signing-region configuration, encryption, lifecycle, retention, and bucket-policy decisions are still intentionally left to the deployment/security tickets that own them.
+
+### What OPE-301 intentionally leaves for later
+
+Completing this ticket does **not** mean Serviq has a user-facing upload feature. It also does not mean a knowledge document is parsed, chunked, embedded, or searchable.
+
+The following work remains separate:
+
+- MIME, extension, and file-size enforcement in an upload boundary;
+- knowledge source upload APIs;
+- ingestion workers;
+- presigned URL contracts;
+- exports that actually produce files;
+- evaluation jobs that actually produce artifacts;
+- customer attachment storage;
+- production AWS identity/IAM and regional configuration;
+- server-side encryption and retention/lifecycle policy.
+
+Keeping those concerns out of OPE-301 is deliberate. This ticket builds the safe storage foundation those features can reuse without pretending the higher-level product workflows already exist.
+

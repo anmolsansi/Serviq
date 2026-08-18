@@ -8,6 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 
 ProviderKey = Literal["openai", "anthropic", "gemini", "openrouter"]
 ProviderStatus = Literal["untested", "active", "invalid", "disabled"]
+ProviderConnectivityErrorCode = Literal[
+    "PROVIDER_AUTH_FAILED",
+    "PROVIDER_RATE_LIMITED",
+    "PROVIDER_TIMEOUT",
+    "PROVIDER_UNAVAILABLE",
+    "PROVIDER_INVALID_REQUEST",
+]
 
 
 class ProviderCreateRequest(BaseModel):
@@ -70,3 +77,12 @@ class ProviderView(BaseModel):
     last_error_code: str | None = Field(alias="lastErrorCode")
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
+
+
+class ProviderConnectivityView(BaseModel):
+    """Minimal browser-safe result of an attempted provider connectivity check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    status: ProviderStatus
+    error_code: ProviderConnectivityErrorCode | None = Field(default=None, alias="errorCode")

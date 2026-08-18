@@ -70,10 +70,19 @@ class ProviderTestRateLimiter(Protocol):
     ) -> RateLimitDecision: ...
 
 
+class _AsyncValkeyEvalClient(Protocol):
+    async def eval(
+        self,
+        script: str,
+        numkeys: int,
+        *keys_and_args: object,
+    ) -> object: ...
+
+
 class ValkeyProviderTestRateLimiter:
     """Enforce the two frozen provider-test limits using process-shared Valkey state."""
 
-    def __init__(self, client: valkey.Valkey) -> None:
+    def __init__(self, client: _AsyncValkeyEvalClient) -> None:
         self._client = client
 
     async def check_and_consume(

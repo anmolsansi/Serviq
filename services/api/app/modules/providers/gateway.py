@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from app.core.config import PlatformSettings, load_settings
-
-ProviderConnectivityErrorCode = Literal[
-    "PROVIDER_AUTH_FAILED",
-    "PROVIDER_RATE_LIMITED",
-    "PROVIDER_TIMEOUT",
-    "PROVIDER_UNAVAILABLE",
-    "PROVIDER_INVALID_REQUEST",
-]
+from app.modules.providers.schemas import ProviderConnectivityErrorCode
 
 _PRIVATE_TEST_PATH = "/internal/v1/provider-connectivity-test"
 _GATEWAY_HTTP_TIMEOUT_SECONDS = 6.0
@@ -50,9 +43,15 @@ class _GatewayResponse(BaseModel):
 class HttpProviderConnectivityGateway:
     """Call only Serviq's fixed private gateway health-check route."""
 
-    def __init__(self, settings: PlatformSettings) -> None:
+    def __init__(
+        self,
+        settings: PlatformSettings,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self._url = f"{str(settings.llm_gateway_url).rstrip('/')}{_PRIVATE_TEST_PATH}"
         self._internal_token = settings.llm_gateway_internal_token
+        self._transport = transport
 
     async def test(
         self,
@@ -77,6 +76,7 @@ class HttpProviderConnectivityGateway:
             async with httpx.AsyncClient(
                 timeout=_GATEWAY_HTTP_TIMEOUT_SECONDS,
                 follow_redirects=False,
+                transport=self._transport,
             ) as client:
                 response = await client.post(self._url, headers=headers, json=payload)
         except httpx.TimeoutException:

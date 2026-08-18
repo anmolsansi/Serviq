@@ -6,6 +6,7 @@ from app.modules.invitations.router import accept_router as invitation_accept_ro
 from app.modules.invitations.router import router as invitations_router
 from app.modules.members.router import router as members_router
 from app.modules.organizations.router import router as organizations_router
+from app.modules.providers.model_router import router as models_router
 from app.modules.providers.router import router as providers_router
 
 app = FastAPI(title="Serviq API")
@@ -16,3 +17,4 @@ app.include_router(invitations_router)
 app.include_router(invitation_accept_router)
 app.include_router(members_router)
 app.include_router(providers_router)
+app.include_router(models_router)

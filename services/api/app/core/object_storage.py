@@ -47,9 +47,7 @@ class KnowledgeRawObjectKey:
 
     @property
     def value(self) -> str:
-        return (
-            f"tenants/{self.tenant_id}/knowledge/{self.source_id}/raw/{self.object_id}"
-        )
+        return f"tenants/{self.tenant_id}/knowledge/{self.source_id}/raw/{self.object_id}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,13 +307,15 @@ def _require_uuid(*values: object) -> None:
 
 def _is_not_found(exc: ClientError) -> bool:
     error = exc.response.get("Error")
+    code: str | None = None
     if isinstance(error, dict):
-        code = error.get("Code")
-        if isinstance(code, str) and code in _NOT_FOUND_CODES:
-            return True
+        raw_code = error.get("Code")
+        if isinstance(raw_code, str):
+            code = raw_code
+    if code is not None:
+        return code in _NOT_FOUND_CODES
+
     response_metadata = exc.response.get("ResponseMetadata")
     if isinstance(response_metadata, dict):
-        status = response_metadata.get("HTTPStatusCode")
-        if status == 404:
-            return True
+        return response_metadata.get("HTTPStatusCode") == 404
     return False

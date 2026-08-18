@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ope299
+          fetch-depth: 0
 
       - name: Append permanent OPE-299 documentation
         shell: bash
@@ -31,79 +32,58 @@ jobs:
 
 # OPE-299 — Model configuration CRUD and stable aliases
 
-**Status:** Implemented on branch `ope299`. The implementation is reviewed through PR #145 and is complete only after the required CI, database-integration, and security checks pass.
+**Status:** Completed. Runtime implementation was validated and merged through PR #145. The model-management contract is frozen by ADR-015.
 
-## What problem this ticket solves
+## What OPE-299 adds
 
-AI providers use their own model names. OpenAI may call a model one thing, Anthropic another, and those provider-owned names can change over time.
+OPE-299 gives each Serviq tenant a safe model catalog instead of forcing future agents to store raw provider model names everywhere.
 
-If every Serviq agent stored a raw provider model string such as `gpt-5-mini` directly inside its business configuration, the rest of the product would become tightly coupled to whichever provider happened to be selected that day. Changing provider or moving to a newer model would then require editing many agent configurations and would increase the chance of breaking production behavior.
-
-OPE-299 adds a Serviq-owned model catalog.
-
-Instead of telling future agent code:
-
-```text
-Use provider=openai and upstreamModel=gpt-5-mini
-```
-
-Serviq can define a stable configuration such as:
+A tenant can now define a stable Serviq model configuration such as:
 
 ```text
 alias = support-primary
 purpose = generation
-provider = the tenant's approved OpenAI connection
+provider connection = approved OpenAI connection
 upstream model = gpt-5-mini
 ```
 
-Later agent/domain code can depend on the Serviq model configuration UUID or stable alias instead of importing provider SDK objects or scattering raw provider model strings throughout the product.
+The important idea is that `support-primary` belongs to Serviq and the tenant. The raw provider model name belongs to the upstream AI provider. Keeping those concepts separate means future agent configuration can depend on a stable Serviq identity while the provider or upstream model can change behind that identity in a controlled way.
 
-A simple analogy is a phone contact. You may save a person as “Mom” instead of memorizing the current phone number. If the phone number changes, you update the contact once. The name your family uses stays stable. A Serviq model alias provides the same type of indirection for AI models.
+A non-technical analogy is a phone contact. People use the saved contact name instead of memorizing the current phone number. If the number changes, the contact can be updated once. Model aliases provide the same kind of indirection for AI infrastructure.
 
-## Why OPE-299 had previously stopped
+## Why this ticket had previously stopped
 
-The database table for model configurations already existed before this ticket. Basic create, list, update, and delete code would therefore have been easy to write.
+The `model_configurations` table already existed, so basic CRUD would have been straightforward. The unsafe part was deletion.
 
-The difficult part was safe deletion.
+The ticket requires Serviq to refuse deletion when production configuration still depends on a model. Earlier, the repository did not have an authoritative way to answer that question. The future agent-version JSON shape had not frozen an exact model-reference path, and inventing one inside OPE-299 would have coupled model management to architecture owned by another module.
 
-The ticket explicitly requires Serviq to refuse deletion when a published agent or another production configuration still depends on the model. At the time of the earlier OPE-299 attempt, the repository had no authoritative reference that could answer that question.
+The earlier implementation therefore stopped with a `Needs Architect Decision` record rather than pretending deletion was safe.
 
-There was no implemented agent-version foreign key to `model_configurations`, and the planned agent JSON configuration did not yet freeze a path that said exactly where a model UUID or alias would live.
+## ADR-015 resolves the blocker
 
-Deleting anyway would create a false sense of safety. Parsing or inventing a future agent JSON path would be equally unsafe because a model-management ticket would silently define another module's architecture.
+`docs/architecture-decisions/ADR-015-model-configuration-reference-and-mutation-semantics.md` freezes the missing rules.
 
-That is why the earlier branch intentionally recorded `Needs Architect Decision` instead of shipping partial CRUD.
+The approved behavior is:
 
-## How we resolved the architecture blocker
+- model configuration UUID is the authoritative internal identity;
+- `alias` is immutable after creation;
+- `purpose` is immutable after creation;
+- `providerConnectionId`, `upstreamModel`, and `enabled` are PATCH-mutable;
+- creation requires a provider connection that belongs to the same tenant and is currently `active`;
+- changing provider, changing upstream model, or enabling a model also requires an active provider;
+- disabling remains allowed even if a provider later becomes unhealthy, because disabling is the safe action;
+- foreign-tenant identifiers are handled without disclosing that the foreign resource exists;
+- deletion is protected by an explicit relational reference registry rather than by parsing another module's JSON.
 
-OPE-299 now includes `ADR-015-model-configuration-reference-and-mutation-semantics.md`.
+## The model reference registry
 
-ADR means **Architecture Decision Record**. It is a version-controlled explanation of an important engineering rule. The goal is that a future developer can understand not only what the code does, but why the product chose that behavior.
-
-ADR-015 freezes these rules:
-
-- the model configuration UUID is the authoritative internal identity;
-- the alias is a stable tenant-facing name and cannot be renamed by ordinary PATCH;
-- the model purpose cannot be changed by ordinary PATCH;
-- provider connection, upstream model, and enabled state are the mutable fields;
-- a model can be created only against a provider connection belonging to the same tenant and currently marked `active`;
-- changing provider/upstream model or re-enabling a model also requires an active provider;
-- disabling remains allowed even if the provider is unhealthy, because disabling is the safe action;
-- production dependencies are recorded in a small relational reference registry instead of making model management understand another module's JSON structure.
-
-This resolves the earlier stop condition without defining the future agent configuration schema.
-
-## The new blocking-reference registry
-
-The new migration adds:
+The migration adds:
 
 ```text
 model_configuration_references
 ```
 
-Think of it as a “do not remove, something important is using this” register.
-
-A blocking reference contains:
+This table is a small “something important is using this model” register. It records:
 
 ```text
 tenant_id
@@ -113,41 +93,24 @@ reference_id
 created_at
 ```
 
-For example, a future published agent-version workflow may register a row that conceptually means:
+A future published agent-version workflow can register a blocking dependency when that agent version becomes production-relevant. When an administrator later tries to delete the model, OPE-299 asks the database whether a blocking reference exists.
 
 ```text
-Tenant A
-Model configuration: support-primary UUID
-Reference kind: published agent version
-Reference ID: the published agent-version UUID
+No blocking reference -> deletion may continue
+Blocking reference exists -> 409 MODEL_CONFIGURATION_IN_USE
 ```
 
-When an administrator tries to delete that model, OPE-299 does not inspect the agent JSON. It asks the database whether a blocking reference exists.
+The database uses a tenant/model composite foreign key so a malformed internal write cannot claim that one tenant references another tenant's model UUID.
 
-```text
-No reference -> deletion may continue
-Reference exists -> 409 MODEL_CONFIGURATION_IN_USE
-```
-
-The database also enforces that the tenant ID and model UUID in the reference belong together. This prevents a bad internal write from creating a cross-tenant reference pair.
-
-Future domains remain responsible for registering and removing their blocking rows transactionally when their own lifecycle says a reference becomes production-critical or stops being critical.
+Future modules own their own lifecycle. They register or remove blocking rows in the same transaction in which their production reference becomes active or inactive. Model management therefore does not need to know the internal JSON layout of agents or future configuration domains.
 
 ## Why alias and purpose are immutable
 
-The word “stable” matters.
+The alias is supposed to be stable. Letting ordinary PATCH rename `support-primary` would make historical logs, audits, configuration reviews, and future alias-based references harder to understand.
 
-Suppose an administrator creates:
+Purpose is even more semantic. Turning a `generation` configuration into an `embedding` configuration changes what the resource means. Downstream code expecting generated text should not suddenly receive a vector-model configuration.
 
-```text
-support-primary -> generation model
-```
-
-If an ordinary PATCH could rename it to `support-secondary`, old logs, audits, configuration reviews, and future alias-based references would become harder to understand.
-
-Changing purpose is even more dangerous. Turning a `generation` alias into an `embedding` alias changes the meaning of the resource. Downstream code expecting generated text should not suddenly receive a vector-embedding configuration.
-
-For that reason:
+OPE-299 therefore freezes:
 
 ```text
 Immutable after create:
@@ -160,36 +123,21 @@ PATCH-mutable:
 - enabled
 ```
 
-If Serviq later needs a true alias-renaming workflow, that should be a separate feature with impact analysis rather than a casual field edit.
+A future rename or purpose-migration workflow can be designed explicitly if the product needs one.
 
-## Why an active provider is required
+## Why the provider must be active
 
-A provider connection has a status such as:
+Provider connections can be `untested`, `active`, `invalid`, or `disabled`. OPE-298 added the connectivity-test path that can prove a stored credential works and mark the connection active.
 
-```text
-untested
-active
-invalid
-disabled
-```
+A new model configuration should not appear usable while pointing at an untested, invalid, or disabled provider. OPE-299 therefore requires an active same-tenant provider for creation.
 
-OPE-298 added the safe connectivity-test path that can prove a stored credential works and mark it `active`.
+The same rule applies when changing the provider, changing the upstream model, or setting `enabled=true`.
 
-A model alias is supposed to point at usable provider infrastructure. Allowing a brand-new enabled model configuration to point at an untested, invalid, or disabled provider would create configuration that looks usable but cannot reliably run.
+There is one intentional fail-safe exception. Setting `enabled=false` remains allowed when the current provider is unhealthy. Administrators must always be able to turn unsafe configuration off.
 
-OPE-299 therefore requires `active` for creation.
+## Routes implemented
 
-It also requires an active provider when:
-
-- changing the provider connection;
-- changing the upstream model;
-- changing `enabled` to `true`.
-
-There is one deliberate exception: setting `enabled=false` is allowed even if the existing provider is unhealthy. An administrator must always be able to fail safe by disabling a model.
-
-## API routes implemented
-
-The public routes now match the frozen architecture:
+The API now exposes the frozen model-management surface:
 
 ```text
 GET    /api/v1/models
@@ -202,13 +150,9 @@ DELETE /api/v1/models/{modelConfigurationId}
 
 Returns only model configurations owned by the current tenant.
 
-A tenant cannot list another tenant's model aliases simply by knowing or guessing IDs.
-
 ### POST `/api/v1/models`
 
-Creates a new stable model configuration.
-
-The request accepts:
+Creates a configuration using:
 
 ```text
 providerConnectionId
@@ -218,23 +162,18 @@ purpose
 enabled
 ```
 
-`enabled` defaults to true when omitted.
+Validation includes:
 
-The alias is trimmed before validation and must contain 1 to 80 characters. The upstream model is also trimmed first and must contain 1 to 160 characters.
-
-Purpose must be exactly one of:
-
-```text
-generation
-embedding
-rerank
-```
-
-Unknown fields are rejected instead of silently ignored.
+- alias is trimmed before validation and must be 1 to 80 characters;
+- upstream model is trimmed before validation and must be 1 to 160 characters;
+- purpose must be exactly `generation`, `embedding`, or `rerank`;
+- provider connection must exist inside the current tenant and be active;
+- unknown fields are rejected;
+- `enabled` defaults to true when omitted.
 
 ### PATCH `/api/v1/models/{modelConfigurationId}`
 
-Updates only the architecture-approved mutable fields:
+Only these fields are accepted:
 
 ```text
 providerConnectionId
@@ -242,57 +181,38 @@ upstreamModel
 enabled
 ```
 
-An empty PATCH is rejected. `alias` and `purpose` are also rejected because they are intentionally not part of the PATCH schema.
+An empty PATCH is rejected. `alias` and `purpose` are rejected because they are intentionally immutable.
 
 ### DELETE `/api/v1/models/{modelConfigurationId}`
 
-Locks the model row, checks the blocking-reference registry, and then:
+The service locks the model row, checks the blocking-reference registry, and then either returns a stable conflict or deletes the unreferenced row.
 
 ```text
-referenced model   -> HTTP 409
-unreferenced model -> HTTP 204
+Referenced -> HTTP 409 MODEL_CONFIGURATION_IN_USE
+Unreferenced -> HTTP 204
 ```
 
-It never silently cascades through production configuration.
+There is no cascade that silently rewrites or deletes production configuration.
 
 ## Tenant-unique aliases
 
-The database already contains:
+The database enforces:
 
 ```text
 UNIQUE(tenant_id, alias)
 ```
 
-OPE-299 turns that database rule into deterministic API behavior.
+Two aliases named `support-primary` inside one tenant conflict and return `409 MODEL_ALIAS_CONFLICT`.
 
-Inside the same tenant:
+Two different tenants can both use `support-primary` because their catalogs are isolated.
 
-```text
-support-primary
-support-primary
-```
-
-is a conflict and returns:
-
-```text
-409 MODEL_ALIAS_CONFLICT
-```
-
-But two different tenants may both use `support-primary`. Each tenant owns an independent model catalog.
-
-The database unique constraint remains the final protection against two concurrent requests racing to create the same alias at the same time.
+The database constraint is also the final protection if concurrent requests race to create the same tenant alias.
 
 ## Tenant isolation and non-disclosure
 
-Every model mutation query includes the current tenant ID as part of the lookup.
+Every model lookup used for mutation includes the current tenant ID and the requested model UUID. Every provider lookup used by model CRUD includes the current tenant ID and provider UUID.
 
-Every provider connection selected by model CRUD is also looked up using both the current tenant ID and provider-connection ID.
-
-If Tenant A submits the UUID of Tenant B's provider connection, Serviq behaves as if that provider does not exist for Tenant A. It does not reveal that another tenant owns it.
-
-The same rule applies when Tenant A tries to PATCH or DELETE Tenant B's model configuration UUID.
-
-This is important because UUIDs are identifiers, not authorization. Knowing an identifier must never grant access to the resource.
+Knowing a UUID is not authorization. If Tenant A submits a provider or model UUID belonging to Tenant B, the API does not reveal Tenant B's ownership or configuration details.
 
 ## Authorization
 
@@ -302,15 +222,11 @@ Model management uses the existing capability:
 ai.providers.manage
 ```
 
-A tenant user with that capability may manage the provider/model control plane. A tenant member without it receives a permission-denied response for model management operations.
+A tenant member without that capability cannot list or mutate model configurations through this management API.
 
-The integration test verifies unauthorized update and delete behavior rather than checking only the happy path.
+## Credentials never enter model responses
 
-## Secrets stay outside model responses
-
-A model configuration needs to know which provider connection it uses, but it does not need the provider credential itself.
-
-Responses contain only safe model metadata:
+Model responses contain only safe metadata:
 
 ```text
 id
@@ -323,22 +239,13 @@ createdAt
 updatedAt
 ```
 
-They do not return:
+They do not return API keys, `secretRef`, raw provider responses, provider headers, provider SDK objects, or provider exception details.
 
-- API keys;
-- `secretRef`;
-- provider response bodies;
-- provider headers;
-- SDK exception objects;
-- provider SDK types.
+Provider credentials remain inside the provider/BYOK control plane. Model aliases remain a separate abstraction.
 
-This keeps the agent-facing abstraction separate from credential storage and provider-specific implementation details.
+## Backend structure
 
-## Repository and service structure
-
-OPE-299 follows Serviq's existing backend structure rather than placing database code directly inside routes.
-
-The flow is:
+The implementation follows Serviq's existing service boundaries:
 
 ```text
 HTTP request
@@ -356,77 +263,75 @@ repository.py
 PostgreSQL
 ```
 
-`model_router.py` owns HTTP transport behavior and converts typed domain failures into safe status codes and envelopes.
+`model_router.py` owns HTTP transport and safe status/error mapping.
 
-`schemas.py` owns strict input and output validation.
+`schemas.py` owns strict request and response validation.
 
-`service.py` owns authorization, provider-eligibility rules, transaction boundaries, mutability rules, and deletion protection.
+`service.py` owns authorization, mutability, provider eligibility, transaction boundaries, and deletion protection.
 
-`repository.py` owns tenant-scoped SQLAlchemy queries.
+`repository.py` owns tenant-scoped SQLAlchemy persistence operations.
 
-`models.py` maps the database tables into SQLAlchemy objects.
+`models.py` maps database tables.
 
-The Alembic migration owns the database evolution for the new reference registry.
+The Alembic migration owns the reference-registry database change.
 
-This separation matters because it prevents business rules from being scattered through route handlers and raw SQL.
+## Concurrency protection
 
-## Why PATCH and DELETE lock rows
+PATCH and DELETE lock the target model row before making their final decision. Safety-sensitive provider checks also lock the selected provider connection.
 
-Two administrators or background operations can act at nearly the same time.
+These are short database transactions with no external model/provider request inside them. The goal is to prevent stale-state decisions without holding database locks during slow network work.
 
-For example:
+## Automated validation
+
+The real PostgreSQL integration suite covers:
+
+- generation alias creation;
+- embedding alias creation;
+- rerank alias creation;
+- whitespace normalization;
+- same-tenant duplicate alias conflict;
+- the same alias in another tenant;
+- blank and oversized alias rejection;
+- blank and oversized upstream-model rejection;
+- invalid purpose rejection;
+- unknown field rejection;
+- foreign-provider non-disclosure;
+- disabled and untested provider rejection;
+- tenant list isolation;
+- authorized updates of mutable fields;
+- rejection of alias and purpose PATCH;
+- rejection of empty PATCH;
+- fail-safe disabling;
+- rejection of re-enabling against an inactive provider;
+- foreign-model non-disclosure;
+- unauthorized list/update/delete behavior;
+- referenced-delete conflict;
+- unreferenced-delete success;
+- absence of provider credential fields in model responses.
+
+The migration is also exercised through clean upgrade, downgrade, re-upgrade, and full-chain downgrade in CI.
+
+## Exact runtime validation
+
+Before the runtime stage was merged, exact head:
 
 ```text
-Administrator A starts changing a model.
-Administrator B starts deleting the same model.
+0fc1bfd0922175193e3857afb6a16cb6ea0e91ed
 ```
 
-Without coordination, both operations could make decisions based on stale state.
+passed:
 
-OPE-299 uses database row locking for model updates and deletes. Safety-sensitive provider checks also lock the selected provider connection while the transaction makes its decision.
+- CI #236, including lint, strict type checking, tests, Compose validation, PostgreSQL integration tests, and migration reversibility;
+- Security #212, including Gitleaks, Trivy, CodeQL for Python and JavaScript/TypeScript, and dependency vulnerability audits.
 
-The goal is not to lock the database for long periods. These operations contain no provider network call. They are short metadata transactions.
+The runtime stage was merged as PR #145. Detailed evidence is also recorded in `docs/validation/OPE-299-runtime-validation.md`.
 
-## Automated tests added
-
-The real PostgreSQL integration suite now covers the ticket's required behavior, including:
-
-- valid generation alias creation;
-- valid embedding alias creation;
-- valid rerank alias creation;
-- whitespace normalization;
-- duplicate alias conflict inside one tenant;
-- same alias allowed in another tenant;
-- blank alias rejection;
-- over-length alias rejection;
-- blank upstream-model rejection;
-- over-length upstream-model rejection;
-- invalid purpose rejection;
-- unknown request-field rejection;
-- foreign-tenant provider rejection;
-- disabled provider rejection;
-- untested provider rejection;
-- tenant list isolation;
-- authorized update of mutable fields;
-- rejection of alias/purpose PATCH;
-- rejection of empty PATCH;
-- fail-safe disable behavior;
-- rejection of re-enable when provider is no longer active;
-- foreign model non-disclosure;
-- unauthorized list/update/delete behavior;
-- referenced model deletion conflict;
-- unreferenced model deletion success;
-- absence of provider secret material in model responses.
-
-The tests run against the real PostgreSQL integration environment used by repository CI. They do not require a live OpenAI, Anthropic, Gemini, or OpenRouter account.
-
-## Files changed for OPE-299
-
-The main implementation touches:
+## Main implementation files
 
 ```text
 docs/architecture-decisions/ADR-015-model-configuration-reference-and-mutation-semantics.md
 docs/architecture-blockers/OPE-299-model-reference-rules.md
+docs/validation/OPE-299-runtime-validation.md
 services/api/alembic/versions/20260819_0007_model_configuration_references.py
 services/api/app/modules/providers/models.py
 services/api/app/modules/providers/repository.py
@@ -436,38 +341,22 @@ services/api/app/modules/providers/service.py
 services/api/app/modules/providers/model_router.py
 services/api/app/main.py
 services/api/tests/integration/test_model_configuration_crud_api.py
+services/api/tests/integration/test_database_integration.py
 ```
 
-The cumulative build guide is this file, so OPE-299 is explained here instead of creating another ticket-specific implementation tutorial.
+## What OPE-299 deliberately does not add
 
-## What OPE-299 deliberately does not do
+This ticket does not implement provider API-key rotation, provider connectivity testing, fallback chains, agent publishing/deployment, the future agent configuration schema, provider SDK selection, alias renaming, purpose migration, or automatic migration of future agent configuration.
 
-This ticket does not implement:
+Those responsibilities remain in their own architecture and ticket boundaries.
 
-- provider API-key creation or rotation;
-- provider connectivity testing;
-- provider model fallback chains;
-- agent configuration schema;
-- agent publishing or deployment;
-- model request routing inside the LLM Gateway;
-- provider SDK selection;
-- alias renaming;
-- purpose mutation;
-- automatic migration of future agent configurations.
+## What improves after OPE-299
 
-Those concerns stay in their own modules and tickets.
+Before this work, Serviq had model-configuration database rows but not a complete production-safe tenant management API around them.
 
-## What this improves for Serviq
+After OPE-299, Serviq has a stable tenant model catalog with strict validation, tenant isolation, permission checks, active-provider eligibility, credential-free responses, deterministic conflicts, controlled mutation, and real reference-aware deletion.
 
-Before OPE-299, the database had model rows but Serviq did not have a production-safe management API for them.
-
-After OPE-299, Serviq gains a tenant-scoped model catalog with stable aliases, strict validation, permission checks, active-provider eligibility, non-disclosing isolation, deterministic conflicts, and real reference-aware deletion.
-
-The larger architectural improvement is decoupling.
-
-Future agents can depend on a Serviq-owned model identity while provider credentials remain inside the provider control plane and provider SDK details remain inside the LLM Gateway. A provider model can change without requiring every domain object to learn provider-specific naming conventions.
-
-That is the difference between merely storing an AI model name and creating a maintainable model-configuration layer.
+The larger product improvement is decoupling. Future agents can depend on a Serviq-owned model identity while credentials stay in the provider control plane and provider-specific execution stays behind the LLM Gateway. Upstream models can evolve without forcing every domain object to understand provider naming conventions.
 EOF
           fi
 
@@ -478,21 +367,21 @@ EOF
 
 # OPE-299 current status correction — implementation resumed and completed
 
-The earlier sections in this document are an accurate historical record of why OPE-299 originally stopped. They are no longer the current implementation status.
+The earlier OPE-299 blocker section remains an accurate historical explanation of why the first implementation attempt stopped. It is no longer the current feature status.
 
-On 2026-08-19, the missing model-reference and mutation rules were frozen in `docs/architecture-decisions/ADR-015-model-configuration-reference-and-mutation-semantics.md`. That decision introduced a tenant-safe blocking-reference registry keyed by model-configuration UUID and froze alias/purpose as immutable while provider connection, upstream model, and enabled state remain controlled mutable fields.
+On 2026-08-19, the missing model reference and mutability rules were frozen in `docs/architecture-decisions/ADR-015-model-configuration-reference-and-mutation-semantics.md`.
 
-OPE-299 then resumed on branch `ope299` and implemented the frozen model CRUD routes, active-provider eligibility checks, tenant isolation, deterministic alias conflicts, reference-aware deletion, and real PostgreSQL integration tests.
+OPE-299 then resumed on branch `ope299`. The implementation added the frozen model CRUD routes, active-provider eligibility, tenant isolation, immutable alias/purpose semantics, the tenant-safe `model_configuration_references` registry, deterministic alias conflicts, reference-aware deletion, and real PostgreSQL integration tests.
 
-Therefore the old statement that model configuration CRUD remains blocked should now be read only as historical context for the original stop. PR #145 is the implementation review for the resumed work.
+Runtime PR #145 was merged only after exact head `0fc1bfd0922175193e3857afb6a16cb6ea0e91ed` passed CI #236 and Security #212.
+
+The older statement that model configuration CRUD is blocked should therefore be read as historical context, not as the current state of OPE-299.
 EOF
           fi
 
-          rm .github/workflows/ope299-build-guide-append.yml
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/SERVIQ_BUILD_GUIDE.md docs/OPE_296_299_IMPLEMENTATION_GUIDE.md .github/workflows/ope299-build-guide-append.yml
+          git add docs/SERVIQ_BUILD_GUIDE.md docs/OPE_296_299_IMPLEMENTATION_GUIDE.md
           if git diff --cached --quiet; then
             exit 0
           fi

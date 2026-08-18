@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
 import app.connectivity as connectivity
@@ -118,19 +119,12 @@ def test_normalized_provider_failure_is_returned_without_provider_detail() -> No
 
 
 def test_private_route_requires_internal_auth_rejects_extra_controls_and_hides_content(
-    monkeypatch: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # pytest's MonkeyPatch is intentionally avoided in the annotation so this test file
-    # remains compatible with the repository's strict dependency surface.
-    from pytest import MonkeyPatch
-
-    assert isinstance(monkeypatch, MonkeyPatch)
-    typed_monkeypatch = monkeypatch
-
     async def scenario() -> None:
-        typed_monkeypatch.setenv("LLM_GATEWAY_INTERNAL_TOKEN", "internal-test-token")
+        monkeypatch.setenv("LLM_GATEWAY_INTERNAL_TOKEN", "internal-test-token")
         adapter = RecordingAdapter()
-        typed_monkeypatch.setattr(connectivity, "_adapter_for", lambda provider: adapter)
+        monkeypatch.setattr(connectivity, "_adapter_for", lambda provider: adapter)
         transport = httpx.ASGITransport(app=app)
         payload = {
             "tenantId": str(UUID("00000000-0000-0000-0000-000000000001")),

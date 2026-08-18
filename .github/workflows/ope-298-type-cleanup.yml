@@ -1,0 +1,52 @@
+name: OPE-298 targeted type cleanup
+
+on:
+  push:
+    branches:
+      - agent/ope-298-provider-connectivity-test-implementation
+    paths:
+      - .github/workflows/ope-298-type-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ope-298-provider-connectivity-test-implementation
+          fetch-depth: 0
+      - name: Replace the temporary type suppression with an explicit narrow cast
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/api/tests/integration/test_provider_connectivity_api.py')
+          text = path.read_text()
+          text = text.replace(
+              'from pathlib import Path\nfrom uuid import UUID, uuid4\n',
+              'from pathlib import Path\nfrom typing import cast\nfrom uuid import UUID, uuid4\n',
+          )
+          text = text.replace(
+              'from app.modules.providers.gateway import ProviderConnectivityOutcome\n',
+              'from app.modules.providers.gateway import ProviderConnectivityOutcome\n'
+              'from app.modules.providers.schemas import ProviderConnectivityErrorCode\n',
+          )
+          text = text.replace(
+              '                    gateway.outcome = ProviderConnectivityOutcome(ok=False, error_code=code)  # type: ignore[arg-type]\n',
+              '                    gateway.outcome = ProviderConnectivityOutcome(\n'
+              '                        ok=False,\n'
+              '                        error_code=cast(ProviderConnectivityErrorCode, code),\n'
+              '                    )\n',
+          )
+          path.write_text(text)
+          PY
+      - name: Remove helper and commit
+        run: |
+          rm .github/workflows/ope-298-type-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/api/tests/integration/test_provider_connectivity_api.py .github/workflows/ope-298-type-cleanup.yml
+          git commit -m "test(ope-298): replace integration type suppression with explicit cast"
+          git push origin HEAD:agent/ope-298-provider-connectivity-test-implementation

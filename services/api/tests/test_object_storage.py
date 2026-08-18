@@ -33,7 +33,7 @@ UNSAFE_DETAIL = f"http://internal-storage.invalid credential={SECRET}"
 
 class _FakeS3Client:
     def __init__(self) -> None:
-        self.objects: dict[tuple[str, str], tuple[bytes, str]] = {}
+        self.objects: dict[tuple[str, str], tuple[bytes, str, dict[str, str]]] = {}
         self.fail = False
         self.fail_missing_bucket = False
         self.calls: list[tuple[str, str, str]] = []
@@ -43,13 +43,14 @@ class _FakeS3Client:
         key = cast(str, kwargs["Key"])
         body = kwargs["Body"]
         content_type = cast(str, kwargs["ContentType"])
+        metadata = cast(dict[str, str], kwargs["Metadata"])
         if self.fail:
             raise _unsafe_client_error("PutObject")
         if isinstance(body, bytes):
             data = body
         else:
             data = cast(BytesIO, body).read()
-        self.objects[(bucket, key)] = (data, content_type)
+        self.objects[(bucket, key)] = (data, content_type, dict(metadata))
         self.calls.append(("put", bucket, key))
         return {"ETag": "test-etag"}
 
@@ -61,13 +62,14 @@ class _FakeS3Client:
         stored = self.objects.get((bucket, key))
         if stored is None:
             raise _missing_client_error("GetObject")
-        data, content_type = stored
+        data, content_type, metadata = stored
         self.calls.append(("get", bucket, key))
         return {
             "Body": BytesIO(data),
             "ContentType": content_type,
             "ContentLength": len(data),
             "ETag": "test-etag",
+            "Metadata": dict(metadata),
         }
 
     def delete_object(self, **kwargs: Any) -> dict[str, Any]:
@@ -89,9 +91,14 @@ class _FakeS3Client:
         stored = self.objects.get((bucket, key))
         if stored is None:
             raise _missing_client_error("HeadObject")
-        data, content_type = stored
+        data, content_type, metadata = stored
         self.calls.append(("head", bucket, key))
-        return {"ContentLength": len(data), "ContentType": content_type}
+        return {
+            "ContentLength": len(data),
+            "ContentType": content_type,
+            "ETag": "test-etag",
+            "Metadata": dict(metadata),
+        }
 
 
 class _FakeS3Session:
@@ -176,7 +183,6 @@ def test_keys_are_tenant_scoped_and_do_not_accept_user_paths() -> None:
     assert first.value.startswith(f"tenants/{TENANT_ID}/")
     assert second.value.startswith(f"tenants/{OTHER_TENANT_ID}/")
     assert first.value != second.value
-    assert "../../customer-contract.pdf" not in first.value
 
     with pytest.raises(TypeError):
         knowledge_raw_key(
@@ -184,6 +190,36 @@ def test_keys_are_tenant_scoped_and_do_not_accept_user_paths() -> None:
             source_id=SOURCE_ID,
             object_id=OBJECT_ID,
         )
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "../../secret",
+        "folder/private.pdf",
+        "folder\\private.pdf",
+        "customer\u2028private.pdf",
+        "x" * 4096 + ".pdf",
+    ],
+)
+def test_user_filename_can_be_metadata_but_never_changes_generated_key(filename: str) -> None:
+    client = _FakeS3Client()
+    storage = S3ObjectStorage(client=client, bucket="configured-bucket")
+    key = knowledge_raw_key(tenant_id=TENANT_ID, source_id=SOURCE_ID, object_id=OBJECT_ID)
+    expected_key = f"tenants/{TENANT_ID}/knowledge/{SOURCE_ID}/raw/{OBJECT_ID}"
+
+    storage.put_object(
+        key,
+        b"content",
+        content_type="application/pdf",
+        metadata={"original-filename": filename},
+    )
+
+    assert key.value == expected_key
+    assert filename not in key.value
+    assert client.calls[-1] == ("put", "configured-bucket", expected_key)
+    _, _, stored_metadata = client.objects[("configured-bucket", expected_key)]
+    assert stored_metadata == {"original-filename": filename}
 
 
 def test_normalized_key_requires_positive_integer_version() -> None:
@@ -196,36 +232,53 @@ def test_normalized_key_requires_positive_integer_version() -> None:
         )
 
 
-def test_put_get_exists_delete_and_repeated_delete_are_safe() -> None:
+def test_put_get_head_exists_delete_and_repeated_delete_are_safe() -> None:
     client = _FakeS3Client()
     storage = S3ObjectStorage(client=client, bucket="configured-bucket")
     key = knowledge_raw_key(tenant_id=TENANT_ID, source_id=SOURCE_ID, object_id=OBJECT_ID)
 
     assert storage.exists(key) is False
-    storage.put_object(key, BytesIO(b"hello storage"), content_type="text/plain")
+    storage.put_object(
+        key,
+        BytesIO(b"hello storage"),
+        content_type="text/plain",
+        metadata={"source": "unit-test"},
+    )
     assert storage.exists(key) is True
+
+    head = storage.head(key)
+    assert head.content_type == "text/plain"
+    assert head.content_length == len(b"hello storage")
+    assert head.etag == "test-etag"
+    assert head.metadata == {"source": "unit-test"}
 
     stored = storage.get_object(key)
     assert stored.data == b"hello storage"
     assert stored.content_type == "text/plain"
     assert stored.content_length == len(b"hello storage")
     assert stored.etag == "test-etag"
+    assert stored.metadata == {"source": "unit-test"}
     assert ("put", "configured-bucket", key.value) in client.calls
+    assert ("head", "configured-bucket", key.value) in client.calls
 
     storage.delete_object(key)
     assert storage.exists(key) is False
     storage.delete_object(key)
 
 
-def test_missing_get_is_normalized() -> None:
+def test_missing_get_and_head_are_normalized() -> None:
     storage = S3ObjectStorage(client=_FakeS3Client(), bucket="configured-bucket")
     key = export_key(tenant_id=TENANT_ID, export_id=EXPORT_ID)
 
-    with pytest.raises(ObjectNotFoundError) as caught:
+    with pytest.raises(ObjectNotFoundError) as get_error:
         storage.get_object(key)
+    with pytest.raises(ObjectNotFoundError) as head_error:
+        storage.head(key)
 
-    assert caught.value.error_code == "OBJECT_NOT_FOUND"
-    assert UNSAFE_DETAIL not in repr(caught.value)
+    assert get_error.value.error_code == "OBJECT_NOT_FOUND"
+    assert head_error.value.error_code == "OBJECT_NOT_FOUND"
+    assert UNSAFE_DETAIL not in repr(get_error.value)
+    assert UNSAFE_DETAIL not in repr(head_error.value)
 
 
 def test_missing_bucket_is_not_misreported_as_a_missing_object() -> None:
@@ -255,6 +308,19 @@ def test_backend_failures_do_not_leak_sdk_details_or_credentials() -> None:
     assert SECRET not in rendered
     assert "internal-storage.invalid" not in rendered
     assert UNSAFE_DETAIL not in rendered
+
+
+def test_metadata_rejects_control_characters() -> None:
+    storage = S3ObjectStorage(client=_FakeS3Client(), bucket="configured-bucket")
+    key = export_key(tenant_id=TENANT_ID, export_id=EXPORT_ID)
+
+    with pytest.raises(ValueError):
+        storage.put_object(
+            key,
+            b"export",
+            content_type="application/octet-stream",
+            metadata={"original-filename": "unsafe\r\nheader.pdf"},
+        )
 
 
 def test_factory_uses_configurable_endpoint_bucket_timeouts_and_bounded_retries() -> None:

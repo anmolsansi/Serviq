@@ -33,7 +33,6 @@ from app.modules.providers.repository import (
     list_provider_connections,
 )
 from app.modules.providers.schemas import (
-    ProviderConnectivityErrorCode,
     ProviderConnectivityView,
     ProviderCreateRequest,
     ProviderKey,
@@ -301,7 +300,7 @@ async def test_provider_connectivity(
         if connection.status == "disabled":
             return ProviderConnectivityView(status="disabled", errorCode=None)
 
-        error_code = cast(ProviderConnectivityErrorCode | None, outcome.error_code)
+        error_code = outcome.error_code
         connection.last_tested_at = now
         connection.updated_at = now
         if outcome.ok:

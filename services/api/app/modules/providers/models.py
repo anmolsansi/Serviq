@@ -1,4 +1,4 @@
-"""ORM mappings for provider and model metadata created by OPE-289."""
+"""ORM mappings for provider and model metadata created by OPE-289/OPE-299."""
 
 from datetime import datetime
 from uuid import UUID
@@ -39,3 +39,18 @@ class ModelConfiguration(Base):
     enabled: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ModelConfigurationReference(Base):
+    """Blocking production reference registered by another Serviq domain module."""
+
+    __tablename__ = "model_configuration_references"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id", ondelete="RESTRICT"))
+    model_configuration_id: Mapped[UUID] = mapped_column(
+        ForeignKey("model_configurations.id", ondelete="RESTRICT")
+    )
+    reference_kind: Mapped[str] = mapped_column(Text)
+    reference_id: Mapped[UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

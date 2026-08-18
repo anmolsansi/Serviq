@@ -35,6 +35,7 @@ class _FakeS3Client:
     def __init__(self) -> None:
         self.objects: dict[tuple[str, str], tuple[bytes, str]] = {}
         self.fail = False
+        self.fail_missing_bucket = False
         self.calls: list[tuple[str, str, str]] = []
 
     def put_object(self, **kwargs: Any) -> dict[str, Any]:
@@ -83,6 +84,8 @@ class _FakeS3Client:
         key = cast(str, kwargs["Key"])
         if self.fail:
             raise _unsafe_client_error("HeadObject")
+        if self.fail_missing_bucket:
+            raise _missing_bucket_client_error("HeadObject")
         stored = self.objects.get((bucket, key))
         if stored is None:
             raise _missing_client_error("HeadObject")
@@ -176,8 +179,8 @@ def test_keys_are_tenant_scoped_and_do_not_accept_user_paths() -> None:
     assert "../../customer-contract.pdf" not in first.value
 
     with pytest.raises(TypeError):
-        knowledge_raw_key(  # type: ignore[arg-type]
-            tenant_id="../../another-tenant",
+        knowledge_raw_key(
+            tenant_id=cast(Any, "../../another-tenant"),
             source_id=SOURCE_ID,
             object_id=OBJECT_ID,
         )
@@ -225,6 +228,19 @@ def test_missing_get_is_normalized() -> None:
     assert UNSAFE_DETAIL not in repr(caught.value)
 
 
+def test_missing_bucket_is_not_misreported_as_a_missing_object() -> None:
+    client = _FakeS3Client()
+    client.fail_missing_bucket = True
+    storage = S3ObjectStorage(client=client, bucket="missing-bucket")
+    key = export_key(tenant_id=TENANT_ID, export_id=EXPORT_ID)
+
+    with pytest.raises(ObjectStorageError) as caught:
+        storage.exists(key)
+
+    assert caught.value.error_code == "OBJECT_STORAGE_UNAVAILABLE"
+    assert "missing-bucket" not in repr(caught.value)
+
+
 def test_backend_failures_do_not_leak_sdk_details_or_credentials() -> None:
     client = _FakeS3Client()
     client.fail = True
@@ -269,6 +285,16 @@ def _missing_client_error(operation: str) -> ClientError:
     return ClientError(
         {
             "Error": {"Code": "NoSuchKey", "Message": UNSAFE_DETAIL},
+            "ResponseMetadata": {"HTTPStatusCode": 404},
+        },
+        operation,
+    )
+
+
+def _missing_bucket_client_error(operation: str) -> ClientError:
+    return ClientError(
+        {
+            "Error": {"Code": "NoSuchBucket", "Message": "missing-bucket"},
             "ResponseMetadata": {"HTTPStatusCode": 404},
         },
         operation,

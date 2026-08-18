@@ -26,7 +26,7 @@ botocore >=1.42.89,<1.43
 
 The exact patch release remains frozen by `services/api/uv.lock`.
 
-Serviq will not add `boto3` for OPE-301. The ticket requires four primitive S3 operations only, so boto3's higher-level resource and transfer layers do not add value to this boundary.
+Serviq will not add `boto3` for OPE-301. The ticket requires primitive S3 operations only, so boto3's higher-level resource and transfer layers do not add value to this boundary.
 
 The adapter owns the following client configuration:
 
@@ -38,16 +38,22 @@ The adapter owns the following client configuration:
 - endpoint, bucket, access key, and secret key loaded only from `PlatformSettings`;
 - `us-east-1` as the Production V1 signing region for the local S3-compatible endpoint.
 
-The adapter exposes only:
+The OPE-301 storage contract exposes:
 
 ```text
 put_object
 get_object
+head
 delete_object
-exists
 ```
 
-It does not expose the underlying botocore client to feature modules.
+`put_object` accepts bytes or a binary stream, content type, and string metadata. Metadata is copied at the boundary, metadata keys are normalized to lowercase, blank keys are rejected, and carriage-return/newline/NUL control characters are rejected from metadata keys and values.
+
+`head` returns content type, content length, ETag when present, and user metadata without downloading the object body.
+
+The adapter also exposes `exists` as a small convenience implemented on top of `head`; it is not a second storage discovery/listing mechanism.
+
+The adapter does not expose the underlying botocore client to feature modules.
 
 ## Object-key ownership
 
@@ -62,7 +68,9 @@ tenants/{tenantId}/exports/{exportId}
 tenants/{tenantId}/evaluation/{evaluationRunId}
 ```
 
-User-controlled filenames are not parameters to these helpers. A filename can be stored later as database/object metadata, but it cannot influence the storage key.
+The OPE-301 acceptance contract specifically consumes the raw knowledge helper. The additional architecture-owned normalized/export/evaluation helpers use the same typed UUID boundary so future callers do not need to invent full-key strings.
+
+User-controlled filenames are not parameters to these helpers. A filename may be carried only as object/database metadata when a caller's architecture permits it, but it cannot influence the storage key.
 
 All tenant-owned keys therefore begin with the tenant UUID chosen by trusted application code.
 
@@ -77,11 +85,13 @@ OBJECT_STORAGE_UNAVAILABLE
 OBJECT_NOT_FOUND
 ```
 
-`get_object` maps a missing object to `OBJECT_NOT_FOUND`.
+`get_object` and `head` map a missing object to `OBJECT_NOT_FOUND`.
 
-`exists` maps a missing object to `False`.
+`exists` maps that normalized missing-object result to `False`.
 
 `delete_object` is idempotent. Deleting an already-missing object succeeds.
+
+A missing bucket is not treated as a missing object when the SDK provides the `NoSuchBucket` code; it remains an infrastructure/configuration failure and becomes `OBJECT_STORAGE_UNAVAILABLE`.
 
 Other SDK/network failures become `OBJECT_STORAGE_UNAVAILABLE` without carrying the botocore exception text into the public exception message.
 
@@ -125,15 +135,17 @@ These remain separate architecture/security/product decisions.
 
 The implementation must prove:
 
-- every exact key layout;
+- every implemented key helper matches its architecture-owned layout exactly;
 - runtime rejection of non-UUID identifiers at the key boundary;
 - tenant prefixes differ when the tenant UUID differs;
-- user filenames cannot be supplied to key helpers;
+- malicious filenames including traversal text, slashes, Unicode separators, and very long names cannot alter the generated raw key;
+- a filename can remain isolated in metadata without changing the key;
 - bucket and endpoint come from configuration;
 - explicit timeout and retry settings are present;
-- put/get/exists/delete behavior works through the adapter;
+- put/get/head/delete behavior works through the adapter;
+- head returns expected content length/content type/metadata;
 - repeated delete is safe;
-- missing reads are normalized;
+- missing reads/heads are normalized;
 - error text does not reveal credentials or internal endpoint details;
 - a real round trip succeeds against the local S3-compatible service in CI.
 

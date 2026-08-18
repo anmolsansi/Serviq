@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
+from contextlib import suppress
 from enum import Enum
 
 import httpx
@@ -29,12 +30,13 @@ _JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 def _default_client_factory(api_key: str) -> genai.Client:
     """Build a request-scoped official Gemini Developer API client.
 
+    Explicitly setting ``enterprise=False`` prevents environment variables from
+    switching a tenant BYOK request onto Google's enterprise/Vertex endpoints.
     Timeout and retry settings are attached to each generation request so the
-    already-validated C-4 budget stays authoritative. No base URL, project, location,
-    or enterprise/Vertex routing can be supplied through the gateway request.
+    already-validated C-4 budget stays authoritative.
     """
 
-    return genai.Client(api_key=api_key)
+    return genai.Client(api_key=api_key, enterprise=False)
 
 
 class GeminiAdapter:
@@ -51,8 +53,8 @@ class GeminiAdapter:
         if request.stream:
             raise _invalid_request("Use the streaming adapter path when stream=true.")
 
-        client = self._client(context)
         system_instruction, contents = _translate_messages(request)
+        client = self._client(context)
         config = _generation_config(request, system_instruction)
 
         try:
@@ -78,8 +80,8 @@ class GeminiAdapter:
             if not request.stream:
                 raise _invalid_request("Use the non-stream adapter path when stream=false.")
 
-            client = self._client(context)
             system_instruction, contents = _translate_messages(request)
+            client = self._client(context)
             config = _generation_config(request, system_instruction)
             finish_reason: str | None = None
             usage: GatewayUsage | None = None
@@ -342,14 +344,10 @@ def _normalize_gemini_error(exc: Exception) -> GatewayProviderError:
 async def _close_client(client: genai.Client) -> None:
     """Release request-scoped SDK resources without changing the normalized outcome."""
 
-    try:
+    with suppress(Exception):
         await client.aio.aclose()
-    except Exception:
-        pass
-    try:
+    with suppress(Exception):
         client.close()
-    except Exception:
-        pass
 
 
 def _invalid_request(message: str) -> GatewayProviderError:

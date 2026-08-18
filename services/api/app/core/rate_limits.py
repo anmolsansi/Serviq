@@ -137,12 +137,17 @@ def _normalize_valkey_url(settings: PlatformSettings) -> str:
 def build_provider_test_rate_limiter(settings: PlatformSettings) -> ValkeyProviderTestRateLimiter:
     """Build the process-shared async client from the frozen platform VALKEY_URL."""
 
-    client = valkey.from_url(
-        _normalize_valkey_url(settings),
-        decode_responses=False,
-        socket_connect_timeout=1.0,
-        socket_timeout=1.0,
-        health_check_interval=30,
+    # valkey-py 6.1.1's public from_url() factory has no return annotation.
+    # Keep that third-party typing gap confined to this single adapter boundary.
+    client = cast(
+        _AsyncValkeyEvalClient,
+        valkey.from_url(  # type: ignore[no-untyped-call]
+            _normalize_valkey_url(settings),
+            decode_responses=False,
+            socket_connect_timeout=1.0,
+            socket_timeout=1.0,
+            health_check_interval=30,
+        ),
     )
     return ValkeyProviderTestRateLimiter(client)
 

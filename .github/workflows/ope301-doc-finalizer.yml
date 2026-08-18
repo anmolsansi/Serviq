@@ -1,16 +1,18 @@
 name: OPE-301 documentation bootstrap finalizer
 
 on:
-  push:
-    branches:
-      - main
+  pull_request_target:
+    types:
+      - opened
 
 permissions:
   contents: write
 
 jobs:
   finalize:
-    if: startsWith(github.event.head_commit.message, 'chore(OPE-301): bootstrap documentation finalizer')
+    if: >-
+      github.event.pull_request.head.ref == 'ope301' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -47,14 +49,17 @@ jobs:
           path.write_text(text.replace(old, new, 1))
           PY
 
-      - name: Remove bootstrap workflow from OPE-301 branch
-        run: rm .github/workflows/ope301-doc-finalizer.yml
+      - name: Remove all OPE-301 bootstrap artifacts from the branch
+        run: |
+          git rm -f --ignore-unmatch .github/workflows/ope301-doc-finalizer.yml
+          git rm -f --ignore-unmatch .github/.ope301-doc-finalizer-pr-trigger
+          git rm -f --ignore-unmatch .github/.ope301-pull-request-target-trigger
 
       - name: Commit permanent documentation correction
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/ope301-doc-finalizer.yml
+          git add docs/SERVIQ_BUILD_GUIDE.md
           git diff --cached --check
           git commit -m "docs(OPE-301): document required head operation"
           git push origin HEAD:ope301

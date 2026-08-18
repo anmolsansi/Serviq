@@ -1299,7 +1299,7 @@ The goal is that someone can start at the top of this document months from now a
 
 **Validation completed:** the root JSON and YAML syntax were checked, workspace globs were verified as exactly `apps/*` and `packages/*`, `.env` and common secret/generated/local-runtime files were verified as ignored, and the Node/editor settings were manually checked. No application scaffold, backend service, Docker configuration, or CI workflow was added by OPE-252.
 
-**Status:** **Completed.** PR #10 is merged, GitHub issue #3 is closed, and Linear OPE-252 is Done.
+**Status:** **Completed.** PR #10 is merged, GitHub issue #3 is closed as completed, and Linear OPE-252 is Done.
 
 ## OPE-253 — Client Console scaffold
 
@@ -5332,12 +5332,13 @@ OPE-301 creates one narrow storage doorway for the API. Future feature code uses
 
 The main implementation is `services/api/app/core/object_storage.py`.
 
-The adapter deliberately supports only four operations:
+The adapter exposes the four required storage operations plus one convenience helper:
 
 1. `put_object` stores bytes or a binary stream and records the supplied content type.
 2. `get_object` reads an object and returns its bytes plus the small amount of metadata downstream code needs today, including content type, content length, and ETag when the backend provides one.
-3. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
-4. `exists` performs a HEAD-style check. It returns `False` when an object is missing without downloading the object body.
+3. `head` reads object metadata such as content type, content length, ETag, and custom metadata without downloading the object body.
+4. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
+5. `exists` is a convenience helper implemented on top of `head`. It returns `False` when an object is missing without downloading the object body.
 
 We intentionally did **not** add object listing, public buckets, presigned URLs, multipart-upload policy, ACL management, retention policy, lifecycle policy, or customer attachments. Those features carry additional product and security decisions and OPE-301 was not allowed to guess them.
 

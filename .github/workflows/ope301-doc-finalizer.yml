@@ -1,18 +1,16 @@
 name: OPE-301 documentation finalizer
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - ope301
 
 permissions:
   contents: write
 
 jobs:
   finalize-build-guide:
-    if: >-
-      github.event.pull_request.head.ref == 'ope301' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: github.ref == 'refs/heads/ope301'
     runs-on: ubuntu-latest
     steps:
       - name: Check out OPE-301 branch

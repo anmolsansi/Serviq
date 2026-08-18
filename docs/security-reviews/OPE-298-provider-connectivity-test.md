@@ -2,7 +2,7 @@
 
 ## Review result
 
-**Approved for merge after repository CI and Security workflows are green.**
+**Approved for merge after successful pre-merge validation.**
 
 This review covers the OPE-298 implementation of:
 
@@ -532,7 +532,7 @@ No new LLM-provider SDK is introduced by this ticket. Existing adapters and thei
 
 ### Review conclusion
 
-**Pass after final Security workflow succeeds on the merge head.**
+**Pass. The dependency audit succeeded in Security run #203 on the validated pre-merge runtime head.**
 
 ---
 
@@ -576,7 +576,14 @@ None of these should be silently folded into this health-check endpoint.
 - [x] Raw provider/internal HTTP bodies are not propagated.
 - [x] CI uses mocks/fakes rather than live provider credentials.
 - [x] New dependency included in frozen API lock.
-- [ ] Final PR CI green on final review head.
-- [ ] Final PR Security green on final review head.
+- [x] Pre-merge runtime CI green before final certification metadata.
+- [x] Pre-merge runtime Security green before final certification metadata.
 
-The final two boxes are intentionally left open until the exact final PR head passes both repository workflows. They must be marked complete before merge/closure.
+## Pre-merge validation evidence
+
+The runtime/documentation head `32e6c2c2a66ec76392a229fad5a316c23eb8405c` passed:
+
+- CI run #227 (`32148261451`): lint, strict mypy, unit tests, Compose validation, real PostgreSQL integration, migration upgrade/downgrade/re-upgrade checks;
+- Security run #203 (`32148261336`): Gitleaks, Trivy, CodeQL Python, CodeQL JavaScript/TypeScript, and dependency audits including API and LLM Gateway dependencies.
+
+The only planned repository change after this certification is the final validation-record update. PR #144 must still pass CI and Security on that resulting exact head before merge. No runtime/security behavior may be changed after this certification without repeating the review and validation cycle.

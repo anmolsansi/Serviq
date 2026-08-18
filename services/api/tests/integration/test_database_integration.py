@@ -28,6 +28,9 @@ EXPECTED_TABLES = {
     "provider_connections",
     "model_configurations",
     "model_configuration_references",
+    "knowledge_sources",
+    "knowledge_documents",
+    "knowledge_chunks",
 }
 
 

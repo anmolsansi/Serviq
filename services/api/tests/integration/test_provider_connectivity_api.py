@@ -4,7 +4,6 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
@@ -29,7 +28,6 @@ from app.modules.providers.router import (
     get_provider_connectivity_rate_limiter,
     get_provider_secret_store,
 )
-from app.modules.providers.schemas import ProviderConnectivityErrorCode
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SERVIQ_DATABASE_INTEGRATION") != "1",
@@ -393,7 +391,7 @@ def test_provider_connectivity_route_persistence_security_and_isolation(
                     await _set_status(session_factory, ids["provider"], status_value="active")
                     gateway.outcome = ProviderConnectivityOutcome(
                         ok=False,
-                        error_code=cast(ProviderConnectivityErrorCode, code),
+                        error_code=code,
                     )
                     transient = await client.post(f"/api/v1/providers/{ids['provider']}/test")
                     assert transient.status_code == 200

@@ -339,13 +339,13 @@ def _embedded_error(value: object) -> object | None:
         return direct
     model_extra = getattr(value, "model_extra", None)
     if isinstance(model_extra, Mapping):
-        return model_extra.get("error")
+        return cast(object | None, model_extra.get("error"))
     return None
 
 
 def _error_field(value: object, field: str) -> object | None:
     if isinstance(value, Mapping):
-        return value.get(field)
+        return cast(object | None, value.get(field))
     return getattr(value, field, None)
 
 

@@ -374,6 +374,27 @@ def test_knowledge_schema_constraints_full_text_search_and_vector_deferral() -> 
                     "embedding" not in definition.lower()
                     for definition in index_definitions.values()
                 )
+
+                source_columns = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT column_name
+                            FROM information_schema.columns
+                            WHERE table_schema = current_schema()
+                              AND table_name = 'knowledge_sources'
+                            """
+                        )
+                    )
+                ).scalars().all()
+                forbidden_credential_columns = {
+                    "api_key",
+                    "credential",
+                    "credentials",
+                    "secret",
+                    "token",
+                }
+                assert set(source_columns).isdisjoint(forbidden_credential_columns)
         finally:
             async with session_factory() as session, session.begin():
                 await session.execute(

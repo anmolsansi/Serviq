@@ -334,10 +334,10 @@ def _parse_structured(text: str) -> dict[str, JsonValue]:
 
 
 def _embedded_error(value: object) -> object | None:
-    direct = getattr(value, "error", None)
+    direct = cast(object | None, getattr(value, "error", None))
     if direct is not None:
         return direct
-    model_extra = getattr(value, "model_extra", None)
+    model_extra = cast(object | None, getattr(value, "model_extra", None))
     if isinstance(model_extra, Mapping):
         return cast(object | None, model_extra.get("error"))
     return None
@@ -346,7 +346,7 @@ def _embedded_error(value: object) -> object | None:
 def _error_field(value: object, field: str) -> object | None:
     if isinstance(value, Mapping):
         return cast(object | None, value.get(field))
-    return getattr(value, field, None)
+    return cast(object | None, getattr(value, field, None))
 
 
 def _normalize_embedded_openrouter_error(error: object) -> GatewayProviderError:

@@ -1,4 +1,4 @@
-"""Provider CRUD and connectivity-test authorization/compensation rules."""
+"""Provider/model CRUD and connectivity-test authorization/compensation rules."""
 
 from datetime import UTC, datetime
 from typing import cast
@@ -13,6 +13,10 @@ from app.core.rate_limits import (
 )
 from app.core.secret_store import SecretNotFoundError, TenantSecretStore
 from app.modules.providers.errors import (
+    ModelConfigurationAliasConflictError,
+    ModelConfigurationNotFoundError,
+    ModelConfigurationProviderIneligibleError,
+    ModelConfigurationReferencedError,
     ProviderConflictError,
     ProviderForbiddenError,
     ProviderNotFoundError,
@@ -23,16 +27,25 @@ from app.modules.providers.errors import (
     ProviderTestUnavailableError,
 )
 from app.modules.providers.gateway import ProviderConnectivityGateway
-from app.modules.providers.models import ProviderConnection
+from app.modules.providers.models import ModelConfiguration, ProviderConnection
 from app.modules.providers.repository import (
+    add_model_configuration,
     add_provider_connection,
+    count_model_configuration_references,
     count_model_references,
+    delete_model_configuration,
     delete_provider_connection,
+    find_model_configuration_for_update,
     find_provider_connection,
     find_provider_connection_for_update,
+    list_model_configurations,
     list_provider_connections,
 )
 from app.modules.providers.schemas import (
+    ModelConfigurationCreateRequest,
+    ModelConfigurationUpdateRequest,
+    ModelConfigurationView,
+    ModelPurpose,
     ProviderConnectivityView,
     ProviderCreateRequest,
     ProviderKey,
@@ -231,6 +244,128 @@ async def delete_provider(
         raise ProviderSecretCleanupError from None
 
 
+async def list_models(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+) -> tuple[ModelConfigurationView, ...]:
+    await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+    configurations = await list_model_configurations(session, tenant_id=tenant_id)
+    return tuple(_to_model_view(configuration) for configuration in configurations)
+
+
+async def create_model(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    request: ModelConfigurationCreateRequest,
+) -> ModelConfigurationView:
+    try:
+        async with session.begin():
+            await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+            provider = await find_provider_connection_for_update(
+                session,
+                tenant_id=tenant_id,
+                provider_connection_id=request.provider_connection_id,
+            )
+            if provider is None:
+                raise ProviderNotFoundError
+            if provider.status != "active":
+                raise ModelConfigurationProviderIneligibleError
+
+            now = datetime.now(UTC)
+            configuration = add_model_configuration(
+                session,
+                model_configuration_id=uuid4(),
+                tenant_id=tenant_id,
+                provider_connection_id=provider.id,
+                alias=request.alias,
+                upstream_model=request.upstream_model,
+                purpose=request.purpose,
+                enabled=request.enabled,
+                now=now,
+            )
+            await session.flush()
+            view = _to_model_view(configuration)
+    except IntegrityError:
+        await session.rollback()
+        raise ModelConfigurationAliasConflictError from None
+    return view
+
+
+async def update_model(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    model_configuration_id: UUID,
+    request: ModelConfigurationUpdateRequest,
+) -> ModelConfigurationView:
+    async with session.begin():
+        await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+        configuration = await find_model_configuration_for_update(
+            session,
+            tenant_id=tenant_id,
+            model_configuration_id=model_configuration_id,
+        )
+        if configuration is None:
+            raise ModelConfigurationNotFoundError
+
+        requires_active_provider = (
+            request.provider_connection_id is not None
+            or request.upstream_model is not None
+            or request.enabled is True
+        )
+        target_provider_id = request.provider_connection_id or configuration.provider_connection_id
+        if requires_active_provider:
+            provider = await find_provider_connection_for_update(
+                session,
+                tenant_id=tenant_id,
+                provider_connection_id=target_provider_id,
+            )
+            if provider is None:
+                raise ProviderNotFoundError
+            if provider.status != "active":
+                raise ModelConfigurationProviderIneligibleError
+
+        if request.provider_connection_id is not None:
+            configuration.provider_connection_id = request.provider_connection_id
+        if request.upstream_model is not None:
+            configuration.upstream_model = request.upstream_model
+        if request.enabled is not None:
+            configuration.enabled = request.enabled
+        configuration.updated_at = datetime.now(UTC)
+        await session.flush()
+        return _to_model_view(configuration)
+
+
+async def delete_model(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    model_configuration_id: UUID,
+) -> None:
+    async with session.begin():
+        await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+        configuration = await find_model_configuration_for_update(
+            session,
+            tenant_id=tenant_id,
+            model_configuration_id=model_configuration_id,
+        )
+        if configuration is None:
+            raise ModelConfigurationNotFoundError
+        if await count_model_configuration_references(
+            session,
+            tenant_id=tenant_id,
+            model_configuration_id=model_configuration_id,
+        ):
+            raise ModelConfigurationReferencedError
+        await delete_model_configuration(session, configuration=configuration)
+
+
 async def test_provider_connectivity(
     session: AsyncSession,
     *,
@@ -362,4 +497,17 @@ def _to_view(connection: ProviderConnection) -> ProviderView:
         lastErrorCode=connection.last_error_code,
         createdAt=connection.created_at,
         updatedAt=connection.updated_at,
+    )
+
+
+def _to_model_view(configuration: ModelConfiguration) -> ModelConfigurationView:
+    return ModelConfigurationView(
+        id=configuration.id,
+        providerConnectionId=configuration.provider_connection_id,
+        alias=configuration.alias,
+        upstreamModel=configuration.upstream_model,
+        purpose=cast(ModelPurpose, configuration.purpose),
+        enabled=configuration.enabled,
+        createdAt=configuration.created_at,
+        updatedAt=configuration.updated_at,
     )

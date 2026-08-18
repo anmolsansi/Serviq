@@ -1,4 +1,4 @@
-"""Strict provider request models and safe response projections."""
+"""Strict provider/model request models and safe response projections."""
 
 from datetime import datetime
 from typing import Literal
@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 
 ProviderKey = Literal["openai", "anthropic", "gemini", "openrouter"]
 ProviderStatus = Literal["untested", "active", "invalid", "disabled"]
+ModelPurpose = Literal["generation", "embedding", "rerank"]
 ProviderConnectivityErrorCode = Literal[
     "PROVIDER_AUTH_FAILED",
     "PROVIDER_RATE_LIMITED",
@@ -86,3 +87,69 @@ class ProviderConnectivityView(BaseModel):
 
     status: ProviderStatus
     error_code: ProviderConnectivityErrorCode | None = Field(default=None, alias="errorCode")
+
+
+class ModelConfigurationCreateRequest(BaseModel):
+    """Create one stable tenant model alias against an active provider connection."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    provider_connection_id: UUID = Field(alias="providerConnectionId")
+    alias: str = Field(min_length=1, max_length=80)
+    upstream_model: str = Field(alias="upstreamModel", min_length=1, max_length=160)
+    purpose: ModelPurpose
+    enabled: bool = True
+
+    @field_validator("alias", "upstream_model", mode="before")
+    @classmethod
+    def normalize_model_text(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        return value.strip()
+
+
+class ModelConfigurationUpdateRequest(BaseModel):
+    """Only architecture-approved mutable model fields are accepted by PATCH."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    provider_connection_id: UUID | None = Field(default=None, alias="providerConnectionId")
+    upstream_model: str | None = Field(
+        default=None,
+        alias="upstreamModel",
+        min_length=1,
+        max_length=160,
+    )
+    enabled: bool | None = None
+
+    @field_validator("upstream_model", mode="before")
+    @classmethod
+    def normalize_upstream_model(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @model_validator(mode="after")
+    def require_change(self) -> ModelConfigurationUpdateRequest:
+        if (
+            self.provider_connection_id is None
+            and self.upstream_model is None
+            and self.enabled is None
+        ):
+            raise ValueError("At least one mutable model field is required")
+        return self
+
+
+class ModelConfigurationView(BaseModel):
+    """Credential-free model configuration projection returned to tenant admins."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    id: UUID
+    provider_connection_id: UUID = Field(alias="providerConnectionId")
+    alias: str
+    upstream_model: str = Field(alias="upstreamModel")
+    purpose: ModelPurpose
+    enabled: bool
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")

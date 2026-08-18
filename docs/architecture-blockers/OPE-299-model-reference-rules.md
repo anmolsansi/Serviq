@@ -2,77 +2,63 @@
 
 ## Status
 
-**Needs Architect Decision.** The CRUD implementation was intentionally stopped because the required reference-protection behavior is not frozen in the current repository.
+**Resolved by ADR-015 and implemented on branch `ope299`.**
 
-## What OPE-299 is trying to build
+The original OPE-299 audit correctly stopped because the repository had no authoritative way to determine whether a production configuration referenced a model configuration. At that point there was no implemented agent-version reference, no frozen model-reference JSON path, and no relational reference source that DELETE could query safely.
 
-OPE-299 is meant to give each tenant a stable model catalog so future agent/domain code can use a Serviq model alias/configuration rather than importing raw provider model strings.
+## Original blocker
 
-The frozen route surface is:
+OPE-299 requires deletion to return conflict when a published agent/configuration or another frozen production reference depends on a model configuration. The original repository state had no table or foreign-key column referencing `model_configurations`, so implementing DELETE as if every model were unreferenced would have falsely claimed the ticket was complete.
+
+The ticket also required frozen mutation semantics. The repository did not yet say which fields remained safe to edit once future production configuration referenced a model.
+
+## Resolution
+
+`docs/architecture-decisions/ADR-015-model-configuration-reference-and-mutation-semantics.md` now freezes the missing contract without inventing the future agent JSON schema.
+
+The accepted rules are:
+
+- model configuration UUID is the authoritative internal identity;
+- `alias` and `purpose` are immutable after creation;
+- `providerConnectionId`, `upstreamModel`, and `enabled` are the only PATCH-mutable fields;
+- create and safety-sensitive updates require a same-tenant `active` provider connection;
+- disabling remains allowed as a fail-safe even if the existing provider later becomes inactive;
+- blocking production references are registered in `model_configuration_references`;
+- the reference registry uses tenant + model UUID as a database-enforced pair;
+- referenced DELETE returns `409 MODEL_CONFIGURATION_IN_USE`;
+- unreferenced DELETE returns 204;
+- future agent/configuration modules own their own schemas and register/remove blocking references transactionally when their lifecycle requires it.
+
+## Why the reference registry was chosen
+
+The registry gives model management a real relational question to ask without parsing another module's JSON:
 
 ```text
-GET    /api/v1/models
-POST   /api/v1/models
-PATCH  /api/v1/models/{modelConfigurationId}
-DELETE /api/v1/models/{modelConfigurationId}
+Does this tenant/model UUID have any blocking model_configuration_references row?
 ```
 
-The existing database table already stores tenant ID, provider connection ID, alias, upstream model, purpose, and enabled state.
-
-## What is already frozen
-
-The current schema establishes:
-
-- tenant-scoped model rows;
-- `UNIQUE(tenant_id, alias)`;
-- alias length 1..80;
-- upstream model length 1..160;
-- purpose exactly `generation|embedding|rerank`;
-- a restrictive foreign key from model configuration to provider connection;
-- an `enabled` flag.
-
-Those facts are sufficient for basic validation, but not for the complete ticket.
-
-## Blocking fact: reference protection has no authoritative source
-
-The ticket requires deletion to return a conflict when a published agent/configuration or another frozen reference depends on the model configuration. The required automated tests explicitly include "Delete referenced model returns conflict."
-
-The current migrated database has no table or foreign-key column referencing `model_configurations`. Repository search also found no implemented `model_configuration_id` reference.
-
-Architecture plans an `agent_versions.config jsonb` field, but there is no implemented agent-version table yet and no frozen JSON schema/path specifying whether an agent references a model by:
-
-- model configuration UUID;
-- alias;
-- purpose-specific alias;
-- another routing structure.
-
-Therefore there is currently no authoritative query that can answer "is this model referenced?"
-
-## Why a partial CRUD implementation was not shipped
-
-Shipping list/create/update and a delete that always succeeds when the database has no FK reference would falsely claim OPE-299 is complete and would make future published-agent protection a breaking retrofit.
-
-Inventing a JSON path or new relational reference would be worse: it would silently change the frozen agent/configuration contract from a builder ticket.
-
-OPE-299 explicitly says to stop if model mutability/reference rules are not frozen or agent-version references are implemented differently. The current repository satisfies that stop condition.
-
-## Decision required to unblock OPE-299
-
-An architect-approved change must freeze:
-
-1. how agent versions and any other production configuration reference a model configuration;
-2. whether the authoritative reference is a model-configuration UUID, alias, or another structure;
-3. which references block deletion and whether draft versus published references differ;
-4. which model fields remain mutable once referenced;
-5. the exact conflict behavior when a reference exists;
-6. whether disabled/invalid/untested provider connections may be used when creating or moving a model configuration, beyond the ticket's minimum "not disabled" rule.
-
-After that decision is merged, the API can implement tenant-scoped CRUD, deterministic duplicate-alias handling, safe provider validation, and real deletion-reference tests without guessing.
+That means OPE-299 can protect deletion now while future agent-version work remains free to define its own internal config shape through its own architecture process.
 
 ## Product impact
 
-The stop protects stable agent configuration. Model aliases exist specifically so future agents do not depend on provider strings. If their identity and deletion semantics are ambiguous now, a later agent publish workflow could point to a model that administrators can accidentally delete or mutate incompatibly. Freezing the reference contract first prevents that class of production configuration breakage.
+Serviq can now expose a stable tenant model catalog without coupling agents to raw provider model strings or provider credentials. The delete safety property is real rather than a placeholder, and the model alias remains stable because routine PATCH cannot rename it or change its semantic purpose.
 
-## What changed in this branch
+## Implementation scope
 
-Only this architecture-blocker record was added. No API route, schema, repository query, database migration, provider validation, model row, agent configuration, or deletion behavior was changed.
+The `ope299` branch implements:
+
+- `GET /api/v1/models`;
+- `POST /api/v1/models`;
+- `PATCH /api/v1/models/{modelConfigurationId}`;
+- `DELETE /api/v1/models/{modelConfigurationId}`;
+- strict trimmed alias/upstream-model validation;
+- exact `generation|embedding|rerank` purpose validation;
+- tenant-scoped alias uniqueness;
+- same-tenant active-provider eligibility checks;
+- credential-free response projections;
+- capability authorization using `ai.providers.manage`;
+- non-disclosing foreign resource handling;
+- reference-aware deletion;
+- real PostgreSQL integration tests for CRUD, authorization, validation, tenant isolation, and deletion protection.
+
+The future agent configuration schema, provider credentials, provider connectivity behavior, and model fallback/routing remain outside OPE-299.

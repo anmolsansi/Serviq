@@ -1,4 +1,4 @@
-"""Tenant-scoped persistence operations for BYOK provider metadata."""
+"""Tenant-scoped persistence operations for BYOK provider and model metadata."""
 
 from datetime import datetime
 from uuid import UUID
@@ -6,7 +6,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.providers.models import ModelConfiguration, ProviderConnection
+from app.modules.providers.models import (
+    ModelConfiguration,
+    ModelConfigurationReference,
+    ProviderConnection,
+)
 
 
 async def list_provider_connections(
@@ -108,4 +112,86 @@ async def delete_provider_connection(
     connection: ProviderConnection,
 ) -> None:
     await session.delete(connection)
+    await session.flush()
+
+
+async def list_model_configurations(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+) -> tuple[ModelConfiguration, ...]:
+    result = await session.execute(
+        select(ModelConfiguration)
+        .where(ModelConfiguration.tenant_id == tenant_id)
+        .order_by(ModelConfiguration.created_at, ModelConfiguration.id)
+    )
+    return tuple(result.scalars().all())
+
+
+async def find_model_configuration_for_update(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    model_configuration_id: UUID,
+) -> ModelConfiguration | None:
+    result = await session.execute(
+        select(ModelConfiguration)
+        .where(
+            ModelConfiguration.id == model_configuration_id,
+            ModelConfiguration.tenant_id == tenant_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+def add_model_configuration(
+    session: AsyncSession,
+    *,
+    model_configuration_id: UUID,
+    tenant_id: UUID,
+    provider_connection_id: UUID,
+    alias: str,
+    upstream_model: str,
+    purpose: str,
+    enabled: bool,
+    now: datetime,
+) -> ModelConfiguration:
+    configuration = ModelConfiguration(
+        id=model_configuration_id,
+        tenant_id=tenant_id,
+        provider_connection_id=provider_connection_id,
+        alias=alias,
+        upstream_model=upstream_model,
+        purpose=purpose,
+        enabled=enabled,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(configuration)
+    return configuration
+
+
+async def count_model_configuration_references(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    model_configuration_id: UUID,
+) -> int:
+    result = await session.execute(
+        select(func.count(ModelConfigurationReference.id)).where(
+            ModelConfigurationReference.tenant_id == tenant_id,
+            ModelConfigurationReference.model_configuration_id == model_configuration_id,
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def delete_model_configuration(
+    session: AsyncSession,
+    *,
+    configuration: ModelConfiguration,
+) -> None:
+    await session.delete(configuration)
     await session.flush()

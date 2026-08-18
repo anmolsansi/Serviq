@@ -43,6 +43,10 @@ async def find_provider_connection_for_update(
     tenant_id: UUID,
     provider_connection_id: UUID,
 ) -> ProviderConnection | None:
+    # `populate_existing=True` is critical for callers that read this row earlier in
+    # the same Session, perform external work outside the transaction, and then lock
+    # it again. Without it SQLAlchemy may reuse identity-map field values that were
+    # loaded before another transaction rotated the credential.
     result = await session.execute(
         select(ProviderConnection)
         .where(
@@ -50,6 +54,7 @@ async def find_provider_connection_for_update(
             ProviderConnection.tenant_id == tenant_id,
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 

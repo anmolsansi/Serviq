@@ -1,0 +1,409 @@
+name: OPE-300 build guide append
+
+on:
+  push:
+    branches:
+      - ope300
+
+permissions:
+  contents: write
+
+jobs:
+  append-guide:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out OPE-300 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ope300
+
+      - name: Append permanent OPE-300 documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! grep -Fq '# OPE-300 — Knowledge source, document, and chunk schema' docs/SERVIQ_BUILD_GUIDE.md; then
+            cat <<'EOF' >> docs/SERVIQ_BUILD_GUIDE.md
+
+---
+
+# OPE-300 — Knowledge source, document, and chunk schema
+
+**Status:** Implemented on branch `ope300`. This section is part of the implementation branch and the ticket is closed only after the final branch head passes the repository's required CI and PostgreSQL integration checks.
+
+## What problem this ticket solves
+
+Serviq is designed to answer customer questions from company-approved information rather than from an AI model's memory alone. Before OPE-300, the product architecture described that knowledge system, but PostgreSQL did not yet have the durable tables needed to store where knowledge came from, which version of a document was ingested, or which text chunks are searchable.
+
+OPE-300 creates that database foundation.
+
+A simple way to think about the three new tables is:
+
+```text
+knowledge source
+    |
+    v
+versioned document
+    |
+    v
+searchable chunks
+```
+
+For example, a company might add a public refund-policy URL. That URL is the **source**. Serviq fetches a particular version of the page and records it as a **document**. The document is then divided into smaller **chunks** that a later retrieval system can search and cite.
+
+The ticket deliberately stops at persistence and lexical search. It does not build the crawler, file uploader, chunking worker, knowledge API, embeddings pipeline, or retrieval API.
+
+## The migration added
+
+The new Alembic revision is:
+
+```text
+services/api/alembic/versions/20260819_0008_knowledge_schema.py
+```
+
+It follows revision `20260819_0007` and creates the tables in dependency order:
+
+1. `knowledge_sources`;
+2. `knowledge_documents`;
+3. `knowledge_chunks`.
+
+The downgrade removes them in the reverse order so foreign-key dependencies are never torn down out of sequence.
+
+All three are mutable architecture-owned tables, so they follow the shared Serviq database convention of UUIDv7 primary keys plus `created_at` and `updated_at` timestamps.
+
+## `knowledge_sources`: where approved knowledge comes from
+
+`knowledge_sources` stores the top-level origin of a knowledge collection.
+
+The source type is restricted by the database to exactly:
+
+```text
+url
+sitemap
+pdf
+markdown
+text
+```
+
+This means later code cannot silently invent values such as `website`, `docx`, or `notion` and persist them without an architecture change.
+
+The table also stores:
+
+```text
+tenant_id
+name
+source_uri
+object_key
+access_scope
+status
+sync_version
+last_synced_at
+last_error_code
+created_by
+```
+
+### Why both `source_uri` and `object_key` exist
+
+A URL or sitemap is fetched from a network address, so those source types require `source_uri`.
+
+A PDF, Markdown file, or text file is represented by an object-storage location, so those file source types require `object_key`.
+
+The database enforces that rule itself. A URL without a URI is rejected. A PDF without an object key is rejected. The application cannot bypass the requirement accidentally by forgetting validation in one code path.
+
+The migration does **not** add a raw credential field. If a future private-source design needs authentication, that requires a separate security and architecture contract rather than placing passwords or API tokens in the knowledge-source row.
+
+## Explicit customer versus internal scope
+
+Every source must declare:
+
+```text
+customer
+```
+
+or:
+
+```text
+internal
+```
+
+There is no null value that means "guess the scope later."
+
+This matters because a future retrieval system needs to know whether a piece of knowledge is safe to use in a customer-facing answer or is restricted to employees/internal workflows. OPE-300 only stores the explicit scope. Enforcement in retrieval and APIs belongs to later tickets.
+
+## Source lifecycle
+
+The allowed source statuses are frozen as:
+
+```text
+pending
+syncing
+ready
+failed
+disabled
+```
+
+`sync_version` starts at `0`. Later ingestion work can increment it as synchronization attempts or accepted revisions are defined by their own contract.
+
+The source also preserves `last_synced_at` and `last_error_code` so later workers and operators have durable synchronization provenance instead of relying only on temporary logs.
+
+## Tenant and foreign-key indexes
+
+Knowledge is tenant-owned. The migration adds the architecture-required tenant-leading indexes for common source filtering:
+
+```text
+(tenant_id, status)
+(tenant_id, source_type)
+```
+
+`created_by` is also indexed because it is a foreign key to `users` and the architecture's general database convention requires foreign keys to be index-supported.
+
+## `knowledge_documents`: a specific ingested version
+
+A source can produce one or many documents. A sitemap may discover many pages, and the same page may be fetched again later after its content changes.
+
+`knowledge_documents` records a durable version with:
+
+```text
+tenant_id
+source_id
+canonical_uri
+title
+content_hash
+document_version
+status
+fetched_at
+```
+
+The allowed statuses are exactly:
+
+```text
+active
+deprecated
+failed
+```
+
+The row keeps both provenance and version information. A later answer should be traceable back to the source document/version that produced the retrieved chunk rather than only storing anonymous text.
+
+The database enforces the architecture's uniqueness rule:
+
+```text
+UNIQUE(source_id, canonical_uri, document_version)
+```
+
+That prevents two rows from claiming to be the same version of the same canonical document under one source.
+
+The architecture indexes are also present:
+
+```text
+(tenant_id, source_id, status)
+(content_hash)
+```
+
+## Why `content_hash` matters
+
+A content hash is a compact fingerprint of document contents. Later ingestion logic can use it to detect that content is unchanged or to reason about provenance without comparing every character of a large document.
+
+OPE-300 only stores the hash. It does not choose the hashing workflow, recrawl policy, or deduplication algorithm for later ingestion tickets.
+
+## `knowledge_chunks`: the searchable pieces
+
+Large documents are usually too big and too imprecise to search as one block. Later ingestion work will split a document into smaller ordered pieces called chunks.
+
+OPE-300 stores each chunk with:
+
+```text
+tenant_id
+document_id
+ordinal
+content
+token_count
+metadata
+embedding
+embedding_model_alias
+tsv
+```
+
+`ordinal` starts at zero or greater and must be unique within the document:
+
+```text
+UNIQUE(document_id, ordinal)
+```
+
+This preserves chunk order and prevents two chunks in one document from claiming the same position.
+
+Empty chunk content is rejected at the database boundary. `token_count` cannot be negative. `metadata` defaults to an empty JSON object so callers do not need to manufacture `{}` for every chunk while the field still remains explicitly non-null.
+
+The document foreign key uses `ON DELETE CASCADE`. If a document version is intentionally removed, its derived chunks are removed with it rather than becoming orphaned text with no provenance.
+
+## Lexical full-text search is available immediately
+
+Each chunk has a generated PostgreSQL `tsvector` column named `tsv`.
+
+The database computes it from the chunk content using the frozen expression:
+
+```text
+to_tsvector('english', content)
+```
+
+The important word is **generated**. Application code does not manually calculate and store the search vector. PostgreSQL derives it whenever the row is written, keeping the searchable representation synchronized with `content`.
+
+A GIN index is created on `tsv`.
+
+GIN is a PostgreSQL index type well suited to full-text search. In practical terms, it lets later retrieval code find chunks containing useful terms without scanning every chunk row one by one.
+
+The integration test proves this behavior by inserting a chunk about a partial refund and successfully finding it with a PostgreSQL full-text query.
+
+## Why the `embedding` column exists but has no dimension yet
+
+Serviq plans to support semantic/vector retrieval with pgvector. The architecture already freezes the presence of an `embedding` column, but the embedding profile has **not** yet frozen a vector dimension or vector index strategy.
+
+OPE-300 therefore creates exactly a dimensionless PostgreSQL:
+
+```text
+vector
+```
+
+column.
+
+It does **not** guess something such as:
+
+```text
+vector(1536)
+vector(3072)
+```
+
+because those values would silently choose an embedding model/profile that belongs to a later architecture decision.
+
+The migration also creates **no HNSW, IVF/IVFFlat, cosine, L2, or other vector index**. The ticket explicitly defers that work until the embedding profile ADR and V1.3.12.
+
+This is deliberate sequencing. Lexical search is usable now, while semantic-search indexing waits until the dimensions, distance metric, and embedding model contract are known.
+
+## Why the migration ensures the pgvector extension exists
+
+The repository's local Docker image contains pgvector, but a clean PostgreSQL database still needs the extension registered before PostgreSQL understands the `vector` type.
+
+The migration therefore runs:
+
+```text
+CREATE EXTENSION IF NOT EXISTS vector
+```
+
+before creating the chunk table.
+
+This does not choose a dimension or create a vector index. It only makes the architecture-approved PostgreSQL type available on clean environments such as CI.
+
+The downgrade intentionally does not drop the extension. Extensions are shared database infrastructure and may have existed before this application revision. A table rollback should not remove a shared capability that another migration or operator may own.
+
+## Tests added
+
+The real PostgreSQL integration test is:
+
+```text
+services/api/tests/integration/test_knowledge_schema.py
+```
+
+It verifies the ticket's database behavior rather than only checking that a migration file exists.
+
+The test covers:
+
+- a valid URL source insert;
+- rejection of URL and sitemap sources without `source_uri`;
+- rejection of PDF, Markdown, and text sources without `object_key`;
+- rejection of invalid source type;
+- rejection of invalid access scope;
+- rejection of invalid source status;
+- the default `sync_version = 0`;
+- rejection of an invalid document status;
+- document version/provenance uniqueness;
+- rejection of duplicate `(document_id, ordinal)` chunks;
+- rejection of empty chunk content;
+- rejection of negative token counts;
+- nullable `embedding` storage;
+- default empty JSON metadata;
+- automatically generated `tsv` content;
+- a real lexical full-text query;
+- existence of the GIN `tsv` index;
+- confirmation that the embedding type is dimensionless `vector`;
+- confirmation that no index targets the embedding column.
+
+The repository's existing database-integration workflow already upgrades a clean PostgreSQL database to migration head, runs the integration suite, downgrades through the migration chain, upgrades to head again, and finally downgrades to base. OPE-300 relies on that shared gate instead of creating a second migration runner.
+
+## Security and data-integrity decisions
+
+OPE-300 keeps several future safety requirements visible in the schema itself:
+
+- every source is tenant-owned;
+- every document keeps its source relationship;
+- every chunk keeps its document relationship;
+- customer/internal scope is explicit;
+- source provenance fields are durable;
+- no raw credential column is introduced;
+- statuses are closed sets enforced by CHECK constraints;
+- invalid source locations are rejected by PostgreSQL;
+- document/chunk uniqueness is enforced under concurrency by the database;
+- searchable text is derived from content rather than trusted from a caller;
+- vector indexing is blocked until its architecture is frozen.
+
+These checks do not replace later authorization or row-level security. They make malformed data harder to create even if a future application bug reaches the persistence layer.
+
+## Main files changed
+
+```text
+services/api/alembic/versions/20260819_0008_knowledge_schema.py
+services/api/tests/integration/test_knowledge_schema.py
+docs/SERVIQ_BUILD_GUIDE.md
+```
+
+The temporary workflow used only to append this section removes itself in the same documentation commit, so it is not part of the permanent OPE-300 repository tree.
+
+## What OPE-300 deliberately does not implement
+
+This ticket does not add:
+
+- knowledge-source REST APIs;
+- file upload or object-storage workflows;
+- website/sitemap crawling;
+- PDF parsing;
+- chunking algorithms;
+- ingestion workers;
+- embedding generation;
+- embedding model selection;
+- a vector dimension;
+- a vector index;
+- hybrid retrieval/ranking APIs;
+- citations in customer answers;
+- source authentication/credential design;
+- knowledge-scope authorization enforcement.
+
+Those are separate product, architecture, security, and worker concerns.
+
+## What improves after OPE-300
+
+Before this change, Serviq's knowledge subsystem existed mainly as an architecture contract. The database could not yet persist a trustworthy source-to-document-to-chunk chain for later retrieval.
+
+After OPE-300, Serviq has the durable relational backbone for knowledge ingestion and lexical retrieval. A future ingestion worker has a precise place to record source provenance, document versions, and ordered chunks. A future retrieval system can perform PostgreSQL full-text search immediately, while vector search remains deliberately blocked from premature optimization or an invented embedding profile.
+
+The larger engineering improvement is sequencing: Serviq can now build ingestion and lexical retrieval on a stable schema without coupling that work to an embedding vendor or vector-index decision that has not been made yet.
+
+## Completion gate
+
+The implementation is considered complete when the final `ope300` branch head passes the repository quality checks and real PostgreSQL integration workflow, including migration upgrade/downgrade coverage, with the permanent build-guide section present and the temporary documentation helper absent.
+EOF
+          fi
+
+          rm -f .github/workflows/ope300-build-guide-append.yml
+
+      - name: Commit permanent build-guide update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/ope300-build-guide-append.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'docs: explain OPE-300 knowledge schema'
+          git push origin HEAD:ope300

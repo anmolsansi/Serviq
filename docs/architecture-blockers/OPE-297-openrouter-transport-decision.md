@@ -2,54 +2,72 @@
 
 ## Status
 
-**Needs Architect Decision.** No OpenRouter adapter code was added because the ticket's explicit stop condition is currently true.
+**Resolved by ADR-013 and GitHub PR #141.**
+
+This document originally recorded a legitimate `Needs Architect Decision` stop condition. The history is preserved because it explains why OPE-297 did not immediately add runtime code and what had to be decided first.
 
 ## What OPE-297 is trying to build
 
-OPE-297 is intended to make OpenRouter interchangeable with the other providers behind Serviq's Contract C-4. The adapter must accept only a server-resolved BYOK credential and validated upstream model, use a Serviq-controlled endpoint, normalize generation and streaming results, and prevent caller-controlled base URLs or provider-only response details from escaping into shared contracts.
+OPE-297 makes OpenRouter interchangeable with the other providers behind Serviq Contract C-4. The adapter accepts only a server-resolved BYOK credential and validated upstream model, uses a Serviq-controlled endpoint, normalizes generation and streaming results, and prevents caller-controlled base URLs or provider-only response details from escaping into shared contracts.
 
-## What was inspected before coding
+## Original blocking fact
 
-The builder inspected the OPE-297 ticket, current Architecture and Tech Stack, Contract C-4, the provider adapter interface, the current gateway dependency manifest, ADR-011, and the OpenAI/Anthropic implementation patterns.
+At the first implementation attempt, the repository had no frozen OpenRouter transport/client choice.
 
-## Blocking fact
+ADR-011 approved only the official OpenAI and Anthropic SDK dependencies and explicitly did not approve an OpenRouter dependency or transport. Although OpenRouter exposes an OpenAI-compatible API, choosing to reuse the OpenAI SDK would still have answered architecture questions about endpoint ownership, retries, headers, error behavior, and upgrade coupling.
 
-The repository has no frozen OpenRouter transport/client choice.
+OPE-297 explicitly required the builder to stop in that state, so the original branch added this blocker record instead of inventing a transport decision inside feature code.
 
-ADR-011 approves only the official OpenAI and Anthropic SDK dependencies and explicitly states that it does **not** approve OpenRouter dependencies. The LLM Gateway manifest contains no OpenRouter-specific client dependency or architectural rule saying that OpenRouter must use the OpenAI-compatible SDK path, direct HTTP, or another transport.
+## How the blocker was resolved
 
-OPE-297 says to stop with `Needs Architect Decision` when the OpenRouter transport/client choice is not frozen. That condition is currently true.
+ADR-013 — `docs/architecture-decisions/ADR-013-openrouter-transport-baseline.md` — was created on a dedicated architecture branch and merged through PR #141 after CI #184 and Security #160 passed.
 
-## Why the branch did not simply reuse the OpenAI SDK
+The architecture merge commit is:
 
-OpenRouter exposes an OpenAI-compatible API surface, but compatibility does not itself authorize Serviq to choose that implementation strategy. Reusing the OpenAI SDK with an OpenRouter base URL would decide several architecture/security questions at once:
+`592136fd02a22976ec87a685436810a89bc9b4fa`
 
-- who owns the fixed base URL;
-- whether the OpenAI SDK is the approved OpenRouter transport;
-- whether OpenAI-specific retry/error assumptions safely map to OpenRouter;
-- which provider-specific headers are permitted;
-- how request IDs and usage metadata are normalized;
-- how future SDK upgrades affect two providers at once.
+ADR-013 freezes:
 
-A builder must not make those decisions implicitly, especially because OPE-297 expressly requires the choice to be frozen before coding.
+1. the existing pinned `openai==2.53.0` Python SDK as the OpenRouter transport;
+2. OpenAI-compatible Chat Completions as the OPE-297 protocol surface;
+3. `https://openrouter.ai/api/v1` as the immutable Serviq-owned base URL;
+4. no caller-, model-, tenant-, or agent-controlled endpoint override;
+5. server-resolved OpenRouter BYOK credentials only;
+6. validated `AdapterContext.upstream_model` only;
+7. C-4 timeout and output-token budgets;
+8. `max_retries=0`, leaving retries/fallback to Serviq orchestration above the adapter;
+9. JSON Schema structured-output behavior;
+10. ordered streaming behavior;
+11. safe five-category C-4 error normalization;
+12. no OpenRouter routing controls, plugins, fallback arrays, or arbitrary provider headers in this ticket;
+13. mock/fake-only required CI tests.
 
-## Decision required to unblock OPE-297
+## Why the chosen transport is appropriate
 
-An architect-approved change must freeze:
+OpenRouter's official documentation explicitly supports pointing the OpenAI SDK at its OpenAI-compatible API base URL. Serviq already pins and reviews that SDK for the OpenAI adapter, so this approach avoids introducing another runtime library solely for an API surface the existing SDK already supports.
 
-1. the OpenRouter transport strategy;
-2. the exact client/dependency and version if a package is used;
-3. the Serviq-owned immutable OpenRouter base URL and prohibition on request-controlled overrides;
-4. timeout/retry ownership;
-5. provider-specific header policy;
-6. Python 3.14 compatibility and dependency-locking expectations.
+The important distinction is that Serviq does **not** reuse the `OpenAIAdapter` class. OPE-297 has its own `OpenRouterAdapter`, its own provider identity, OpenRouter-specific in-band error handling, and its own tests/security review.
 
-Once merged, OPE-297 can implement the adapter, mocked tests, error normalization, and premium security review without changing C-4.
+## Security boundary that is now frozen
 
-## Product impact
+Tenants can select a saved OpenRouter provider connection and a validated model configuration. They cannot select an outbound URL.
 
-This stop prevents a subtle SSRF/configuration-control risk and avoids coupling shared gateway behavior to an unreviewed transport. It preserves the rule that users choose credentials and validated models, not arbitrary upstream endpoints.
+The base URL is a code-owned constant in the OpenRouter adapter. C-4 has no `baseUrl` or `endpoint` field, and the adapter does not read a destination from tenant metadata, model configuration, agent configuration, or arbitrary environment variables.
 
-## What changed in this branch
+This prevents the provider adapter from becoming an arbitrary outbound proxy or SSRF-like primitive.
 
-Only this architecture-blocker record was added. No production code, OpenRouter endpoint, dependency, provider route, C-4 field, secret behavior, or agent runtime behavior was changed.
+## Runtime follow-up
+
+After ADR-013 merged, runtime work began on a fresh branch created from the architecture-approved `main` branch:
+
+`agent/ope-297-openrouter-adapter-implementation`
+
+Runtime PR:
+
+`#142 — feat: implement OpenRouter C-4 adapter for OPE-297`
+
+The runtime branch implements and tests the now-frozen contract without changing C-4.
+
+## Why this audit trail remains useful
+
+Deleting the old blocker text after resolving it would hide an important engineering decision. Keeping the before-and-after history shows that the feature builder did not guess around an architecture gate and that the transport became authorized only after a separate reviewed decision.

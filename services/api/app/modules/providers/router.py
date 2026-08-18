@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.api import SuccessEnvelope
 from app.core.database import get_database_session
 from app.core.principal import require_tenant_id, require_workforce_user_id
+from app.core.rate_limits import ProviderTestRateLimiter, get_provider_test_rate_limiter
 from app.core.secret_store import TenantSecretStore, build_local_secret_store
 from app.modules.providers.errors import (
     ProviderConflictError,
@@ -19,8 +20,16 @@ from app.modules.providers.errors import (
     ProviderNotFoundError,
     ProviderReferencedError,
     ProviderSecretCleanupError,
+    ProviderTestRateLimitedError,
+    ProviderTestStaleError,
+    ProviderTestUnavailableError,
+)
+from app.modules.providers.gateway import (
+    ProviderConnectivityGateway,
+    build_provider_connectivity_gateway,
 )
 from app.modules.providers.schemas import (
+    ProviderConnectivityView,
     ProviderCreateRequest,
     ProviderUpdateRequest,
     ProviderView,
@@ -30,6 +39,7 @@ from app.modules.providers.service import (
     delete_provider,
     get_provider,
     list_providers,
+    test_provider_connectivity,
     update_provider,
 )
 
@@ -48,7 +58,33 @@ def get_provider_secret_store(request: Request) -> TenantSecretStore:
     return build_local_secret_store(request.app.state.settings)
 
 
+def get_provider_connectivity_gateway(request: Request) -> ProviderConnectivityGateway:
+    """Resolve an injected test double or the fixed internal LLM-Gateway client."""
+
+    configured = getattr(request.app.state, "provider_connectivity_gateway", None)
+    if configured is not None:
+        return cast(ProviderConnectivityGateway, configured)
+    return build_provider_connectivity_gateway()
+
+
+def get_provider_connectivity_rate_limiter(request: Request) -> ProviderTestRateLimiter:
+    """Resolve an injected limiter or the process-shared Valkey-backed limiter."""
+
+    configured = getattr(request.app.state, "provider_test_rate_limiter", None)
+    if configured is not None:
+        return cast(ProviderTestRateLimiter, configured)
+    return get_provider_test_rate_limiter()
+
+
 SecretStore = Annotated[TenantSecretStore, Depends(get_provider_secret_store)]
+ConnectivityGateway = Annotated[
+    ProviderConnectivityGateway,
+    Depends(get_provider_connectivity_gateway),
+]
+ConnectivityRateLimiter = Annotated[
+    ProviderTestRateLimiter,
+    Depends(get_provider_connectivity_rate_limiter),
+]
 
 
 @router.get("", response_model=SuccessEnvelope[list[ProviderView]])
@@ -95,6 +131,69 @@ async def create_provider_connection(
     except ProviderSecretCleanupError:
         return _cleanup_failure()
     return SuccessEnvelope(data=provider)
+
+
+@router.post(
+    "/{provider_connection_id}/test",
+    response_model=SuccessEnvelope[ProviderConnectivityView],
+)
+async def test_provider_connection(
+    provider_connection_id: UUID,
+    request: Request,
+    session: DatabaseSession,
+    user_id: WorkforceUserId,
+    tenant_id: TenantId,
+    secret_store: SecretStore,
+    gateway: ConnectivityGateway,
+    rate_limiter: ConnectivityRateLimiter,
+) -> SuccessEnvelope[ProviderConnectivityView] | JSONResponse:
+    # A route with no Pydantic body parameter would normally ignore JSON. Reject any
+    # non-empty body explicitly so model/prompt/baseUrl fields can never be mistaken
+    # for supported connectivity-test controls.
+    if (await request.body()).strip():
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "code": "INVALID_REQUEST",
+                    "message": "Provider connectivity test does not accept a request body.",
+                }
+            },
+        )
+
+    try:
+        result = await test_provider_connectivity(
+            session,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            provider_connection_id=provider_connection_id,
+            secret_store=secret_store,
+            gateway=gateway,
+            rate_limiter=rate_limiter,
+        )
+    except ProviderNotFoundError:
+        return _not_found()
+    except ProviderForbiddenError:
+        return _forbidden()
+    except ProviderTestRateLimitedError as error:
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": str(error.retry_after_seconds)},
+            content={
+                "error": {
+                    "code": "PROVIDER_TEST_RATE_LIMITED",
+                    "message": "Provider connectivity-test rate limit exceeded.",
+                }
+            },
+        )
+    except ProviderTestUnavailableError:
+        return _test_unavailable()
+    except ProviderTestStaleError:
+        return _conflict(
+            "PROVIDER_TEST_STALE",
+            "Provider credential changed during the test. Retry the connectivity test.",
+        )
+    return SuccessEnvelope(data=result)
 
 
 @router.get(
@@ -216,6 +315,18 @@ def _cleanup_failure() -> JSONResponse:
             "error": {
                 "code": "SECRET_STORE_CLEANUP_FAILED",
                 "message": "Provider secret cleanup did not complete.",
+            }
+        },
+    )
+
+
+def _test_unavailable() -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "code": "PROVIDER_TEST_UNAVAILABLE",
+                "message": "Provider connectivity testing is temporarily unavailable.",
             }
         },
     )

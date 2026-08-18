@@ -1,0 +1,404 @@
+name: OPE-297 build guide finalizer
+
+on:
+  push:
+    branches:
+      - agent/ope-297-openrouter-adapter-implementation
+    paths:
+      - .github/workflows/ope297-build-guide-finalizer.yml
+
+permissions:
+  contents: write
+
+jobs:
+  append-and-clean:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/ope-297-openrouter-adapter-implementation
+          fetch-depth: 0
+
+      - name: Append OPE-297 cumulative build record
+        shell: bash
+        run: |
+          cat >> docs/SERVIQ_BUILD_GUIDE.md <<'OPE297'
+
+
+---
+
+# OPE-297 follow-up — OpenRouter generation and streaming adapter
+
+## Why this follow-up exists
+
+The earlier OPE-296 through OPE-299 reconciliation correctly recorded OPE-297 as architecture-blocked. At that time, Serviq had not decided which OpenRouter transport/client was approved, who owned the OpenRouter endpoint, or whether a tenant could influence that endpoint.
+
+That old status is important history, but it is no longer the current implementation state. OPE-297 has now moved through the complete sequence from blocker to architecture decision to runtime implementation and validation.
+
+This section explains that sequence in plain language so a new engineer, product teammate, intern, or non-technical reader can understand what changed and why.
+
+## Lifecycle from blocker to implementation
+
+1. OPE-297 was initially investigated.
+2. The ticket's explicit `Needs Architect Decision` stop condition was found.
+3. A blocker record was merged instead of choosing a transport inside the feature ticket.
+4. Current official OpenRouter documentation was reviewed.
+5. A dedicated architecture issue and ADR were created.
+6. ADR-013 froze the OpenRouter transport and endpoint rules.
+7. Architecture PR #141 passed CI and Security and merged.
+8. OPE-297 moved to In Progress.
+9. A fresh runtime branch was created from architecture-approved `main`.
+10. A separate OpenRouter adapter was implemented behind Contract C-4.
+11. Mock/fake-only contract and security tests were added.
+12. OpenRouter-specific embedded and mid-stream error behavior was handled explicitly.
+13. The original blocker document was reconciled rather than deleted.
+14. A premium security review and detailed plain-language implementation guide were added.
+15. Strict CI found one dynamic-type leak in the embedded-error helper; the helper was tightened rather than weakening mypy.
+16. Final merge still requires green CI and Security on the exact final PR head after this build-guide entry.
+
+## Architecture decision: ADR-013
+
+The architecture decision is:
+
+`docs/architecture-decisions/ADR-013-openrouter-transport-baseline.md`
+
+Architecture branch:
+
+`agent/ope-297-openrouter-transport-adr`
+
+Architecture PR:
+
+`#141 — docs: freeze OpenRouter transport for OPE-297`
+
+Architecture merge commit:
+
+`592136fd02a22976ec87a685436810a89bc9b4fa`
+
+PR #141 passed:
+
+- CI #184;
+- Security #160, including the LLM Gateway dependency vulnerability audit.
+
+### What ADR-013 freezes
+
+Serviq uses its existing pinned `openai==2.53.0` SDK as the OpenRouter HTTP/client transport.
+
+The OpenRouter API destination is fixed in Serviq code as:
+
+`https://openrouter.ai/api/v1`
+
+The architecture also freezes these rules:
+
+- OpenAI-compatible Chat Completions is the OPE-297 protocol surface;
+- only a server-resolved tenant OpenRouter BYOK key may reach the adapter;
+- only the already validated `AdapterContext.upstream_model` may be sent as the provider model;
+- callers cannot supply a base URL or endpoint;
+- model configuration cannot supply a base URL or endpoint;
+- agent configuration cannot supply a base URL or endpoint;
+- C-4 timeout and output-token budgets remain authoritative;
+- SDK retries are disabled with `max_retries=0`;
+- retry/fallback ownership remains above the adapter;
+- JSON Schema structured output is supported through the existing C-4 field;
+- streaming remains provider-neutral through `GatewayStreamEvent`;
+- raw provider errors are normalized into the existing five C-4 categories;
+- no provider-routing preferences, fallback arrays, plugins, web-search settings, arbitrary headers, or OpenRouter-only C-4 fields are introduced by this ticket;
+- required tests remain mocks/fakes only.
+
+## Why reuse the OpenAI SDK but not the OpenAI adapter
+
+OpenRouter documents an OpenAI-compatible API, so the existing pinned SDK can safely provide the transport mechanics without adding another runtime dependency.
+
+However, OpenRouter is still a different provider and therefore gets a separate adapter.
+
+Reusing `OpenAIAdapter` directly would be wrong because:
+
+- the normalized provider identity must be `openrouter`;
+- the base URL is different;
+- the credential belongs to OpenRouter;
+- error messages must identify OpenRouter;
+- OpenRouter can report provider failures in-band after generation has started;
+- future OpenRouter-specific logic must not change OpenAI behavior.
+
+The runtime class is therefore:
+
+`services/llm-gateway/app/adapters/openrouter.py -> OpenRouterAdapter`
+
+## Runtime branch and pull request
+
+Runtime branch:
+
+`agent/ope-297-openrouter-adapter-implementation`
+
+Runtime PR:
+
+`#142 — feat: implement OpenRouter C-4 adapter for OPE-297`
+
+The branch was created only after ADR-013 merged, so runtime code starts from an architecture-approved state.
+
+## Runtime implementation
+
+The new adapter:
+
+- accepts a Serviq `GatewayRequest` and `AdapterContext`;
+- requires `context.provider == openrouter`;
+- rejects missing or blank OpenRouter credentials before provider work;
+- constructs a request-scoped `AsyncOpenAI` client with the fixed OpenRouter base URL;
+- sets `max_retries=0`;
+- uses the C-4 timeout;
+- sends exactly `context.upstream_model`;
+- preserves C-4 system/user/assistant message order;
+- supports normal generation;
+- supports ordered streaming;
+- preserves provider-generated whitespace;
+- supports native JSON Schema structured output;
+- normalizes input/output token usage;
+- normalizes finish reason;
+- normalizes provider request ID where available;
+- returns only Serviq-owned C-4 types;
+- closes request-scoped client resources after success or failure.
+
+## Fixed endpoint and SSRF/proxy protection
+
+The OpenRouter base URL is a code-owned constant.
+
+C-4 has no `baseUrl` or `endpoint` field and rejects unknown fields. Tests explicitly try to inject both a public attacker-controlled URL and a link-local metadata-style URL and confirm the request is rejected.
+
+This matters because a server feature that accepts an arbitrary destination URL can become an outbound proxy or an SSRF-like primitive. OPE-297 keeps destination selection completely outside tenant control.
+
+## Validated model ownership
+
+The adapter does not read a raw model string from customer request JSON.
+
+Higher-level Serviq code resolves `modelAlias` into a validated model configuration and provides the upstream provider model through `AdapterContext.upstream_model`.
+
+The OpenRouter adapter forwards that value exactly. It does not:
+
+- infer a model from prompt text;
+- accept a second model field;
+- append an OpenRouter variant;
+- construct fallback lists;
+- choose a cheaper provider route;
+- substitute another model when an upstream call fails.
+
+## Non-stream generation
+
+The adapter translates C-4 messages into the OpenAI-compatible Chat Completions request, applies C-4 timeout/output-token bounds, calls the validated OpenRouter model, and then returns a Serviq `GatewayResponse`.
+
+The normalized response includes:
+
+- text content or structured content;
+- provider `openrouter`;
+- validated upstream model;
+- usage counts where provided;
+- finish reason;
+- request ID where provided.
+
+Raw SDK response objects do not cross the adapter boundary.
+
+## Streaming generation
+
+For text streaming, provider chunks are emitted in order as `GatewayStreamEvent.contentDelta`.
+
+Whitespace is preserved exactly. Terminal metadata is normalized into C-4 finish-reason, usage, and request-ID fields.
+
+For structured streaming, partial JSON fragments are buffered until the stream completes, parsed into a Serviq-owned dictionary, and emitted as a provider-neutral `structuredDelta`.
+
+A stream ending without meaningful terminal metadata fails safely instead of pretending completion succeeded.
+
+## OpenRouter-specific in-band error handling
+
+OpenRouter can report an upstream provider failure after generation has already started. Once partial response bytes have been streamed, the outer HTTP status can no longer be changed. The failure may therefore arrive inside the completion/stream payload.
+
+OPE-297 explicitly handles this case.
+
+The adapter inspects only the minimum embedded fields needed to classify the failure:
+
+- numeric code;
+- stable `error_type` where present.
+
+It discards the raw provider error message and metadata body.
+
+Typed embedded errors map to the normal C-4 categories:
+
+- authentication/permission -> `PROVIDER_AUTH_FAILED`;
+- rate limit -> `PROVIDER_RATE_LIMITED`;
+- timeout -> `PROVIDER_TIMEOUT`;
+- upstream overload/unavailable/server failures -> `PROVIDER_UNAVAILABLE`;
+- other request/validation errors -> `PROVIDER_INVALID_REQUEST`.
+
+Both non-stream and mid-stream tests prove that partial generated content is not returned as a successful completed answer when OpenRouter reports an embedded provider failure.
+
+## Standard error normalization
+
+Normal SDK failures are also converted into the same fixed five C-4 categories:
+
+- 401/403/authentication -> `PROVIDER_AUTH_FAILED`;
+- 429 -> `PROVIDER_RATE_LIMITED`;
+- timeout/408 -> `PROVIDER_TIMEOUT`;
+- connection/5xx -> `PROVIDER_UNAVAILABLE`;
+- applicable 4xx invalid model/schema/request -> `PROVIDER_INVALID_REQUEST`.
+
+Public error messages are fixed Serviq-authored strings. Raw HTML/provider bodies, headers, exception strings, and credential material are not returned.
+
+## No new provider dependency
+
+OPE-297 introduces no new runtime package. It reuses the existing exact `openai==2.53.0` pin approved in the gateway.
+
+Because OPE-296 already extended the Security workflow to pip-audit LLM Gateway dependencies, the shared transport dependency is explicitly included in Serviq's vulnerability gate.
+
+A future OpenAI SDK upgrade must now regression-test both OpenAI and OpenRouter adapters.
+
+## Mocked test coverage
+
+`services/llm-gateway/tests/test_openrouter_adapter.py` covers the provider contract without network access or provider spend.
+
+Coverage includes:
+
+- fixed default base URL;
+- retries disabled;
+- non-stream success;
+- exact upstream-model forwarding;
+- token and timeout forwarding;
+- system/user/assistant ordering;
+- arbitrary `baseUrl` rejection;
+- arbitrary `endpoint` rejection;
+- normalized OpenRouter provider identity;
+- JSON Schema structured output;
+- text streaming order;
+- whitespace preservation;
+- stream terminal metadata;
+- structured streaming;
+- SDK authentication failure;
+- SDK rate limit;
+- SDK timeout;
+- network/provider unavailable;
+- invalid request;
+- raw SDK body/key redaction;
+- embedded authentication failure;
+- embedded rate-limit failure;
+- embedded timeout failure;
+- embedded upstream unavailable failure;
+- embedded invalid request;
+- mid-stream failure after partial text;
+- non-stream partial-output failure;
+- missing credentials;
+- wrong provider context;
+- wrong stream/non-stream path;
+- malformed structured output;
+- empty stream;
+- C-4 return-type containment.
+
+No required test uses a real OpenRouter key, account, network call, or provider credit.
+
+## Premium security review
+
+The full security review is:
+
+`docs/security-reviews/OPE-297-openrouter-adapter.md`
+
+It documents:
+
+- outbound destination control;
+- SSRF/proxy risk;
+- tenant BYOK containment;
+- provider-context binding;
+- model ownership;
+- provider-routing exclusions;
+- timeout/retry ownership;
+- structured output;
+- streaming integrity;
+- embedded provider failures;
+- raw provider-error minimization;
+- SDK-type containment;
+- dependency security;
+- mock-only CI behavior.
+
+## Strict type-check finding and fix
+
+During implementation validation, CI #189 passed lint but strict mypy found one issue in the embedded-error helper: a dynamic mapping lookup was inferred as `Any` while the helper promised `object | None`.
+
+The fix did not disable or weaken mypy. Instead, the dynamic SDK metadata value was explicitly contained at the provider boundary as `object | None` before classification.
+
+This is consistent with the design goal: provider-dynamic data should become a safe, deliberately typed internal object before it influences C-4 behavior.
+
+The fix commit is:
+
+`fd7f5e92bafedb824f6f8ab47cc0d69889f58a5e`
+
+## Detailed plain-language documentation
+
+The dedicated implementation document is:
+
+`docs/OPE_297_IMPLEMENTATION.md`
+
+It explains the product problem, architecture blocker, ADR decision, fixed endpoint, BYOK flow, model ownership, non-stream behavior, streaming behavior, OpenRouter embedded failures, structured output, retry/timeout rules, error normalization, dependency choices, cleanup, test coverage, security controls, and completion gate.
+
+## Blocker audit-trail reconciliation
+
+The original blocker document remains in the repository but now records:
+
+**Resolved by ADR-013 and GitHub PR #141.**
+
+This keeps the engineering history visible rather than deleting the reason implementation originally stopped.
+
+## What OPE-297 intentionally does not include
+
+This ticket does not add:
+
+- model-configuration CRUD;
+- provider connectivity testing;
+- automatic fallback models;
+- provider preference routing;
+- cheapest-model routing;
+- OpenRouter plugins;
+- OpenRouter web search;
+- caller-controlled provider metadata;
+- arbitrary HTTP headers;
+- arbitrary provider base URLs;
+- agent-runtime changes;
+- secret-store changes;
+- OpenRouter-only C-4 fields.
+
+Those are separate product/architecture responsibilities.
+
+## Product improvement
+
+After validated merge, OpenRouter becomes another real implementation behind Serviq's provider-neutral C-4 boundary.
+
+The rest of Serviq can remain unaware of:
+
+- OpenRouter's base URL;
+- OpenAI-compatible SDK mechanics;
+- OpenRouter-specific embedded provider errors;
+- provider SDK response classes;
+- provider-specific exception classes.
+
+This improves provider portability, endpoint safety, error consistency, testability, and future maintainability.
+
+## OPE-297 closure gate
+
+At the point this cumulative section is appended, the runtime implementation, tests, security review, and detailed documentation exist, but OPE-297 is not considered Done merely because documentation says so.
+
+The final closure sequence is:
+
+1. complete this cumulative `SERVIQ_BUILD_GUIDE.md` update;
+2. create a normal repository-authored final validation commit after the one-use workflow removes itself;
+3. pass CI and Security on that exact final PR head;
+4. mark PR #142 ready for review;
+5. merge PR #142 to `main` only while its expected head SHA still matches the validated head;
+6. verify runtime code and documentation are actually present on `main`;
+7. close GitHub issue #128 as completed;
+8. move Linear OPE-297 to Done;
+9. record the merge SHA and final validation results in Linear.
+
+This keeps Serviq's rule consistent: only validated, merged runtime behavior completes a runtime ticket.
+OPE297
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/ope297-build-guide-finalizer.yml
+          git add docs/SERVIQ_BUILD_GUIDE.md
+          git commit -m "docs: finalize OPE-297 build guide"
+          git push origin HEAD:agent/ope-297-openrouter-adapter-implementation

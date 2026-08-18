@@ -142,6 +142,17 @@ jobs:
           set -e
           echo "WORKER_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
 
+      - name: Audit LLM Gateway Python dependencies
+        shell: bash
+        run: |
+          cd services/llm-gateway
+          uv export --no-dev --format requirements-txt --output-file /tmp/serviq-llm-gateway-requirements.txt
+          set +e
+          uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-llm-gateway-requirements.txt -f json -o ../../llm-gateway-pip-audit.json
+          status=$?
+          set -e
+          echo "LLM_GATEWAY_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
+
       - name: Upload dependency audit reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -151,6 +162,7 @@ jobs:
             pnpm-audit.json
             api-pip-audit.json
             worker-pip-audit.json
+            llm-gateway-pip-audit.json
           if-no-files-found: error
           retention-days: 7
 
@@ -160,3 +172,4 @@ jobs:
           test "${PNPM_AUDIT_STATUS:-1}" -eq 0
           test "${API_PIP_AUDIT_STATUS:-1}" -eq 0
           test "${WORKER_PIP_AUDIT_STATUS:-1}" -eq 0
+          test "${LLM_GATEWAY_PIP_AUDIT_STATUS:-1}" -eq 0

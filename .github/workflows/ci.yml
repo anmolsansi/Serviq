@@ -127,3 +127,67 @@ jobs:
 
       - name: Downgrade full migration chain to base
         run: cd services/api && uv run alembic downgrade base
+
+  object-storage-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SERVIQ_OBJECT_STORAGE_INTEGRATION: "1"
+      SERVIQ_ENV: test
+      SERVIQ_PUBLIC_BASE_URL: http://localhost:3000
+      SERVIQ_API_BASE_URL: http://localhost:8000
+      DATABASE_URL: postgresql://serviq:test@localhost:5432/serviq
+      VALKEY_URL: valkey://localhost:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+      OBJECT_STORAGE_ENDPOINT: http://localhost:8333
+      OBJECT_STORAGE_BUCKET: serviq-local-objects
+      OBJECT_STORAGE_ACCESS_KEY: serviq-local
+      OBJECT_STORAGE_SECRET_KEY: serviq-local-dev-only
+      OIDC_ISSUER_URL: http://localhost:8080/realms/serviq
+      OIDC_CLIENT_ID: serviq-test
+      OIDC_CLIENT_SECRET: test-placeholder
+      OIDC_REDIRECT_URI: http://localhost:3000/auth/callback
+      SESSION_SECRET: test-placeholder
+      LLM_GATEWAY_URL: http://localhost:8100
+      LLM_GATEWAY_INTERNAL_TOKEN: test-placeholder
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+      LOG_LEVEL: INFO
+      SERVIQ_LOCAL_WEBHOOK_ALLOWLIST: ""
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.6'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/api/uv.lock
+
+      - name: Install frozen API environment
+        run: cd services/api && uv sync --frozen
+
+      - name: Start local S3-compatible storage
+        run: docker compose -f infra/docker/compose.yml up -d object-storage
+
+      - name: Wait for local S3-compatible storage
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --silent --show-error --output /dev/null http://localhost:8333/; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f infra/docker/compose.yml logs object-storage
+          exit 1
+
+      - name: Run real object-storage integration test
+        run: cd services/api && uv run pytest tests/integration/test_object_storage_integration.py
+
+      - name: Stop local S3-compatible storage
+        if: always()
+        run: docker compose -f infra/docker/compose.yml down --volumes

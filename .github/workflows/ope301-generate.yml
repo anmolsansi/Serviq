@@ -1,0 +1,118 @@
+name: OPE-301 final documentation generator
+
+on:
+  push:
+    branches:
+      - ope301
+    paths:
+      - .github/ope301-generate
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out OPE-301 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ope301
+
+      - name: Correct final OPE-301 documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_if_present(path: str, old: str, new: str) -> None:
+              file_path = Path(path)
+              text = file_path.read_text(encoding="utf-8")
+              if old in text:
+                  file_path.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_if_present(
+              "docs/repo_context.md",
+              "The adapter exposes only put, get, delete, and exists operations. It uses explicit 5-second connect and 30-second read timeouts, one total SDK attempt, path-style S3 addressing for local compatibility, and stable Serviq-owned errors instead of leaking SDK details.",
+              "The adapter exposes the OPE-301 put, get, head, and delete contract plus an `exists` convenience built on `head`. Put accepts content type and string metadata, while head returns size/content type/ETag/custom metadata without downloading the body. The adapter uses explicit 5-second connect and 30-second read timeouts, one total SDK attempt, path-style S3 addressing for local compatibility, and stable Serviq-owned errors instead of leaking SDK details.",
+          )
+
+          guide = "docs/SERVIQ_BUILD_GUIDE.md"
+          replace_if_present(
+              guide,
+              """The adapter deliberately supports only four operations:
+
+1. `put_object` stores bytes or a binary stream and records the supplied content type.
+2. `get_object` reads an object and returns its bytes plus the small amount of metadata downstream code needs today, including content type, content length, and ETag when the backend provides one.
+3. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
+4. `exists` performs a HEAD-style check. It returns `False` when an object is missing without downloading the object body.
+
+We intentionally did **not** add object listing, public buckets, presigned URLs, multipart-upload policy, ACL management, retention policy, lifecycle policy, or customer attachments. Those features carry additional product and security decisions and OPE-301 was not allowed to guess them.""",
+              """The OPE-301 storage contract supports four primary operations:
+
+1. `put_object` stores bytes or a binary stream, records the supplied content type, and can carry string metadata such as an original user filename without letting that metadata affect the storage key.
+2. `get_object` reads an object and returns its bytes plus content type, content length, ETag when the backend provides one, and user metadata.
+3. `head` asks for object metadata without downloading the body. It returns content length, content type, ETag when available, and custom metadata.
+4. `delete_object` removes an object. Deleting an object that is already gone is treated as success, which makes cleanup code safe to repeat.
+
+The adapter also provides `exists` as a convenience implemented on top of `head`. It is not a list or discovery API.
+
+We intentionally did **not** add object listing, public buckets, presigned URLs, multipart-upload policy, ACL management, retention policy, lifecycle policy, or customer attachments. Those features carry additional product and security decisions and OPE-301 was not allowed to guess them.""",
+          )
+          replace_if_present(
+              guide,
+              "A user-facing filename can still be stored later as metadata when a dedicated upload feature is implemented. It simply cannot decide where the object lives.",
+              "A user-facing filename can be carried as object metadata when the calling feature permits it. OPE-301 copies metadata at the adapter boundary, lowercases metadata keys, rejects blank keys and CR/LF/NUL control characters, and never feeds metadata values into the object-key builder. The filename can describe the object, but it cannot decide where the object lives.",
+          )
+          replace_if_present(
+              guide,
+              "A missing `get_object` becomes `OBJECT_NOT_FOUND`. A missing `exists` becomes `False`. Repeated delete remains successful. Other SDK or network failures become `OBJECT_STORAGE_UNAVAILABLE` with a generic message.",
+              "A missing `get_object` or `head` becomes `OBJECT_NOT_FOUND`. `exists` converts that normalized missing-head result to `False`. Repeated delete remains successful. A `NoSuchBucket` response remains an infrastructure failure instead of being misreported as a missing object. Other SDK or network failures become `OBJECT_STORAGE_UNAVAILABLE` with a generic message.",
+          )
+          replace_if_present(
+              guide,
+              """1. make sure the test object is absent;
+2. store known bytes;
+3. confirm the object exists;
+4. read it back and compare the content and metadata;
+5. delete it;
+6. confirm it no longer exists;
+7. delete it again to prove cleanup is idempotent.""",
+              """1. make sure the test object is absent;
+2. store known bytes, content type, and an intentionally path-like original filename as metadata;
+3. confirm the generated key still contains only trusted UUID identifiers;
+4. confirm the object exists;
+5. call `head` and verify size, content type, and custom metadata without downloading the body;
+6. read the object back and compare its bytes and metadata;
+7. delete it;
+8. confirm it no longer exists;
+9. delete it again to prove cleanup is idempotent.""",
+          )
+          replace_if_present(
+              guide,
+              "`services/api/tests/test_object_storage.py` covers exact keys, tenant separation, runtime key validation, adapter behavior, configuration, retries/timeouts, and error redaction.",
+              "`services/api/tests/test_object_storage.py` covers exact keys, tenant separation, runtime key validation, put/get/head/delete/exists behavior, metadata handling, traversal/slash/backslash/Unicode-separator/4K filename isolation, missing-bucket behavior, configuration, retries/timeouts, and error redaction.",
+          )
+
+          for helper in (
+              ".github/ope301-generate",
+              ".github/ope301-doc-sync",
+              ".github/workflows/ope301-generate.yml",
+              ".github/workflows/ope301-doc-sync.yml",
+          ):
+              Path(helper).unlink(missing_ok=True)
+          PY
+
+      - name: Commit permanent OPE-301 documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/repo_context.md docs/SERVIQ_BUILD_GUIDE.md
+          git add -A .github/ope301-generate .github/ope301-doc-sync .github/workflows/ope301-generate.yml .github/workflows/ope301-doc-sync.yml
+          git commit -m "docs(OPE-301): align build guide with final storage contract"
+          git push origin HEAD:ope301

@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, ForeignKeyConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -45,12 +45,17 @@ class ModelConfigurationReference(Base):
     """Blocking production reference registered by another Serviq domain module."""
 
     __tablename__ = "model_configuration_references"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "model_configuration_id"],
+            ["model_configurations.tenant_id", "model_configurations.id"],
+            ondelete="RESTRICT",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id", ondelete="RESTRICT"))
-    model_configuration_id: Mapped[UUID] = mapped_column(
-        ForeignKey("model_configurations.id", ondelete="RESTRICT")
-    )
+    model_configuration_id: Mapped[UUID] = mapped_column()
     reference_kind: Mapped[str] = mapped_column(Text)
     reference_id: Mapped[UUID] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

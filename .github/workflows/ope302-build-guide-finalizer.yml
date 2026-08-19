@@ -1,6 +1,9 @@
 name: OPE-302 Build Guide Finalizer
 
 on:
+  push:
+    branches:
+      - ope302
   pull_request:
     branches:
       - ope302
@@ -172,9 +175,10 @@ EOF
         run: |
           set -euo pipefail
           rm -f .github/workflows/ope302-build-guide-finalizer.yml
+          rm -f .github/ope302-finalizer-push-trigger
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/ope302-build-guide-finalizer.yml
+          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/ope302-build-guide-finalizer.yml .github/ope302-finalizer-push-trigger
           if git diff --cached --quiet; then
             echo 'No permanent change required.'
             exit 0

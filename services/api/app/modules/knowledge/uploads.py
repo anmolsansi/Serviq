@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Literal, cast
 
-from fastapi import UploadFile
+from starlette.datastructures import UploadFile
 
 FileKnowledgeSourceType = Literal["pdf", "markdown", "text"]
 
@@ -115,7 +115,11 @@ def _safe_filename(value: str | None) -> str:
     if value is None:
         raise KnowledgeUploadValidationError("Uploaded file must have a filename.")
     normalized = value.replace("\\", "/").split("/")[-1].strip()
-    normalized = "".join(character for character in normalized if ord(character) >= 32 and character != "\x7f")
+    normalized = "".join(
+        character
+        for character in normalized
+        if ord(character) >= 32 and character != "\x7f"
+    )
     if not normalized or len(normalized) > 255:
         raise KnowledgeUploadValidationError("Uploaded filename is invalid.")
     return normalized

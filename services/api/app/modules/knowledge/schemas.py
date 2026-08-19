@@ -49,15 +49,18 @@ class KnowledgeSourceCreateRequest(BaseModel):
 
         try:
             parsed = urlsplit(normalized)
+            hostname = parsed.hostname
+            username = parsed.username
+            password = parsed.password
             _ = parsed.port
         except ValueError as error:
             raise ValueError("sourceUri must be a valid absolute HTTPS URL") from error
 
         if parsed.scheme.lower() != "https":
             raise ValueError("sourceUri must use HTTPS")
-        if not parsed.netloc or parsed.hostname is None:
+        if not parsed.netloc or hostname is None:
             raise ValueError("sourceUri must be an absolute HTTPS URL")
-        if parsed.username is not None or parsed.password is not None:
+        if username is not None or password is not None:
             raise ValueError("sourceUri must not contain credentials")
 
         return normalized

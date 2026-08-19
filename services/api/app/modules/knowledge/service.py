@@ -79,8 +79,6 @@ async def _require_permission(
 
 
 def _to_view(source: KnowledgeSource) -> KnowledgeSourceView:
-    if source.source_uri is None:
-        raise RuntimeError("URL-backed knowledge source is missing source_uri")
     return KnowledgeSourceView(
         id=source.id,
         sourceType=cast(KnowledgeSourceType, source.source_type),

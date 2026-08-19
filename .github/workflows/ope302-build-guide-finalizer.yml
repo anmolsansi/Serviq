@@ -6,6 +6,7 @@ on:
       - ope302
     types:
       - opened
+      - reopened
 
 permissions:
   contents: write

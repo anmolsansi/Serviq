@@ -91,7 +91,7 @@ async def _create_file_knowledge_source(
     tenant_id: UUID,
 ) -> SuccessEnvelope[KnowledgeSourceView] | JSONResponse:
     try:
-        form = await request.form()
+        form = await request.form(max_files=1, max_fields=3, max_part_size=25 * 1024 * 1024)
         allowed = {"sourceType", "name", "accessScope", "file"}
         has_invalid_fields = set(form.keys()) != allowed or any(
             len(form.getlist(key)) != 1 for key in allowed

@@ -1,5 +1,6 @@
 """Knowledge source registration, listing, tenant isolation, and capability checks."""
 
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
@@ -112,10 +113,8 @@ async def create_file_source(
             await session.flush()
             view = _to_view(source)
     except Exception:
-        try:
+        with suppress(ObjectStorageError):
             await run_in_threadpool(storage.delete_object, key)
-        except ObjectStorageError:
-            pass
         raise
     return view
 

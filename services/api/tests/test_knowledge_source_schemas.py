@@ -27,6 +27,7 @@ def test_knowledge_source_request_trims_name_and_uri() -> None:
         "data:text/plain,hello",
         "javascript:alert(1)",
         "https:///missing-host",
+        "https://[::1",
         "https://user:secret@example.com/docs",
         "https://user@example.com/docs",
         "https://example.com/docs#fragment",

@@ -42,7 +42,7 @@ class ValidatedKnowledgeUpload:
 def parse_file_source_type(value: object) -> FileKnowledgeSourceType:
     if value not in _RULES:
         raise KnowledgeUploadValidationError("Unsupported knowledge file source type.")
-    return cast(FileKnowledgeSourceType, value)
+    return value
 
 
 def validate_name(value: object) -> str:

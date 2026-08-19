@@ -4,7 +4,7 @@ import asyncio
 from tempfile import SpooledTemporaryFile
 
 import pytest
-from fastapi import UploadFile
+from starlette.datastructures import Headers, UploadFile
 
 from app.modules.knowledge.uploads import (
     KnowledgeUploadTooLargeError,
@@ -17,7 +17,11 @@ def _upload(filename: str, content_type: str, data: bytes) -> UploadFile:
     file = SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
     file.write(data)
     file.seek(0)
-    return UploadFile(file=file, filename=filename, headers={"content-type": content_type})
+    return UploadFile(
+        file=file,
+        filename=filename,
+        headers=Headers({"content-type": content_type}),
+    )
 
 
 def test_valid_pdf_markdown_and_text_uploads() -> None:
@@ -31,7 +35,7 @@ def test_valid_pdf_markdown_and_text_uploads() -> None:
             source_type="markdown",
         )
         text = await validate_upload(
-            _upload("guide.txt", "text/plain", "hello".encode()),
+            _upload("guide.txt", "text/plain", b"hello"),
             source_type="text",
         )
         assert pdf.content_type == "application/pdf"

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app.core.object_storage import ObjectStorage, knowledge_raw_key
+from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
 from app.modules.knowledge.models import KnowledgeSource
 from app.modules.knowledge.repository import (
@@ -112,7 +112,10 @@ async def create_file_source(
             await session.flush()
             view = _to_view(source)
     except Exception:
-        await run_in_threadpool(storage.delete_object, key)
+        try:
+            await run_in_threadpool(storage.delete_object, key)
+        except ObjectStorageError:
+            pass
         raise
     return view
 

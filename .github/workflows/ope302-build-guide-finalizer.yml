@@ -6,6 +6,11 @@ on:
       - ope302
     paths:
       - .github/workflows/ope302-build-guide-finalizer.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
 
 permissions:
   contents: write

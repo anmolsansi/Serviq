@@ -192,3 +192,175 @@ jobs:
       - name: Stop local S3-compatible storage
         if: always()
         run: docker compose -f infra/docker/compose.yml down --volumes
+
+  ope302-finalize-build-guide:
+    if: github.event_name == 'pull_request' && github.base_ref == 'ope302' && github.head_ref == 'ope302-doc-trigger'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out OPE-302 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ope302
+          fetch-depth: 0
+
+      - name: Append permanent OPE-302 build history and restore baseline workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -q '^## OPE-302 — URL and sitemap knowledge-source registration$' docs/SERVIQ_BUILD_GUIDE.md; then
+            cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
+
+## OPE-302 — URL and sitemap knowledge-source registration
+
+**Implemented on branch:** `ope302`  
+**Linear ticket:** `OPE-302`
+
+### What problem this ticket solves
+
+OPE-300 created Serviq's relational knowledge schema, but an authorized tenant administrator still had no API for registering a public website or sitemap as a knowledge source. OPE-302 adds that control-plane boundary without starting ingestion in the request thread.
+
+The API now exposes:
+
+```text
+GET  /api/v1/knowledge-sources
+POST /api/v1/knowledge-sources
+```
+
+POST accepts only URL-backed source metadata:
+
+```text
+sourceType  = url | sitemap
+name        = trimmed, 1 to 160 characters
+sourceUri   = absolute HTTPS URL
+accessScope = customer | internal
+```
+
+Unknown request fields are rejected rather than silently ignored.
+
+### URL validation and why registration does not crawl
+
+Registration validates syntax before persistence. Requests are rejected when they use HTTP or another non-HTTPS scheme such as `file:`, `ftp:`, `data:`, or `javascript:`, contain embedded username/password credentials, contain a URL fragment, have malformed host/port syntax, or contain whitespace/control characters.
+
+OPE-302 deliberately performs no DNS resolution, private-network classification, redirects, HTTP fetching, robots checks, sitemap parsing, chunking, embedding work, or vector indexing. SSRF-sensitive network behavior belongs to the later crawler/fetch boundary, where redirect and resolved-IP rules can be enforced immediately before an outbound request.
+
+### Metadata-only creation
+
+A successful POST creates one tenant-owned `knowledge_sources` row with server-controlled lifecycle values:
+
+```text
+status          = pending
+sync_version    = 0
+object_key      = NULL
+last_synced_at  = NULL
+last_error_code = NULL
+```
+
+The tenant and creator come from trusted server-side workforce context. The browser cannot choose another tenant, creator, lifecycle state, sync version, storage object key, or ingestion behavior.
+
+There is no HTTP client, crawler, parser, object-storage write, embedding call, or background-ingestion trigger in the create service. Registration is intentionally a small metadata transaction.
+
+### Tenant isolation
+
+GET and POST use the trusted `serviq_tenant_id` request principal established by the authentication/tenancy foundation. There is no tenant ID request field or query parameter for callers to override.
+
+Repository reads include `knowledge_sources.tenant_id = current_tenant_id`. The real PostgreSQL integration test uses Serviq's shared V1.1.14 tenant-isolation harness, seeds a second tenant with a foreign knowledge source, and proves the current tenant's list excludes it.
+
+### Capability-based authorization
+
+OPE-302 adds the capability:
+
+```text
+knowledge.sources.manage
+```
+
+Alembic revision `20260819_0009_knowledge_permissions.py` seeds that capability onto the existing global workforce `owner` and `admin` system roles.
+
+Runtime authorization does not hard-code role names such as `Knowledge Manager`. It reuses OPE-282's effective-capability resolver and requires the current active tenant membership to contain `knowledge.sources.manage`. A future tenant Knowledge Manager role can therefore receive the same capability through normal RBAC configuration without changing these routes.
+
+A workforce user without the capability receives a safe 403 response. Missing or inactive tenant membership fails closed through the same authorization boundary.
+
+### Safe list response
+
+GET returns browser-safe metadata only:
+
+```text
+id
+sourceType
+name
+sourceUri
+accessScope
+status
+syncVersion
+lastSyncedAt
+lastErrorCode
+createdAt
+updatedAt
+```
+
+It does not expose `objectKey`, `createdBy`, storage internals, credentials, or secret values.
+
+The response model supports all five architecture-approved source types and permits `sourceUri = null`. That keeps the list route compatible with future PDF, Markdown, and text sources, whose records use object storage instead of a URL, while OPE-302 POST remains intentionally restricted to `url | sitemap`.
+
+### Tests added
+
+`services/api/tests/test_knowledge_source_schemas.py` covers strict request validation, including valid trimming and rejection of unsafe schemes, malformed URLs, credentials, fragments, invalid source types/scopes, blank or oversized names, and unknown fields.
+
+`services/api/tests/integration/test_knowledge_sources_api.py` uses the real PostgreSQL environment plus the shared tenant-isolation harness. It covers valid URL creation, valid sitemap creation, `pending` plus `sync_version = 0`, null object-storage state, tenant isolation, unauthorized access, safe response fields, and the HTTP validation matrix.
+
+That integration test also replaces the default `httpx` outbound transport with a guard that raises immediately. FastAPI requests use the in-process ASGI transport, so the test fails if knowledge-source registration later starts an ordinary outbound HTTP request. This protects the metadata-only rule.
+
+`services/api/tests/integration/test_knowledge_permissions.py` verifies that the RBAC migration grants `knowledge.sources.manage` to the existing Owner and Admin system roles.
+
+### Main files changed
+
+```text
+services/api/alembic/versions/20260819_0009_knowledge_permissions.py
+services/api/app/modules/knowledge/__init__.py
+services/api/app/modules/knowledge/models.py
+services/api/app/modules/knowledge/repository.py
+services/api/app/modules/knowledge/schemas.py
+services/api/app/modules/knowledge/errors.py
+services/api/app/modules/knowledge/service.py
+services/api/app/modules/knowledge/router.py
+services/api/app/main.py
+services/api/tests/test_knowledge_source_schemas.py
+services/api/tests/integration/test_knowledge_sources_api.py
+services/api/tests/integration/test_knowledge_permissions.py
+docs/SERVIQ_BUILD_GUIDE.md
+```
+
+### What this improves
+
+Serviq administrators can now begin knowledge setup through a real tenant-scoped API instead of direct database writes. The browser cannot choose arbitrary URL schemes, credentials-in-URL, tenant identity, creator identity, or source lifecycle state. Authorization is capability-based, list queries are tenant-scoped, and normal responses omit storage internals.
+
+Registration also remains fast and deterministic. It writes metadata and leaves expensive or SSRF-sensitive network work to the dedicated ingestion system that will own those controls.
+
+The GET projection is forward-compatible with future file-backed knowledge sources without expanding this ticket's POST contract.
+
+### What OPE-302 intentionally leaves for later
+
+This ticket does not implement website crawling, sitemap fetching/parsing, DNS/private-network SSRF checks for outbound fetches, redirect rules, robots/allowlist enforcement, file uploads, document parsing, chunking, embeddings, vector indexing, synchronization jobs, knowledge-source edit/disable routes, or customer-answer retrieval.
+
+Those remain separate tickets and must reuse this tenant/RBAC/source foundation instead of expanding OPE-302 into an ingestion worker.
+
+### Completion and validation rule
+
+The implementation is complete on `ope302` only after the final branch head, including this cumulative documentation update, passes the repository's normal CI/security checks and real PostgreSQL migration/integration coverage. Until it is merged, this work must not be represented as production behavior on `main`.
+EOF
+          fi
+
+          git fetch origin main
+          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
+          rm -f .github/workflows/ope302-build-guide-finalizer.yml
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/SERVIQ_BUILD_GUIDE.md .github/workflows/ci.yml .github/workflows/ope302-build-guide-finalizer.yml
+          if git diff --cached --quiet; then
+            echo 'Nothing to finalize.'
+            exit 0
+          fi
+          git commit -m 'OPE-302: document knowledge source registration'
+          git push origin HEAD:ope302

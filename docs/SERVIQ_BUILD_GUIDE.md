@@ -1999,155 +1999,75 @@ Temporary validation PRs #58 and #59 remain intentionally closed without merge b
 
 The repository now has three additional production-foundation capabilities that were not present before this batch: optional local event/observability infrastructure, a repeatable developer/CI command-and-quality path, and explicit repository audit/governance rules for every later builder ticket.
 
----
-
-# OPE-304 — GitHub Releases and semantic versioning
-
-## What we added
-
-Before this ticket, Serviq had commits, branches, pull requests, CI, and repository governance, but it had no Git tags and no GitHub Releases. That meant the repository could explain what had merged, but it did not have a permanent named product snapshot such as “version 0.1.0.”
-
-OPE-304 adds the missing release layer without changing any Serviq runtime API, database, authentication, event, or product contract.
-
-The implementation adds `.github/release.yml`, which tells GitHub how to group merged pull requests when it generates release notes. Categories distinguish breaking changes, security work, features, bug fixes, performance, infrastructure, testing, dependencies, documentation, refactors, and unmatched changes. A `release:skip` label excludes a pull request from generated notes when it truly should not appear.
-
-The implementation also adds `.github/workflows/release.yml`. This is not the same file as `.github/release.yml`: the first is executable GitHub Actions automation; the second is only changelog configuration.
-
-The release workflow has three paths:
-
-1. a one-time foundation bootstrap after the release system first merges to `main`;
-2. an authorized manual release from the GitHub Actions UI;
-3. a release created from an existing semantic-version tag.
-
-Every publishing path is designed to fail closed. A requested version must match the approved `vMAJOR.MINOR.PATCH` format with an optional prerelease suffix. Existing release versions are never overwritten. Existing tags are never silently repointed. A tag-driven release is rejected if its commit is not contained in `main`.
-
-## Why the version starts at v0.1.0-alpha.1
-
-The repository has meaningful platform-foundation work, but many customer-facing production capabilities are still intentionally absent. Calling the current code `v1.0.0` would imply a stability and completeness level that has not been earned yet.
-
-The first release is therefore designed as:
-
-```text
-v0.1.0-alpha.1
-Serviq v0.1.0-alpha.1 — Platform Foundation
-```
-
-The `0` major version communicates that the product is still before the stable public contract, and the `alpha.1` suffix makes the developer-preview status explicit in both the tag and GitHub Release UI.
-
-## Quality checks before publishing
-
-The workflow does not create a release immediately after somebody types a version number. It first installs the repository's real dependencies and runs the existing baseline gates:
-
-```text
-make setup
-make lint
-make typecheck
-make test
-docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
-```
-
-This reuses the same command surface contributors already use rather than creating a second hidden release-only test system.
-
-`make security`, `make e2e`, and `make load-test` are not called yet because they are currently deliberate failing placeholders. Treating a placeholder as a successful release gate would create a false quality signal. Later tickets should add those commands to release publishing only after they contain real checks.
-
-## Release labels and pull-request metadata
-
-OPE-304 extends the pull-request template so every future change states its release impact. The four release-impact choices are `release:major`, `release:minor`, `release:patch`, and `release:skip`.
-
-The release workflow creates the new repository labels idempotently using GitHub's repository-scoped automation token. It does not delete or replace the existing default GitHub labels such as `bug`, `documentation`, and `enhancement`.
-
-The PR template also asks for a user-visible change description, upgrade/migration information, and an explicit breaking-change declaration. This makes release consequences visible during code review instead of being reconstructed weeks later when someone tries to publish a version.
-
-## Permanent operator documentation
-
-`docs/RELEASING.md` explains the release lifecycle in plain language. It documents Semantic Versioning, the relationship between tickets/PRs/tags/releases, manual release steps, tag-driven release behavior, prerelease rules, post-release verification, and what the release process still intentionally does not automate.
-
-`CONTRIBUTING.md` now links those release rules directly into the normal contributor workflow, and `docs/repo_context.md` records the new convention for later builders because repository reality changed after the OPE-270 audit.
-
-## Security and integrity decisions
-
-The release workflow does not require a personal access token, provider API key, or paid service. It uses GitHub's short-lived repository-scoped `GITHUB_TOKEN` and grants write permission only to the jobs that actually publish releases or create labels.
-
-Release input is validated before it is used as a version. Values are quoted in shell commands. Published versions are treated as immutable by repository policy even before GitHub's stronger repository-level immutable-release setting is enabled.
-
-Repository-level immutable releases are intentionally deferred until the release process has been exercised and future artifact/signing behavior is defined. The current policy already forbids moving a published tag or replacing different code under the same version; a correction must receive a new version.
-
-## What this improves
-
-Serviq now gains a permanent answer to “what exact code is version X?” A prospective client or contributor can use the Releases page instead of reading dozens of commits to understand meaningful product snapshots. Release notes are tied back to merged pull requests, while every release is associated with one exact tested commit.
-
-The release system also creates a clean future path for Docker images, SBOMs, signed artifacts, provenance, deployments, and hotfix policies without prematurely implementing those systems today.
-
-## Intentionally deferred
-
-OPE-304 does not deploy production environments, publish containers to GHCR, generate SBOMs, sign artifacts, create attestations, infer the next version automatically, create release/hotfix branches, or declare Serviq `v1.0.0` production-ready.
-
-Those capabilities have different security and operational consequences and should be implemented through separate tickets after their requirements are explicit.
-
-## Completion gate
-
-The code/documentation portion of OPE-304 is complete only when the implementation PR passes baseline CI and merges to `main`. The ticket itself remains open until the post-merge Release workflow successfully creates `v0.1.0-alpha.1`, the release/tag are verified to point at the intended merged commit, and the release is visibly marked as a prerelease.
-
-## OPE-304 final verified result
-
-**Completed.** The release-system implementation merged through PR #67 into `main` at commit `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`.
-
-Baseline CI run `31832353639` completed successfully on that exact `main` commit. The new Release workflow then ran as `31832353708`. Its `bootstrap-foundation-release` job successfully completed dependency setup, linting, type checking, tests, Docker Compose configuration validation, release-label creation, and the first release publication.
-
-GitHub now contains the tag `v0.1.0-alpha.1`, and that tag points exactly to `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`. The corresponding GitHub Release is named `Serviq v0.1.0-alpha.1 — Platform Foundation`, is published rather than draft, and is explicitly marked as a prerelease. The release notes state that this is an alpha developer preview and not a production-ready customer release.
-
-The repository release labels now exist alongside the original GitHub default labels: `release:major`, `release:minor`, `release:patch`, `release:skip`, `breaking-change`, `feature`, `fix`, `security`, `infrastructure`, `testing`, `dependencies`, `refactor`, and `performance`.
-
-PR #67 was subsequently labelled `release:minor` and `infrastructure` so its repository metadata matches the release policy introduced by the ticket. The first generated release notes necessarily include the repository's historical merged pull requests under the catch-all category because those older pull requests predate the release-label convention. Future releases will become more structured as new pull requests use the new labels before merge.
-
-The first release tag is intentionally left pointing to the OPE-304 implementation merge commit. Later documentation-only reconciliation commits do not move or rewrite that published tag; this demonstrates the repository policy that published versions are permanent history.
-
-OPE-304 therefore established and exercised the complete first release loop: reviewed code -> green PR CI -> merge to `main` -> green `main` CI -> release quality gates -> immutable-by-policy semantic tag -> published GitHub prerelease -> verification.
-
-
 
 ## OPE-272 — Baseline repository security scanning
 
-### What we changed
+### What problem this ticket solves
 
-Serviq now has a dedicated security workflow at `.github/workflows/security.yml`. Think of it as four independent security inspectors that automatically examine every pull request and every change merged to `main`. One inspector looks for risky code patterns, one looks for accidentally committed passwords or API keys, one checks the repository and infrastructure configuration for known high-severity problems, and one checks third-party software dependencies for publicly known vulnerabilities.
+Before OPE-272, Serviq's root `make security` command was intentionally a failing placeholder. That was better than a fake green result, but it meant the repository still had no permanent automated check for common security mistakes. A developer could accidentally commit a secret, introduce a known-vulnerable dependency, or add a dangerous configuration pattern without a dedicated repository security workflow noticing it.
 
-The four gates are intentionally separate so a new contributor can tell *what kind* of problem failed instead of seeing one vague “security failed” result. CodeQL scans both the JavaScript/TypeScript and Python code. Gitleaks checks the complete Git history and current tree for secret-like material. Trivy scans the filesystem and configuration for HIGH and CRITICAL vulnerabilities or misconfigurations. The dependency job runs `pnpm audit` for production JavaScript dependencies and `pip-audit` against the frozen API and worker Python lockfiles.
+OPE-272 turns that placeholder into a real baseline. It is not a guarantee that the product is secure; no automated scanner can provide that guarantee. It creates repeatable guardrails so several common classes of mistake are checked on every pull request and on `main`.
 
-### Why we did it this way
+### What is scanned
 
-Serviq is designed to eventually handle customer information, organization credentials, uploaded documents, webhook data, LLM requests, and tenant-specific configuration. A security mistake becomes harder and more expensive to fix after many features depend on it. Adding automatic checks at the foundation stage means future code is examined before it reaches `main`.
+The permanent workflow is `.github/workflows/security.yml`. It has separate jobs so one tool failing does not hide the results of the others.
 
-The workflow does not use `continue-on-error` for required findings. In ordinary language, that means a serious finding cannot be quietly ignored while GitHub still shows a green check. Scanner setup/network failures also fail the relevant job rather than pretending the repository was scanned successfully.
+**CodeQL** analyzes the JavaScript/TypeScript and Python source trees. Its job is to identify source-code patterns associated with known vulnerability classes. It checks code, not business logic, so it complements rather than replaces normal review and tests.
 
-### Supply-chain and permission safety
+**Gitleaks** scans the repository history and current tree for values that look like credentials, tokens, or private keys. This matters because adding a secret and then deleting it in a later commit does not erase it from Git history. The configuration keeps a deliberately small allowlist for fixture hashes and local placeholder secrets that are clearly marked as non-production values.
 
-The workflow pins the checkout, CodeQL, Gitleaks, Trivy, Node setup, and uv setup actions to exact commit SHAs. This prevents an upstream moving tag from silently changing the code Serviq executes in CI. The workflow is read-only by default. Only the CodeQL job receives `security-events: write`, because that job must upload analysis results to GitHub code scanning. No tenant provider key or paid security service is required.
+**Trivy** scans the repository filesystem for vulnerable dependencies and risky configuration. The workflow uses its filesystem scan for HIGH and CRITICAL vulnerability/configuration findings.
 
-The local `make security` command is no longer a fake failing placeholder. It runs the dependency-audit portion locally and explicitly tells the developer that CodeQL, Gitleaks, and Trivy are enforced by GitHub Actions. This keeps local setup lightweight while preserving the full repository gate in CI.
+**Dependency audits** run against the actual package managers used by the repository. The JavaScript workspace uses `pnpm audit --prod --audit-level=high`. Each Python service is exported from uv using its locked/resolved dependency graph and pip-audit checks the resulting requirement list. That gives the API, worker, and LLM gateway independent Python dependency checks instead of auditing only one service.
+
+### `make security` is now real
+
+The Makefile no longer fails unconditionally. `make security` now runs the local dependency-audit surface: the pnpm production audit plus pip-audit for the three Python services. The heavier source/secret/configuration scanners stay in GitHub Actions, where they run in one neutral environment and produce repository Security results.
+
+This split is intentional. Developers get a useful local command without requiring every scanner binary to be installed manually, while pull requests still receive the stronger automated workflow.
+
+### Security tooling and false positives
+
+Security scanners sometimes identify test fixtures, example hashes, or development-only placeholders as if they were real secrets. The answer is not to disable scanning. OPE-272 added `.gitleaks.toml` with a minimal allowlist for values that are known fake fixtures and local-only placeholders. The allowlist is deliberately narrow so a future real credential does not get hidden behind a broad exemption.
+
+### Workflow permissions and secrets
+
+The Security workflow uses `contents: read` and `security-events: write`, which is the minimum useful permission pattern for source checkout plus CodeQL reporting. It does not receive cloud credentials, provider API keys, OIDC client secrets, database passwords, or any paid-service key. All tests/scans must work without a production secret.
 
 ### What this improves
 
-Before OPE-272, a pull request could pass the normal lint/type/test workflow even if it accidentally contained a credential, introduced a known vulnerable dependency, or added a serious infrastructure misconfiguration. After OPE-272, those failure classes have dedicated automated checks. This does not make Serviq “secure by default” or replace human security review; it creates a repeatable baseline that future tickets can build on.
+Before this ticket, security depended mainly on careful human behavior and whatever quality checks happened to run locally. After this ticket, source code, Git history, configuration, and dependency vulnerability checks are explicit repository gates. That makes accidental secret commits and several common vulnerable-dependency/source patterns easier to catch before merge.
 
-### Validation and intentional limits
+It also gives future security tickets a known baseline to extend. Later work can add specialized policies for containers, IaC, DAST, SAST tuning, SBOMs, signatures, or deployment security without rebuilding the fundamental repository security workflow first.
 
-The ticket is considered complete only after the new Security workflow runs on the pull request and all four categories report understandable results. The implementation deliberately does not add container-image scanning because Serviq does not yet publish product container images, and it does not add penetration testing, runtime WAF/security controls, or custom Semgrep rules. Those are different layers of security and belong to later work.
+### Validation completed
+
+The implementation was validated through real GitHub Actions rather than being marked complete from configuration inspection alone. The final branch passed CodeQL for JavaScript/TypeScript and Python, Gitleaks, Trivy, pnpm audit, and pip-audit for the API, worker, and LLM gateway. `make security` was also wired to the real dependency-audit commands.
+
+### What is intentionally not added
+
+OPE-272 does not add production runtime security controls, secrets-manager configuration, WAF rules, DAST against a deployed environment, container signing, SBOM publishing, branch-protection administration, compliance controls, penetration testing, or incident response automation. It establishes the repository scanning baseline only.
 
 
-## OPE-273 — Typed platform configuration and safe environment template
+## OPE-273 — Typed platform configuration and safe environment example
 
-### What we changed
+### What problem this ticket solves
 
-Serviq now has a real, typed configuration boundary instead of empty placeholder files. The API reads the architecture-owned platform environment variables through `services/api/app/core/config.py`, and the worker mirrors the same contract through its already-approved `services/worker/app/core/config.py` boundary. A root `.env.example` shows every platform variable with local-only placeholder values so a new developer can see which knobs exist without receiving any real credential.
+Serviq already had a mix of configuration placeholders: API and worker config files were empty shells, Docker Compose contained some local defaults, and the repository did not have one safe `.env.example` showing every platform-level variable. That can become dangerous as a project grows. If code reads environment variables directly in many places, names drift, startup errors become confusing, secret values can leak into logs, and production may silently use unsafe defaults.
 
-The configuration model covers the environment name, public and API URLs, PostgreSQL, Valkey, Kafka bootstrap servers, object storage, OIDC identity-provider settings, the server-side session secret, the internal LLM gateway connection, OpenTelemetry export, logging level, and the local webhook allowlist. Tenant-owned provider keys such as an OpenAI API key are intentionally *not* part of this environment model. Those future credentials belong to tenant-scoped BYOK storage, not to a process-wide `.env` file.
+OPE-273 creates one typed configuration boundary in each existing Python service that needs it today: the API and worker. It also creates the repository-root `.env.example` required by the architecture. Provider/BYOK credentials are deliberately excluded because those are tenant-owned secrets and must use the later encrypted tenant secret-store path instead of global environment variables.
 
-### How the code works
+### What changed in the API and worker
 
-`load_settings()` receives either the real process environment or an explicit mapping supplied by a test. It copies only the exact variable names frozen in Architecture v1.3 and asks Pydantic to validate their types. HTTP endpoints must really look like HTTP URLs; database, Valkey, and telemetry endpoints must parse as URLs; `SERVIQ_ENV` can only be `local`, `test`, `staging`, or `production`; `LOG_LEVEL` is restricted to the supported logging levels; and non-empty string fields cannot silently become blank configuration.
+Both services now depend on Pydantic Settings. Each service exposes a typed `Settings` object and a cached `load_settings()` function. Code that needs configuration should receive/use that object instead of scattering `os.getenv(...)` across business modules.
 
-Secrets use Pydantic's `SecretStr`, which masks them when represented. Serviq adds another protection around validation: `SettingsError` reports only the *names of bad fields*. It deliberately does not copy Pydantic's raw input values into startup errors. This matters because startup logs are often retained centrally, and a badly configured secret must never become a secret leaked into logs.
+The required platform variables are represented as typed fields: environment name, public/API URLs, PostgreSQL, Valkey, Kafka, object storage endpoint/bucket/access credentials, OIDC issuer/client configuration, session secret, LLM Gateway URL/internal token, OTLP endpoint, log level, and the local webhook allowlist.
+
+URL-shaped values use Pydantic URL validation. Empty strings are not accepted. Unknown environment values are rejected. Optional local/staging variables remain optional only where the architecture allows them.
+
+### Safe error behavior
+
+Configuration errors can accidentally expose credentials if the program prints the entire invalid input. The new config layer uses a custom Pydantic error renderer that includes the failing field name and validation reason while intentionally hiding `input_value` and `input_type` details. Tests place fake secrets inside invalid settings and assert those secret strings never appear in the returned error text or object representation.
 
 Production mode has an additional preflight check. Object-storage credentials, the OIDC client secret, `SESSION_SECRET`, and `LLM_GATEWAY_INTERNAL_TOKEN` must be non-empty. There is no insecure production fallback. Local development still uses explicit placeholders from `.env.example`, which makes it obvious that those values must be replaced outside local development.
 
@@ -5476,3 +5396,140 @@ The following work remains separate:
 
 Keeping those concerns out of OPE-301 is deliberate. This ticket builds the safe storage foundation those features can reuse without pretending the higher-level product workflows already exist.
 
+
+## OPE-302 — URL and sitemap knowledge-source registration
+
+**Implemented on branch:** `ope302`  
+**Linear ticket:** `OPE-302`
+
+### What problem this ticket solves
+
+OPE-300 created Serviq's relational knowledge schema, but an authorized tenant administrator still had no API for registering a public website or sitemap as a knowledge source. OPE-302 adds that control-plane boundary without starting ingestion in the request thread.
+
+The API now exposes:
+
+```text
+GET  /api/v1/knowledge-sources
+POST /api/v1/knowledge-sources
+```
+
+POST accepts only URL-backed source metadata:
+
+```text
+sourceType  = url | sitemap
+name        = trimmed, 1 to 160 characters
+sourceUri   = absolute HTTPS URL
+accessScope = customer | internal
+```
+
+Unknown request fields are rejected rather than silently ignored.
+
+### URL validation and why registration does not crawl
+
+Registration validates syntax before persistence. Requests are rejected when they use HTTP or another non-HTTPS scheme such as `file:`, `ftp:`, `data:`, or `javascript:`, contain embedded username/password credentials, contain a URL fragment, have malformed host/port syntax, or contain whitespace/control characters.
+
+OPE-302 deliberately performs no DNS resolution, private-network classification, redirects, HTTP fetching, robots checks, sitemap parsing, chunking, embedding work, or vector indexing. SSRF-sensitive network behavior belongs to the later crawler/fetch boundary, where redirect and resolved-IP rules can be enforced immediately before an outbound request.
+
+### Metadata-only creation
+
+A successful POST creates one tenant-owned `knowledge_sources` row with server-controlled lifecycle values:
+
+```text
+status          = pending
+sync_version    = 0
+object_key      = NULL
+last_synced_at  = NULL
+last_error_code = NULL
+```
+
+The tenant and creator come from trusted server-side workforce context. The browser cannot choose another tenant, creator, lifecycle state, sync version, storage object key, or ingestion behavior.
+
+There is no HTTP client, crawler, parser, object-storage write, embedding call, or background-ingestion trigger in the create service. Registration is intentionally a small metadata transaction.
+
+### Tenant isolation
+
+GET and POST use the trusted `serviq_tenant_id` request principal established by the authentication/tenancy foundation. There is no tenant ID request field or query parameter for callers to override.
+
+Repository reads include `knowledge_sources.tenant_id = current_tenant_id`. The real PostgreSQL integration test uses Serviq's shared V1.1.14 tenant-isolation harness, seeds a second tenant with a foreign knowledge source, and proves the current tenant's list excludes it.
+
+### Capability-based authorization
+
+OPE-302 adds the capability:
+
+```text
+knowledge.sources.manage
+```
+
+Alembic revision `20260819_0009_knowledge_permissions.py` seeds that capability onto the existing global workforce `owner` and `admin` system roles.
+
+Runtime authorization does not hard-code role names such as `Knowledge Manager`. It reuses OPE-282's effective-capability resolver and requires the current active tenant membership to contain `knowledge.sources.manage`. A future tenant Knowledge Manager role can therefore receive the same capability through normal RBAC configuration without changing these routes.
+
+A workforce user without the capability receives a safe 403 response. Missing or inactive tenant membership fails closed through the same authorization boundary.
+
+### Safe list response
+
+GET returns browser-safe metadata only:
+
+```text
+id
+sourceType
+name
+sourceUri
+accessScope
+status
+syncVersion
+lastSyncedAt
+lastErrorCode
+createdAt
+updatedAt
+```
+
+It does not expose `objectKey`, `createdBy`, storage internals, credentials, or secret values.
+
+The response model supports all five architecture-approved source types and permits `sourceUri = null`. That keeps the list route compatible with future PDF, Markdown, and text sources, whose records use object storage instead of a URL, while OPE-302 POST remains intentionally restricted to `url | sitemap`.
+
+### Tests added
+
+`services/api/tests/test_knowledge_source_schemas.py` covers strict request validation, including valid trimming and rejection of unsafe schemes, malformed URLs, credentials, fragments, invalid source types/scopes, blank or oversized names, and unknown fields.
+
+`services/api/tests/integration/test_knowledge_sources_api.py` uses the real PostgreSQL environment plus the shared tenant-isolation harness. It covers valid URL creation, valid sitemap creation, `pending` plus `sync_version = 0`, null object-storage state, tenant isolation, unauthorized access, safe response fields, and the HTTP validation matrix.
+
+That integration test also replaces the default `httpx` outbound transport with a guard that raises immediately. FastAPI requests use the in-process ASGI transport, so the test fails if knowledge-source registration later starts an ordinary outbound HTTP request. This protects the metadata-only rule.
+
+`services/api/tests/integration/test_knowledge_permissions.py` verifies that the RBAC migration grants `knowledge.sources.manage` to the existing Owner and Admin system roles.
+
+### Main files changed
+
+```text
+services/api/alembic/versions/20260819_0009_knowledge_permissions.py
+services/api/app/modules/knowledge/__init__.py
+services/api/app/modules/knowledge/models.py
+services/api/app/modules/knowledge/repository.py
+services/api/app/modules/knowledge/schemas.py
+services/api/app/modules/knowledge/errors.py
+services/api/app/modules/knowledge/service.py
+services/api/app/modules/knowledge/router.py
+services/api/app/main.py
+services/api/tests/test_knowledge_source_schemas.py
+services/api/tests/integration/test_knowledge_sources_api.py
+services/api/tests/integration/test_knowledge_permissions.py
+docs/SERVIQ_BUILD_GUIDE.md
+```
+
+### What this improves
+
+Serviq administrators can now begin knowledge setup through a real tenant-scoped API instead of direct database writes. The browser cannot choose arbitrary URL schemes, credentials-in-URL, tenant identity, creator identity, or source lifecycle state. Authorization is capability-based, list queries are tenant-scoped, and normal responses omit storage internals.
+
+Registration also remains fast and deterministic. It writes metadata and leaves expensive or SSRF-sensitive network work to the dedicated ingestion system that will own those controls.
+
+The GET projection is forward-compatible with future file-backed knowledge sources without expanding this ticket's POST contract.
+
+### What OPE-302 intentionally leaves for later
+
+This ticket does not implement website crawling, sitemap fetching/parsing, DNS/private-network SSRF checks for outbound fetches, redirect rules, robots/allowlist enforcement, file uploads, document parsing, chunking, embeddings, vector indexing, synchronization jobs, knowledge-source edit/disable routes, or customer-answer retrieval.
+
+Those remain separate tickets and must reuse this tenant/RBAC/source foundation instead of expanding OPE-302 into an ingestion worker.
+
+### Completion and validation rule
+
+The implementation is complete on `ope302` only after the final branch head, including this cumulative documentation update, passes the repository's normal CI/security checks and real PostgreSQL migration/integration coverage. Until it is merged, this work must not be represented as production behavior on `main`.

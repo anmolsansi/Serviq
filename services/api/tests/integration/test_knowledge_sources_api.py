@@ -18,13 +18,17 @@ from app.core.database import (
 )
 from app.core.principal import require_tenant_id, require_workforce_user_id
 from app.main import app
+from tests.support.tenant_isolation import (
+    TenantIsolationFixture,
+    assert_list_excludes_foreign,
+    cleanup_tenant_isolation_fixture,
+    seed_tenant_isolation_fixture,
+)
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SERVIQ_DATABASE_INTEGRATION") != "1",
     reason="requires the real PostgreSQL integration environment",
 )
-
-KNOWLEDGE_PERMISSION = "knowledge.sources.manage"
 
 
 def _install_overrides(
@@ -51,117 +55,12 @@ def _clear_overrides() -> None:
         app.dependency_overrides.pop(dependency, None)
 
 
-async def _global_role_id(session: AsyncSession, key: str) -> UUID:
-    role_id = await session.scalar(
-        text(
-            """
-            SELECT id FROM roles
-            WHERE tenant_id IS NULL AND is_system=true AND key=:key
-            """
-        ),
-        {"key": key},
-    )
-    assert isinstance(role_id, UUID)
-    return role_id
-
-
-async def _seed(session: AsyncSession) -> dict[str, UUID]:
-    ids = {
-        name: uuid4()
-        for name in (
-            "tenant_a",
-            "tenant_b",
-            "manager",
-            "ordinary",
-            "foreign",
-            "manager_role",
-            "ordinary_role",
-            "manager_membership",
-            "ordinary_membership",
-            "foreign_membership",
-            "foreign_source",
-        )
-    }
-    owner_role = await _global_role_id(session, "owner")
-
-    await session.execute(
-        text(
-            """
-            INSERT INTO tenants (id, slug, display_name, status, default_locale)
-            VALUES (:tenant_a, :slug_a, 'Knowledge A', 'active', 'en'),
-                   (:tenant_b, :slug_b, 'Knowledge B', 'active', 'en')
-            """
-        ),
-        {
-            **ids,
-            "slug_a": f"knowledge-api-a-{ids['tenant_a'].hex[:10]}",
-            "slug_b": f"knowledge-api-b-{ids['tenant_b'].hex[:10]}",
-        },
-    )
-    for key in ("manager", "ordinary", "foreign"):
-        await session.execute(
-            text(
-                """
-                INSERT INTO users (
-                  id, oidc_issuer, oidc_subject, email, display_name, status
-                ) VALUES (
-                  :id, 'https://ope302.test', :subject, :email, :name, 'active'
-                )
-                """
-            ),
-            {
-                "id": ids[key],
-                "subject": f"{key}-{ids[key].hex}",
-                "email": f"{key}@example.com",
-                "name": key.title(),
-            },
-        )
-
-    await session.execute(
-        text(
-            """
-            INSERT INTO roles (id, tenant_id, key, display_name, is_system)
-            VALUES (:manager_role, :tenant_a, :manager_key, 'Knowledge Manager', false),
-                   (:ordinary_role, :tenant_a, :ordinary_key, 'Ordinary Agent', false)
-            """
-        ),
-        {
-            **ids,
-            "manager_key": f"knowledge-manager-{ids['manager_role'].hex}",
-            "ordinary_key": f"ordinary-{ids['ordinary_role'].hex}",
-        },
-    )
-    await session.execute(
-        text(
-            """
-            INSERT INTO role_permissions (role_id, permission_key)
-            VALUES (:manager_role, :permission)
-            """
-        ),
-        {"manager_role": ids["manager_role"], "permission": KNOWLEDGE_PERMISSION},
-    )
-    await session.execute(
-        text(
-            """
-            INSERT INTO memberships (id, tenant_id, user_id, status)
-            VALUES (:manager_membership, :tenant_a, :manager, 'active'),
-                   (:ordinary_membership, :tenant_a, :ordinary, 'active'),
-                   (:foreign_membership, :tenant_b, :foreign, 'active')
-            """
-        ),
-        ids,
-    )
-    await session.execute(
-        text(
-            """
-            INSERT INTO membership_roles (membership_id, role_id)
-            VALUES (:manager_membership, :manager_role),
-                   (:ordinary_membership, :ordinary_role),
-                   (:foreign_membership, :owner_role)
-            """
-        ),
-        {**ids, "owner_role": owner_role},
-    )
+async def _seed_foreign_source(
+    session: AsyncSession,
+    *,
+    fixture: TenantIsolationFixture,
+    source_id: UUID,
+) -> None:
     await session.execute(
         text(
             """
@@ -169,56 +68,27 @@ async def _seed(session: AsyncSession) -> dict[str, UUID]:
               id, tenant_id, source_type, name, source_uri, access_scope,
               status, sync_version, created_by
             ) VALUES (
-              :foreign_source, :tenant_b, 'url', 'Foreign source',
-              'https://foreign.example.com/docs', 'customer', 'ready', 4, :foreign
+              :source_id, :tenant_id, 'url', 'Shared Knowledge',
+              'https://foreign.example.com/docs', 'customer', 'ready', 4, :created_by
             )
             """
         ),
-        ids,
+        {
+            "source_id": source_id,
+            "tenant_id": fixture.tenant_b,
+            "created_by": fixture.owner_b,
+        },
     )
-    return ids
 
 
-async def _cleanup(session: AsyncSession, ids: dict[str, UUID]) -> None:
+async def _cleanup_knowledge_sources(
+    session: AsyncSession,
+    *,
+    fixture: TenantIsolationFixture,
+) -> None:
     await session.execute(
         text("DELETE FROM knowledge_sources WHERE tenant_id IN (:a, :b)"),
-        {"a": ids["tenant_a"], "b": ids["tenant_b"]},
-    )
-    await session.execute(
-        text(
-            """
-            DELETE FROM membership_roles WHERE membership_id IN (
-              :manager_membership, :ordinary_membership, :foreign_membership
-            )
-            """
-        ),
-        ids,
-    )
-    await session.execute(
-        text(
-            """
-            DELETE FROM memberships WHERE id IN (
-              :manager_membership, :ordinary_membership, :foreign_membership
-            )
-            """
-        ),
-        ids,
-    )
-    await session.execute(
-        text("DELETE FROM role_permissions WHERE role_id=:role"),
-        {"role": ids["manager_role"]},
-    )
-    await session.execute(
-        text("DELETE FROM roles WHERE id IN (:manager_role, :ordinary_role)"),
-        ids,
-    )
-    await session.execute(
-        text("DELETE FROM users WHERE id IN (:manager, :ordinary, :foreign)"),
-        ids,
-    )
-    await session.execute(
-        text("DELETE FROM tenants WHERE id IN (:a, :b)"),
-        {"a": ids["tenant_a"], "b": ids["tenant_b"]},
+        {"a": fixture.tenant_a, "b": fixture.tenant_b},
     )
 
 
@@ -228,11 +98,19 @@ def test_knowledge_source_create_list_validation_and_tenant_isolation(
     async def scenario() -> None:
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
+        fixture = TenantIsolationFixture.new()
+        foreign_source_id = uuid4()
         transport = httpx.ASGITransport(app=app)
-        ids: dict[str, UUID] = {}
+        seeded = False
         try:
             async with session_factory() as session, session.begin():
-                ids = await _seed(session)
+                await seed_tenant_isolation_fixture(session, fixture)
+                await _seed_foreign_source(
+                    session,
+                    fixture=fixture,
+                    source_id=foreign_source_id,
+                )
+                seeded = True
 
             async def reject_outbound_http(
                 _transport: httpx.AsyncHTTPTransport,
@@ -248,8 +126,8 @@ def test_knowledge_source_create_list_validation_and_tenant_isolation(
 
             _install_overrides(
                 session_factory,
-                user_id=ids["manager"],
-                tenant_id=ids["tenant_a"],
+                user_id=fixture.owner_a,
+                tenant_id=fixture.tenant_a,
             )
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 url_created = await client.post(
@@ -286,9 +164,14 @@ def test_knowledge_source_create_list_validation_and_tenant_isolation(
 
                 listed = await client.get("/api/v1/knowledge-sources")
                 assert listed.status_code == 200
-                listed_ids = {UUID(item["id"]) for item in listed.json()["data"]}
+                listed_items = listed.json()["data"]
+                listed_ids = {UUID(item["id"]) for item in listed_items}
                 assert listed_ids == {url_id, sitemap_id}
-                assert ids["foreign_source"] not in listed_ids
+                assert_list_excludes_foreign(
+                    listed_items,
+                    foreign_id=foreign_source_id,
+                    id_of=lambda item: UUID(item["id"]),
+                )
 
                 invalid_payloads = [
                     {
@@ -349,7 +232,7 @@ def test_knowledge_source_create_list_validation_and_tenant_isolation(
                             WHERE id=:id AND tenant_id=:tenant
                             """
                         ),
-                        {"id": url_id, "tenant": ids["tenant_a"]},
+                        {"id": url_id, "tenant": fixture.tenant_a},
                     )
                 ).one()
                 assert persisted.status == "pending"
@@ -358,8 +241,8 @@ def test_knowledge_source_create_list_validation_and_tenant_isolation(
 
             _install_overrides(
                 session_factory,
-                user_id=ids["ordinary"],
-                tenant_id=ids["tenant_a"],
+                user_id=fixture.member_a,
+                tenant_id=fixture.tenant_a,
             )
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 denied_list = await client.get("/api/v1/knowledge-sources")
@@ -376,9 +259,10 @@ def test_knowledge_source_create_list_validation_and_tenant_isolation(
                 assert denied_create.status_code == 403
         finally:
             _clear_overrides()
-            if ids:
+            if seeded:
                 async with session_factory() as session, session.begin():
-                    await _cleanup(session, ids)
+                    await _cleanup_knowledge_sources(session, fixture=fixture)
+                    await cleanup_tenant_isolation_fixture(session, fixture)
             await engine.dispose()
 
     asyncio.run(scenario())

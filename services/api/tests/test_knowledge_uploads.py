@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from tempfile import SpooledTemporaryFile
+from io import BytesIO
 
 import pytest
 from starlette.datastructures import Headers, UploadFile
@@ -14,11 +14,8 @@ from app.modules.knowledge.uploads import (
 
 
 def _upload(filename: str, content_type: str, data: bytes) -> UploadFile:
-    file = SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
-    file.write(data)
-    file.seek(0)
     return UploadFile(
-        file=file,
+        file=BytesIO(data),
         filename=filename,
         headers=Headers({"content-type": content_type}),
     )

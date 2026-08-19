@@ -3,10 +3,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, UploadFile, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import UploadFile
 
 from app.core.api import SuccessEnvelope
 from app.core.database import get_database_session
@@ -92,7 +93,10 @@ async def _create_file_knowledge_source(
     try:
         form = await request.form()
         allowed = {"sourceType", "name", "accessScope", "file"}
-        if set(form.keys()) != allowed or any(len(form.getlist(key)) != 1 for key in allowed):
+        has_invalid_fields = set(form.keys()) != allowed or any(
+            len(form.getlist(key)) != 1 for key in allowed
+        )
+        if has_invalid_fields:
             raise KnowledgeUploadValidationError("Multipart fields are invalid.")
 
         upload = form.get("file")
@@ -119,7 +123,11 @@ async def _create_file_knowledge_source(
     except KnowledgeUploadValidationError:
         return _error(422, "VALIDATION_ERROR", "Knowledge file upload is invalid.")
     except ObjectStorageError:
-        return _error(503, "OBJECT_STORAGE_UNAVAILABLE", "Knowledge file storage is unavailable.")
+        return _error(
+            503,
+            "OBJECT_STORAGE_UNAVAILABLE",
+            "Knowledge file storage is unavailable.",
+        )
     return SuccessEnvelope(data=source)
 
 

@@ -82,7 +82,7 @@ There is no HTTP client, crawler, parser, embedding call, object-storage write, 
 
 Both GET and POST use the trusted `serviq_tenant_id` request principal established by the authentication/tenancy foundation. There is no tenant ID request field or tenant query parameter for a caller to override.
 
-The repository list query includes `knowledge_sources.tenant_id = current_tenant_id`. A UUID from another tenant is therefore not enough to cross the isolation boundary, and the integration test seeds two tenants to prove the list endpoint returns only the current tenant's records.
+The repository list query includes `knowledge_sources.tenant_id = current_tenant_id`. A UUID from another tenant is therefore not enough to cross the isolation boundary, and the integration test uses the shared tenant-isolation harness to seed two tenants and prove the list endpoint returns only the current tenant's records.
 
 ### Capability-based authorization
 
@@ -124,7 +124,7 @@ The response model supports all five architecture-approved knowledge source type
 
 `services/api/tests/test_knowledge_source_schemas.py` covers strict request validation, including valid trimming and the rejection matrix for unsafe schemes, malformed URLs, credentials, fragments, invalid source types/scopes, blank or oversized names, and unknown fields.
 
-`services/api/tests/integration/test_knowledge_sources_api.py` uses the real PostgreSQL integration environment. It covers valid URL creation, valid sitemap creation, `pending` plus `sync_version = 0`, null object storage state, tenant isolation, unauthorized access, safe response fields, and the request-validation matrix at the HTTP boundary.
+`services/api/tests/integration/test_knowledge_sources_api.py` uses the real PostgreSQL integration environment and the shared tenant-isolation harness. It covers valid URL creation, valid sitemap creation, `pending` plus `sync_version = 0`, null object storage state, tenant isolation, unauthorized access, safe response fields, and the request-validation matrix at the HTTP boundary.
 
 The integration test also replaces the default `httpx` outbound transport with a guard that raises immediately. API calls use FastAPI's in-process ASGI transport, so the test will fail if knowledge-source registration later starts an ordinary outbound HTTP request. This protects the OPE-302 rule that create is metadata-only.
 

@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
 
 from app.core.object_storage import ObjectStorage, knowledge_raw_key
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
@@ -86,15 +86,13 @@ async def create_file_source(
     validated = await validate_upload(upload, source_type=source_type)
 
     source_id = uuid4()
-    object_id = uuid4()
-    key = knowledge_raw_key(tenant_id=tenant_id, source_id=source_id, object_id=object_id)
-    metadata = {"original-filename": validated.original_filename}
+    key = knowledge_raw_key(tenant_id=tenant_id, source_id=source_id, object_id=uuid4())
     await run_in_threadpool(
         storage.put_object,
         key,
         upload.file,
         content_type=validated.content_type,
-        metadata=metadata,
+        metadata={"original-filename": validated.original_filename},
     )
 
     try:

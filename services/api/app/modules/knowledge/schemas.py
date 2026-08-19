@@ -7,7 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-KnowledgeSourceType = Literal["url", "sitemap"]
+RegisterableKnowledgeSourceType = Literal["url", "sitemap"]
+KnowledgeSourceType = Literal["url", "sitemap", "pdf", "markdown", "text"]
 KnowledgeAccessScope = Literal["customer", "internal"]
 KnowledgeSourceStatus = Literal["pending", "syncing", "ready", "failed", "disabled"]
 
@@ -17,7 +18,7 @@ class KnowledgeSourceCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    source_type: KnowledgeSourceType = Field(alias="sourceType")
+    source_type: RegisterableKnowledgeSourceType = Field(alias="sourceType")
     name: str = Field(min_length=1, max_length=160)
     source_uri: str = Field(alias="sourceUri", min_length=1)
     access_scope: KnowledgeAccessScope = Field(alias="accessScope")
@@ -70,7 +71,7 @@ class KnowledgeSourceView(BaseModel):
     id: UUID
     source_type: KnowledgeSourceType = Field(alias="sourceType")
     name: str
-    source_uri: str = Field(alias="sourceUri")
+    source_uri: str | None = Field(alias="sourceUri")
     access_scope: KnowledgeAccessScope = Field(alias="accessScope")
     status: KnowledgeSourceStatus
     sync_version: int = Field(alias="syncVersion")

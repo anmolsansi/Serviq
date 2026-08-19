@@ -40,7 +40,10 @@ class KnowledgeSourceCreateRequest(BaseModel):
             raise ValueError("sourceUri must not be blank")
         if "#" in normalized:
             raise ValueError("sourceUri must not contain a fragment")
-        if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in normalized):
+        if any(
+            character.isspace() or ord(character) < 32 or ord(character) == 127
+            for character in normalized
+        ):
             raise ValueError("sourceUri contains invalid whitespace or control characters")
 
         try:

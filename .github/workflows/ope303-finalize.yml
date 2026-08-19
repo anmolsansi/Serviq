@@ -1,16 +1,15 @@
 name: OPE-303 Finalize
 
 on:
-  push:
-    branches: [ope303]
-    paths:
-      - .github/workflows/ope303-finalize.yml
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ope303'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -26,10 +25,8 @@ jobs:
       - name: Append OPE-303 build guide
         shell: bash
         run: |
-          if grep -q '^## OPE-303 — Knowledge file uploads' docs/SERVIQ_BUILD_GUIDE.md; then
-            exit 0
-          fi
-          cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
+          if ! grep -q '^## OPE-303 — Knowledge file uploads' docs/SERVIQ_BUILD_GUIDE.md; then
+            cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
 
 
 ## OPE-303 — Knowledge file uploads
@@ -37,20 +34,21 @@ jobs:
 **Implemented on branch:** `ope303`  
 **Linear ticket:** `OPE-303`
 
-OPE-303 extends the existing knowledge-source API so an authorized business user can register approved PDF, Markdown, and plain-text files in addition to the URL and sitemap sources added by OPE-302. The same `POST /api/v1/knowledge-sources` path now keeps JSON registration for URL-backed sources and accepts `multipart/form-data` for file-backed sources.
+OPE-303 extends the existing knowledge-source API so an authorized business user can register approved PDF, Markdown, and plain-text files in addition to the URL and sitemap sources added by OPE-302. The same `POST /api/v1/knowledge-sources` path keeps JSON registration for URL-backed sources and accepts `multipart/form-data` for file-backed sources.
 
-The upload rules are deliberately strict. PDF accepts only `.pdf` with `application/pdf` up to 25 MiB. Markdown accepts `.md` or `.markdown` with `text/markdown` or `text/plain` up to 5 MiB. Plain text accepts `.txt` with `text/plain` up to 5 MiB. The server checks the declared source type, filename extension, MIME type, actual byte count, and basic content sanity together. A PDF must start with the PDF signature, while Markdown/text must decode as UTF-8 and cannot contain NUL bytes. Uploaded content is treated only as untrusted data and is never executed.
+The upload rules are deliberately strict. PDF accepts only `.pdf` with `application/pdf` up to 25 MiB. Markdown accepts `.md` or `.markdown` with `text/markdown` or `text/plain` up to 5 MiB. Plain text accepts `.txt` with `text/plain` up to 5 MiB. The server checks source type, extension, MIME type, actual byte count, and basic content sanity together. A PDF must start with the PDF signature, while Markdown/text must decode as UTF-8 and cannot contain NUL bytes. Uploaded content is treated only as untrusted data and is never executed.
 
 File size is counted with bounded chunk reads. The API stops as soon as the type-specific maximum is exceeded instead of performing an unlimited application-level read. FastAPI's multipart parser may spool an upload to a temporary file, and the validated stream is rewound before it is sent to object storage.
 
 User filenames never become storage paths. Serviq generates a source UUID and object UUID, then reuses the OPE-301 raw-key helper to produce `tenants/{tenantId}/knowledge/{sourceId}/raw/{objectId}`. Traversal text such as `../../secret.txt` therefore cannot escape a tenant or source prefix. A sanitized basename may be retained as object metadata only.
 
-The durability sequence also avoids mixing network storage work with a database transaction. Serviq first verifies the caller has the existing `knowledge.sources.manage` capability, validates the file, uploads the generated object outside a database transaction, and then creates a `knowledge_sources` row with `source_uri = NULL`, the generated `object_key`, `status = pending`, and `sync_version = 0`. If storage fails, no database source is created. If the database write fails after storage succeeds, Serviq deletes the just-uploaded generated object as compensation so it does not leave an orphan behind.
+Serviq verifies the caller has the existing `knowledge.sources.manage` capability, validates the file, uploads the generated object outside a database transaction, and then creates a `knowledge_sources` row with `source_uri = NULL`, the generated `object_key`, `status = pending`, and `sync_version = 0`. If storage fails, no database source is created. If the database write fails after storage succeeds, Serviq deletes the just-uploaded generated object as compensation.
 
 Responses continue using the browser-safe knowledge-source projection. They show business metadata such as source type, name, access scope, status, and sync state, but do not expose `objectKey`, bucket names, internal endpoints, credentials, or `createdBy`.
 
-Automated coverage includes valid file types, MIME/extension mismatch, fake PDFs, invalid UTF-8, oversized files, malicious filenames, authorization, tenant-scoped persistence, storage failure, and database-failure compensation. OPE-303 deliberately does not parse documents, chunk or embed content, run synchronization workers, crawl URLs, add customer attachments, introduce presigned uploads, or change the frozen object-key layout. Those remain later ingestion tickets.
+Automated coverage includes valid file types, MIME/extension mismatch, fake PDFs, invalid UTF-8, oversized files, malicious filenames, authorization, tenant-scoped persistence, storage failure, and database-failure compensation. OPE-303 deliberately does not parse documents, chunk or embed content, run synchronization workers, crawl URLs, add customer attachments, introduce presigned uploads, or change the frozen object-key layout.
 EOF
+          fi
       - name: Commit generated lock and cumulative guide
         run: |
           if git diff --quiet -- services/api/uv.lock docs/SERVIQ_BUILD_GUIDE.md; then

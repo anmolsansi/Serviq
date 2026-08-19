@@ -188,12 +188,15 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                 "get_knowledge_object_storage",
                 lambda: compensation_storage,
             )
-            original_add = knowledge_service.add_file_knowledge_source
 
             def fail_database(*args: Any, **kwargs: Any) -> Any:
                 raise RuntimeError("synthetic database failure")
 
-            monkeypatch.setattr(knowledge_service, "add_file_knowledge_source", fail_database)
+            monkeypatch.setitem(
+                knowledge_service.__dict__,
+                "add_file_knowledge_source",
+                fail_database,
+            )
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 failed_db = await client.post(
                     "/api/v1/knowledge-sources",
@@ -203,7 +206,6 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                 assert failed_db.status_code == 500
             assert compensation_storage.objects == {}
             assert len(compensation_storage.deleted) == 1
-            monkeypatch.setattr(knowledge_service, "add_file_knowledge_source", original_add)
         finally:
             _clear_overrides()
             if seeded:

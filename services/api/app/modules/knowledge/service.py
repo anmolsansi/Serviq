@@ -1,14 +1,22 @@
 """Knowledge source registration, listing, tenant isolation, and capability checks."""
 
+from contextlib import suppress
 from datetime import UTC, datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
 
+from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
 from app.modules.knowledge.models import KnowledgeSource
-from app.modules.knowledge.repository import add_knowledge_source, list_knowledge_sources
+from app.modules.knowledge.repository import (
+    add_file_knowledge_source,
+    add_knowledge_source,
+    list_knowledge_sources,
+)
 from app.modules.knowledge.schemas import (
     KnowledgeAccessScope,
     KnowledgeSourceCreateRequest,
@@ -16,6 +24,7 @@ from app.modules.knowledge.schemas import (
     KnowledgeSourceType,
     KnowledgeSourceView,
 )
+from app.modules.knowledge.uploads import FileKnowledgeSourceType, validate_upload
 from app.modules.tenancy.errors import TenantMembershipAccessError
 from app.modules.tenancy.service import resolve_tenant_membership
 
@@ -58,6 +67,56 @@ async def create_source(
         )
         await session.flush()
         return _to_view(source)
+
+
+async def create_file_source(
+    session: AsyncSession,
+    *,
+    storage: ObjectStorage,
+    user_id: UUID,
+    tenant_id: UUID,
+    source_type: FileKnowledgeSourceType,
+    name: str,
+    access_scope: Literal["customer", "internal"],
+    upload: UploadFile,
+) -> KnowledgeSourceView:
+    """Validate and durably register one untrusted file-backed knowledge source."""
+
+    await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+    await session.rollback()
+    validated = await validate_upload(upload, source_type=source_type)
+
+    source_id = uuid4()
+    key = knowledge_raw_key(tenant_id=tenant_id, source_id=source_id, object_id=uuid4())
+    await run_in_threadpool(
+        storage.put_object,
+        key,
+        upload.file,
+        content_type=validated.content_type,
+        metadata={"original-filename": validated.original_filename},
+    )
+
+    try:
+        async with session.begin():
+            now = datetime.now(UTC)
+            source = add_file_knowledge_source(
+                session,
+                source_id=source_id,
+                tenant_id=tenant_id,
+                source_type=source_type,
+                name=name,
+                object_key=key.value,
+                access_scope=access_scope,
+                created_by=user_id,
+                now=now,
+            )
+            await session.flush()
+            view = _to_view(source)
+    except Exception:
+        with suppress(ObjectStorageError):
+            await run_in_threadpool(storage.delete_object, key)
+        raise
+    return view
 
 
 async def _require_permission(

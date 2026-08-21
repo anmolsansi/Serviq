@@ -82,7 +82,7 @@ make test
 docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
 ```
 
-The workflow deliberately does not call `make security`, `make e2e`, or `make load-test` while those targets are still intentional non-zero placeholders. Later tickets should add those gates to release publishing after the real implementations exist.
+The release workflow currently keeps the OPE-304 publication gate at those baseline checks. `make security` is implemented and the repository's Security workflow enforces CodeQL, Gitleaks, Trivy, and dependency-audit coverage, but release publishing does not invoke `make security` as an additional gate today. `make e2e` and `make load-test` are still intentionally non-zero placeholders. Expanding the release-publication gate should be a separate reviewed release-policy change rather than an undocumented side effect of this workflow.
 
 The workflow does not need a personal access token or a paid service. It uses GitHub's repository-scoped `GITHUB_TOKEN` with explicit permissions for the jobs that publish releases and ensure release labels exist.
 
@@ -167,10 +167,10 @@ Publishing a Serviq GitHub Release currently does not automatically:
 - generate an SBOM;
 - sign source or container artifacts;
 - create provenance/attestations;
-- run the future security, E2E, or load-test gates;
+- run `make security`, E2E, or load testing as additional release-publication gates;
 - create release branches or backports.
 
-Those capabilities should be added only through dedicated reviewed tickets rather than being hidden inside the release workflow.
+The repository Security workflow already provides the implemented security scanning gate outside release publication. E2E and load testing remain future work. Any of these release-policy expansions should be added only through dedicated reviewed tickets rather than being hidden inside the release workflow.
 
 ## Future stable-release gate
 

@@ -66,6 +66,8 @@ The repository also uses type labels such as `feature`, `fix`, `security`, `infr
 
 `.github/release.yml` maps these labels into readable sections in GitHub-generated release notes. Pull requests that do not match a specific category still appear in the catch-all `Other Changes` section unless they have `release:skip`.
 
+Every supported release path runs the same idempotent release-label bootstrap before publishing. If one of the release labels is missing, the workflow restores it with the repository-scoped `GITHUB_TOKEN` without deleting or replacing GitHub's existing default labels.
+
 ## Release workflow
 
 The permanent workflow is `.github/workflows/release.yml`.
@@ -82,7 +84,7 @@ docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
 
 The workflow deliberately does not call `make security`, `make e2e`, or `make load-test` while those targets are still intentional non-zero placeholders. Later tickets should add those gates to release publishing after the real implementations exist.
 
-The workflow does not need a personal access token or a paid service. It uses GitHub's repository-scoped `GITHUB_TOKEN` with explicit permissions for the job that publishes a release.
+The workflow does not need a personal access token or a paid service. It uses GitHub's repository-scoped `GITHUB_TOKEN` with explicit permissions for the jobs that publish releases and ensure release labels exist.
 
 ## Creating a release from the GitHub UI
 

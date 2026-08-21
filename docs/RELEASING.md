@@ -31,6 +31,8 @@ Use the version components this way:
 - `PATCH` changes for backward-compatible fixes.
 - `alpha`, `beta`, and `rc` suffixes identify prereleases that are not the final stable version.
 
+The release workflow enforces the supported Semantic Versioning form before any release command runs. Core numeric components cannot contain leading zeroes, and numeric prerelease identifiers cannot contain leading zeroes either. For example, `v0.2.0-alpha.1` is valid while `v0.2.0-alpha.01` is rejected. Build metadata such as `+build.7` is not accepted by the current Serviq release workflow because OPE-304 only defines the version-plus-optional-prerelease form.
+
 A release below `v1.0.0`, or any release carrying `alpha`, `beta`, or `rc`, must not be presented as proof that the complete Serviq product is production-ready.
 
 ## Relationship between tickets, pull requests, tags, and releases

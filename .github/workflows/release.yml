@@ -23,6 +23,7 @@ on:
       - "v*"
     paths:
       - .github/release.yml
+      - .github/scripts/validate-release-version.sh
       - .github/workflows/release.yml
       - .github/pull_request_template.md
       - CONTRIBUTING.md
@@ -201,10 +202,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "Version must be semantic versioning with a leading v, for example v0.2.0-alpha.1 or v1.0.0."
-            exit 1
-          fi
+          bash .github/scripts/validate-release-version.sh "$VERSION"
 
           if [[ "$VERSION" == *-* && "$IS_PRERELEASE" != "true" ]]; then
             echo "A version with a prerelease suffix must be published as a GitHub prerelease."
@@ -319,10 +317,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "Tag $VERSION is not an allowed semantic version."
-            exit 1
-          fi
+          bash .github/scripts/validate-release-version.sh "$VERSION"
 
           git fetch origin main --tags
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then

@@ -23,6 +23,8 @@ on:
       - "v*"
     paths:
       - .github/release.yml
+      - .github/scripts/ensure-release-labels.sh
+      - .github/scripts/validate-release-version.sh
       - .github/workflows/release.yml
       - .github/pull_request_template.md
       - CONTRIBUTING.md
@@ -90,20 +92,7 @@ jobs:
       - name: Ensure release labels exist
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh label create "release:major" --color B60205 --description "Breaking change requiring a major version" --force
-          gh label create "release:minor" --color 0E8A16 --description "Backward-compatible feature for a minor version" --force
-          gh label create "release:patch" --color 1D76DB --description "Backward-compatible fix for a patch version" --force
-          gh label create "release:skip" --color C5DEF5 --description "Exclude this pull request from generated release notes" --force
-          gh label create "breaking-change" --color D93F0B --description "Introduces a breaking compatibility change" --force
-          gh label create "feature" --color 0E8A16 --description "Adds user-visible or platform functionality" --force
-          gh label create "fix" --color D4C5F9 --description "Corrects faulty behavior" --force
-          gh label create "security" --color B60205 --description "Security hardening or vulnerability remediation" --force
-          gh label create "infrastructure" --color 5319E7 --description "Infrastructure, deployment, or operations change" --force
-          gh label create "testing" --color FBCA04 --description "Testing or quality-system change" --force
-          gh label create "dependencies" --color 0366D6 --description "Dependency update or dependency-management change" --force
-          gh label create "refactor" --color C2E0C6 --description "Internal restructuring without intended behavior change" --force
-          gh label create "performance" --color F9D0C4 --description "Performance or efficiency improvement" --force
+        run: bash .github/scripts/ensure-release-labels.sh
 
       - name: Publish the first Serviq foundation prerelease once
         env:
@@ -163,6 +152,7 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: write
+      issues: write
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -201,10 +191,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "Version must be semantic versioning with a leading v, for example v0.2.0-alpha.1 or v1.0.0."
-            exit 1
-          fi
+          bash .github/scripts/validate-release-version.sh "$VERSION"
 
           if [[ "$VERSION" == *-* && "$IS_PRERELEASE" != "true" ]]; then
             echo "A version with a prerelease suffix must be published as a GitHub prerelease."
@@ -240,6 +227,11 @@ jobs:
 
       - name: Validate Compose configuration
         run: docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+
+      - name: Ensure release labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ensure-release-labels.sh
 
       - name: Publish release from the validated main commit
         env:
@@ -283,6 +275,7 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: write
+      issues: write
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v4
@@ -319,10 +312,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "Tag $VERSION is not an allowed semantic version."
-            exit 1
-          fi
+          bash .github/scripts/validate-release-version.sh "$VERSION"
 
           git fetch origin main --tags
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
@@ -349,6 +339,11 @@ jobs:
 
       - name: Validate Compose configuration
         run: docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
+
+      - name: Ensure release labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ensure-release-labels.sh
 
       - name: Publish release for the existing tag
         env:

@@ -31,6 +31,8 @@ Use the version components this way:
 - `PATCH` changes for backward-compatible fixes.
 - `alpha`, `beta`, and `rc` suffixes identify prereleases that are not the final stable version.
 
+The release workflow enforces the supported Semantic Versioning form before any release command runs. Core numeric components cannot contain leading zeroes, and numeric prerelease identifiers cannot contain leading zeroes either. For example, `v0.2.0-alpha.1` is valid while `v0.2.0-alpha.01` is rejected. Build metadata such as `+build.7` is not accepted by the current Serviq release workflow because OPE-304 only defines the version-plus-optional-prerelease form.
+
 A release below `v1.0.0`, or any release carrying `alpha`, `beta`, or `rc`, must not be presented as proof that the complete Serviq product is production-ready.
 
 ## Relationship between tickets, pull requests, tags, and releases
@@ -64,6 +66,8 @@ The repository also uses type labels such as `feature`, `fix`, `security`, `infr
 
 `.github/release.yml` maps these labels into readable sections in GitHub-generated release notes. Pull requests that do not match a specific category still appear in the catch-all `Other Changes` section unless they have `release:skip`.
 
+Every supported release path runs the same idempotent release-label bootstrap before publishing. If one of the release labels is missing, the workflow restores it with the repository-scoped `GITHUB_TOKEN` without deleting or replacing GitHub's existing default labels.
+
 ## Release workflow
 
 The permanent workflow is `.github/workflows/release.yml`.
@@ -78,9 +82,9 @@ make test
 docker compose -f infra/docker/compose.yml --profile "*" config --no-interpolate
 ```
 
-The workflow deliberately does not call `make security`, `make e2e`, or `make load-test` while those targets are still intentional non-zero placeholders. Later tickets should add those gates to release publishing after the real implementations exist.
+The release workflow currently keeps the OPE-304 publication gate at those baseline checks. `make security` is implemented and the repository's Security workflow enforces CodeQL, Gitleaks, Trivy, and dependency-audit coverage, but release publishing does not invoke `make security` as an additional gate today. `make e2e` and `make load-test` are still intentionally non-zero placeholders. Expanding the release-publication gate should be a separate reviewed release-policy change rather than an undocumented side effect of this workflow.
 
-The workflow does not need a personal access token or a paid service. It uses GitHub's repository-scoped `GITHUB_TOKEN` with explicit permissions for the job that publishes a release.
+The workflow does not need a personal access token or a paid service. It uses GitHub's repository-scoped `GITHUB_TOKEN` with explicit permissions for the jobs that publish releases and ensure release labels exist.
 
 ## Creating a release from the GitHub UI
 
@@ -163,10 +167,10 @@ Publishing a Serviq GitHub Release currently does not automatically:
 - generate an SBOM;
 - sign source or container artifacts;
 - create provenance/attestations;
-- run the future security, E2E, or load-test gates;
+- run `make security`, E2E, or load testing as additional release-publication gates;
 - create release branches or backports.
 
-Those capabilities should be added only through dedicated reviewed tickets rather than being hidden inside the release workflow.
+The repository Security workflow already provides the implemented security scanning gate outside release publication. E2E and load testing remain future work. Any of these release-policy expansions should be added only through dedicated reviewed tickets rather than being hidden inside the release workflow.
 
 ## Future stable-release gate
 

@@ -24,7 +24,7 @@ jobs:
           ref: ope304-task-158-docs
           fetch-depth: 0
 
-      - name: Append staged OPE-304 section
+      - name: Append staged OPE-304 section when needed
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -32,11 +32,13 @@ jobs:
           guide_path = Path("docs/SERVIQ_BUILD_GUIDE.md")
           fragment_path = Path("docs/.ope304-release-guide-section.md")
           guide = guide_path.read_text()
-          section = fragment_path.read_text().strip()
           marker = "# OPE-304 — GitHub Releases and semantic versioning"
 
-          if marker not in guide:
-              guide_path.write_text(guide.rstrip() + "\n\n---\n\n" + section + "\n")
+          if marker in guide:
+              raise SystemExit(0)
+
+          section = fragment_path.read_text().strip()
+          guide_path.write_text(guide.rstrip() + "\n\n---\n\n" + section + "\n")
           PY
 
       - name: Remove temporary documentation artifacts

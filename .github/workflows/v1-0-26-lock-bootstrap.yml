@@ -1,0 +1,40 @@
+name: V1.0.26 Lock Bootstrap
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  generate-llm-gateway-lock:
+    if: github.head_ref == 'v1.0.26'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.6'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Generate LLM gateway lock
+        run: cd services/llm-gateway && uv lock --python 3.14
+
+      - name: Validate generated lock
+        run: cd services/llm-gateway && uv lock --check
+
+      - name: Upload generated lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-0-26-llm-gateway-lock
+          path: services/llm-gateway/uv.lock
+          if-no-files-found: error
+          retention-days: 1

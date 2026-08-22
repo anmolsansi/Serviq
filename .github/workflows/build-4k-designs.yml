@@ -38,7 +38,7 @@ jobs:
           mkdir -p .cache
           curl --location --fail --retry 3 \
             "https://raw.githubusercontent.com/Saafke/EDSR_Tensorflow/master/models/EDSR_x4.pb" \
-            --output .cache/EDSR_x4.pb
+            --output .cache/EDSR_x4.pb \
             || rm -f .cache/EDSR_x4.pb
 
       - name: Generate 4K PNG design assets

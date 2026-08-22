@@ -15,27 +15,103 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify GitHub Actions use immutable references
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          full_commit_sha = re.compile(r"^[0-9a-fA-F]{40}$")
+          docker_digest = re.compile(r"^docker://.+@sha256:[0-9a-fA-F]{64}$")
+          uses_line = re.compile(r"^\s*(?:-\s*)?uses:\s*(.+?)\s*$")
+
+          def is_immutable(reference: str) -> bool:
+              if reference.startswith("./"):
+                  return True
+              if reference.startswith("docker://"):
+                  return docker_digest.fullmatch(reference) is not None
+              if "@" not in reference:
+                  return False
+              _, ref = reference.rsplit("@", 1)
+              return full_commit_sha.fullmatch(ref) is not None
+
+          # Keep both sides of the policy executable so a future edit cannot
+          # accidentally weaken the predicate while leaving the scan green.
+          assert is_immutable(
+              "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+          )
+          assert is_immutable("./.github/actions/example")
+          assert is_immutable(
+              "docker://ghcr.io/example/action@sha256:"
+              + "a" * 64
+          )
+          assert not is_immutable("actions/checkout@v4")
+          assert not is_immutable("docker://ghcr.io/example/action:latest")
+
+          violations: list[str] = []
+          workflow_dir = Path(".github/workflows")
+          workflow_files = sorted(
+              {
+                  *workflow_dir.glob("*.yml"),
+                  *workflow_dir.glob("*.yaml"),
+              }
+          )
+
+          for workflow in workflow_files:
+              for line_number, line in enumerate(
+                  workflow.read_text(encoding="utf-8").splitlines(), start=1
+              ):
+                  match = uses_line.match(line)
+                  if match is None:
+                      continue
+
+                  reference = match.group(1).split(" #", 1)[0].strip()
+                  if (
+                      len(reference) >= 2
+                      and reference[0] in {"'", '"'}
+                      and reference[-1] == reference[0]
+                  ):
+                      reference = reference[1:-1]
+
+                  if not is_immutable(reference):
+                      violations.append(
+                          f"{workflow}:{line_number}: mutable uses reference: {reference}"
+                      )
+
+          if violations:
+              print("GitHub Actions must use immutable commit SHAs or image digests.")
+              print("\n".join(violations))
+              raise SystemExit(1)
+
+          print(
+              f"Verified immutable action references across {len(workflow_files)} workflow files."
+          )
+          PY
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.15.0
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.14.6'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: services/*/uv.lock
@@ -120,15 +196,15 @@ jobs:
       SERVIQ_LOCAL_WEBHOOK_ALLOWLIST: ""
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.14.6'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: services/api/uv.lock
@@ -179,15 +255,15 @@ jobs:
       KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: test-placeholder
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.14.6'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
           cache-dependency-glob: services/api/uv.lock

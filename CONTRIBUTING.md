@@ -4,7 +4,7 @@ Read the Linear ticket, linked GitHub issue, and `docs/repo_context.md` before c
 
 Use one ticket per branch and pull request. A typical branch name is `ope-271-repository-governance`. Do not develop directly on `main`. Push small commits with the ticket identifier and a short explanation.
 
-Use `make setup` to install dependencies. Before review, run `make lint`, `make typecheck`, and `make test`. The `make security`, `make e2e`, and `make load-test` targets are intentional non-zero placeholders until their dedicated implementation tickets land, so do not report them as passing while they are placeholders. Use `make dev` for core local infrastructure and `make down` to stop it.
+Use `make setup` to install dependencies. Before review, run `make lint`, `make typecheck`, and `make test`. `make security` runs local dependency vulnerability audits; CodeQL, Gitleaks, and Trivy run in GitHub Actions. The `make e2e` and `make load-test` targets are intentional non-zero placeholders, so do not report them as passing. Use `make dev` for core local infrastructure and `make down` to stop it.
 
 Do not silently invent or change architecture-owned API, database, event, authentication, authorization, or shared contracts. If a required contract is missing, record `Needs Architect Decision: ...`. If an approved contract changes, reference its Contract Change Record under `docs/contract-changes/`.
 

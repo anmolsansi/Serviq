@@ -524,7 +524,7 @@ The application must be usable in deterministic demo/test mode without a paid AI
 | Vector | pgvector | pgvector first. Dedicated vector only after retrieval benchmark/ADR. |
 | Cache | Valkey-compatible local | ElastiCache-compatible managed cache |
 | Broker | Redpanda local profile | MSK or ADR-approved Kafka-compatible managed service |
-| Object storage | MinIO/S3-compatible | S3 |
+| Object storage | SeaweedFS/S3-compatible | S3 |
 | Secrets | local secret adapter | Secrets Manager/Parameter Store split by ADR |
 | Observability | OTel + OSS profile | OTel with managed or self-hosted backend chosen by ADR |
 | DNS | local hosts | Route 53 |
@@ -611,7 +611,7 @@ Primary DB:        PostgreSQL 18.x
 Retrieval V1:      PostgreSQL FTS + pgvector
 Cache:             Valkey-compatible
 Events:            Kafka-compatible contract; Redpanda local profile
-Storage:           S3-compatible adapter; MinIO local, S3 cloud
+Storage:           S3-compatible adapter; SeaweedFS local, S3 cloud
 Auth local:        Keycloak OIDC
 LLM:               Serviq gateway + OpenAI/Anthropic/Gemini/OpenRouter adapters
 Observability:     OpenTelemetry + Prometheus/Grafana/Loki/Tempo local profile

@@ -1,602 +1,203 @@
 # Serviq Repository Context
 
-> Audit ticket: OPE-270  
-> Audited `main` commit: `5ccfe27a878af5aa32fe049fe7632d8e04bc221d`  
-> Audit date: 2026-08-14  
-> Purpose: give every later builder a factual map of what exists in Serviq now. This document records implemented repository reality, not future architecture wishes.
-
-## 1. Repository snapshot
-
-Serviq is a monorepo containing three Next.js applications, six shared TypeScript packages, three Python services, local Docker infrastructure, product/architecture documentation, and GitHub Actions workflows.
-
-The repository is intentionally still foundation-heavy. Many important production capabilities have a defined future home but are not implemented yet. A folder name or placeholder module is not evidence that the corresponding subsystem exists.
-
-The root workspace is controlled by:
-
-- `package.json`
-- `pnpm-workspace.yaml`
-- `pnpm-lock.yaml`
-- `.nvmrc`
-- `.editorconfig`
-- `.gitignore`
-- `Makefile`
-
-The root JavaScript workspace includes only `apps/*` and `packages/*`. Python services under `services/*` are intentionally managed with `uv`, not pnpm.
-
-## 2. Exact toolchain and framework versions
-
-### JavaScript / TypeScript
-
-Evidence comes from `.nvmrc`, package manifests, and `pnpm-lock.yaml`.
-
-- Node.js: `24.18.0` — `.nvmrc`
-- pnpm used by CI: `10.15.0` — `.github/workflows/ci.yml`
-- Next.js: `16.2.9` — app manifests / `pnpm-lock.yaml`
-- React: `19.2.0` — app manifests / `pnpm-lock.yaml`
-- React DOM: `19.2.0` — app manifests / `pnpm-lock.yaml`
-- TypeScript resolved version: `5.9.3` — `pnpm-lock.yaml`; manifests currently declare `^5.1.0`
-- Tailwind CSS resolved version: `4.3.3` — `pnpm-lock.yaml`
-- `@tailwindcss/postcss`: `4.3.3` — `pnpm-lock.yaml`
-- ESLint resolved version: `9.39.5` — `pnpm-lock.yaml`
-- `eslint-config-next`: `16.2.9`
-- `@types/node`: `24.13.3`
-- `@types/react`: `19.2.18`
-- `@types/react-dom`: `19.2.4`
-
-The application manifests are:
-
-- `apps/client-console/package.json`
-- `apps/customer-web/package.json`
-- `apps/platform-console/package.json`
-
-The shared-package manifests are under:
-
-- `packages/ui/package.json`
-- `packages/contracts/package.json`
-- `packages/config/package.json`
-- `packages/observability/package.json`
-- `packages/security/package.json`
-- `packages/testkit/package.json`
-
-### Python
-
-All current Python services declare Python `>=3.14,<3.15` in their `pyproject.toml` files.
-
-Services:
-
-- `services/api`
-- `services/worker`
-- `services/llm-gateway`
-
-The API and worker have committed uv lockfiles:
-
-- `services/api/uv.lock`
-- `services/worker/uv.lock`
-
-The LLM gateway currently does **not** have `services/llm-gateway/uv.lock`. This is a known repository landmine and is the reason the root `Makefile` uses frozen uv sync for API/worker but normal `uv sync` for the LLM gateway.
-
-Directly audited API lock entries include:
-
-- FastAPI `0.140.13`
-- Alembic `1.19.1`
-
-The API manifest also declares SQLAlchemy `>=2,<3`, Pydantic `>=2,<3`, and Uvicorn `>=0.35,<1`.
-
-All three Python services declare development tooling ranges for Ruff, mypy, and pytest in their own `pyproject.toml` files.
-
-### Local infrastructure image versions
-
-The Compose source of truth is `infra/docker/compose.yml`.
-
-Pinned images currently include:
-
-- PostgreSQL + pgvector: `pgvector/pgvector:0.8.6-pg18-bookworm`
-- Keycloak: `quay.io/keycloak/keycloak:26.7.1`
-- Valkey: `valkey/valkey:8.1.9-alpine`
-- S3-compatible object storage: `chrislusf/seaweedfs:4.41`
-- Redpanda: `docker.redpanda.com/redpandadata/redpanda:v26.2.1`
-- OpenTelemetry Collector: `otel/opentelemetry-collector-contrib:0.153.0`
-- Prometheus: `prom/prometheus:v3.13.1`
-- Grafana: `grafana/grafana:13.1.0`
-- Loki: `grafana/loki:3.7.4`
-- Tempo: `grafana/tempo:2.10.7`
-
-No audited local infrastructure image uses a floating `latest` tag.
-
-## 3. Repository map
-
-```text
-Serviq/
-├── .github/
-│   └── workflows/
-│       ├── build-4k-designs.yml
-│       └── ci.yml
-├── apps/
-│   ├── client-console/
-│   │   └── src/app/
-│   ├── customer-web/
-│   │   └── src/app/
-│   └── platform-console/
-│       └── src/app/
-├── packages/
-│   ├── config/
-│   ├── contracts/
-│   │   └── src/
-│   ├── observability/
-│   ├── security/
-│   ├── testkit/
-│   └── ui/
-│       └── src/
-├── services/
-│   ├── api/
-│   │   ├── app/
-│   │   └── tests/
-│   ├── worker/
-│   │   ├── app/
-│   │   └── tests/
-│   └── llm-gateway/
-│       ├── app/
-│       └── tests/
-├── infra/
-│   └── docker/
-│       ├── compose.yml
-│       ├── postgres/
-│       ├── observability/
-│       └── README.md
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── PRD.md
-│   ├── PRODUCT_SPECIFICATION.md
-│   ├── TECH_STACK.md
-│   ├── SERVIQ_BUILD_GUIDE.md
-│   └── contract-changes/
-├── Makefile
-├── package.json
-├── pnpm-workspace.yaml
-├── pnpm-lock.yaml
-└── .nvmrc
-```
-
-Builders must still inspect the exact target subtree before editing. This tree is a navigation map, not a substitute for reading the relevant files.
-
-## 4. Frontend reality
-
-All three frontend applications use the Next.js App Router because their route roots live under `src/app/`.
-
-Current real route examples:
-
-- `apps/client-console/src/app/page.tsx`
-- `apps/customer-web/src/app/page.tsx`
-- `apps/platform-console/src/app/page.tsx`
-
-These pages are foundation placeholders. They do not represent implemented product workflows.
-
-Current frontend facts:
-
-- strict TypeScript is enabled in app `tsconfig.json` files;
-- each app has ESLint configuration;
-- Tailwind/PostCSS are configured;
-- app-local `dev`, `build`, `lint`, and `typecheck` scripts exist;
-- Customer Web and Platform Console include app-local icons added during browser QA;
-- no production authentication client exists;
-- no real API data-fetch layer exists;
-- no form architecture is established;
-- no implemented feature-folder convention is demonstrated yet;
-- no real support chat, inbox, analytics, or admin workflow exists yet.
-
-The shared UI boundary exists at `packages/ui`.
-
-`packages/ui/src/tokens.css` contains design-token groundwork. `packages/ui/src/index.ts` intentionally does not expose a production component library yet. Therefore builders must not claim there is an existing shared Button, Modal, Table, Form, Toast, or layout component pattern unless a later ticket adds one and this document is re-audited.
-
-## 5. Shared TypeScript package reality
-
-The six shared workspace boundaries are:
-
-- `packages/ui` — shared UI/design-system ownership boundary;
-- `packages/contracts` — shared wire-contract boundary;
-- `packages/config` — reserved shared configuration boundary;
-- `packages/observability` — reserved shared application-telemetry boundary;
-- `packages/security` — reserved shared security boundary;
-- `packages/testkit` — reserved shared test-support boundary.
-
-A real reusable API contract example exists in `packages/contracts/src/api/envelopes.ts`.
-
-The implemented shared envelope shapes establish:
-
-- success: `{ data, meta? }`
-- error: `{ error: { code, message, fields? } }`
-- pagination metadata: `page`, `pageSize`, `total`, `totalPages`
-
-`packages/contracts/src/api/correlation.ts` defines the correlation-identifier type.
-
-The auth/event folders inside the contracts package are ownership boundaries, not proof that authentication or durable business-event contracts have been implemented.
-
-## 6. Backend / API reality
-
-### API service
-
-`services/api/app/main.py` currently creates the FastAPI application titled `Serviq API`.
-
-There is still no real production business module demonstrating the planned Router -> Service -> Repository architecture.
-
-The API scaffold contains reserved core files for concerns such as auth, tenancy, idempotency, logging, errors, rate limits, and config. Those files establish ownership locations, not completed subsystems.
-
-There is currently no implemented:
-
-- business REST endpoint;
-- database session factory;
-- SQLAlchemy model set;
-- repository layer;
-- tenant middleware;
-- authentication middleware/dependency;
-- permission guard;
-- standardized global exception handler tied to real feature routes;
-- health endpoint contract owned by a completed feature ticket.
-
-### Worker service
-
-`services/worker` is a process scaffold with reserved `jobs`, `consumers`, and `core` boundaries.
-
-There is no production broker client, event consumer, retry engine, scheduler, outbox publisher, or business job yet.
-
-### LLM gateway
-
-`services/llm-gateway` creates the `Serviq LLM Gateway` FastAPI application and reserves `adapters`, `routing`, and `schemas` boundaries.
-
-There is no implemented provider integration with OpenAI, Anthropic, Gemini, OpenRouter, or LiteLLM yet. There is no production model routing, fallback, streaming, tenant-secret handling, cost routing, or provider-health logic yet.
-
-## 7. API style reality
-
-The implemented TypeScript contract package establishes the standard envelope vocabulary described above.
-
-The architecture document owns planned `/api/v1` route and API conventions, but the backend still has no real business route proving URL naming, pagination parsing, auth guards, tenant scoping, idempotency behavior, or concrete status-code usage.
-
-Builder rule: do not present architecture prose as an implemented backend example. When the first real feature route lands, this section must be re-audited.
-
-## 8. Authentication and permissions
-
-**Status: not implemented in application code.**
-
-Local identity infrastructure exists through Keycloak in `infra/docker/compose.yml`.
-
-What does not yet exist:
-
-- Serviq realm configuration committed as the production application identity contract;
-- real application OIDC client setup;
-- permanent local development user model owned by product code;
-- frontend login flow;
-- token validation middleware;
-- role mapping;
-- tenant authorization guard;
-- permission checks protecting product routes.
-
-`services/api/app/core/auth.py` and `packages/security` are reserved boundaries, not a finished authentication system.
-
-If a later ticket requires auth behavior without an exact contract, record `Needs Architect Decision` instead of inventing token claims, cookie/session semantics, roles, or permissions.
-
-## 9. Database and migration reality
-
-PostgreSQL + pgvector runs locally from `infra/docker/compose.yml`, and `infra/docker/postgres/init-vector.sql` enables the vector extension.
-
-The API has SQLAlchemy and Alembic dependencies available, but there is currently no application schema foundation demonstrating:
-
-- SQLAlchemy engine/session setup;
-- base model convention;
-- tenant table pattern;
-- real repository implementation;
-- Alembic environment;
-- committed application migration history;
-- row-level-security policy implementation.
-
-Migration command: **not implemented yet**.
-
-Needs Architect Decision: any ticket attempting to create application tables before the dedicated database/migration contract establishes the exact implementation pattern.
-
-## 10. Local infrastructure reality
-
-The Compose source of truth is `infra/docker/compose.yml`.
-
-Core local dependencies currently include:
-
-- PostgreSQL + pgvector;
-- Keycloak;
-- Valkey;
-- S3-compatible object storage.
-
-Optional profile `events` includes Redpanda.
-
-The broker advertises an internal Compose Kafka endpoint at `redpanda:9092`. OPE-266 intentionally creates no Serviq business topic, producer, consumer, schema registry, or event payload implementation.
-
-Optional profile `observability` includes:
-
-- OpenTelemetry Collector;
-- Prometheus;
-- Grafana;
-- Loki;
-- Tempo.
-
-Observability config is under `infra/docker/observability/`.
-
-Prometheus is currently wired only to its local baseline targets. Grafana provisioning defines Prometheus, Loki, and Tempo data sources. No application telemetry instrumentation, alert rules, or product dashboard is implemented yet.
-
-Validation-only GitHub Actions run `31743262767` proved the optional events and observability profiles can be started independently from the default/core stack. OPE-266 and OPE-267 are now merged into `main`.
-
-## 11. Root developer commands
-
-The root developer command surface is `Makefile`.
-
-Exact required targets currently present:
-
-- `make setup`
-- `make dev`
-- `make test`
-- `make lint`
-- `make typecheck`
-- `make security`
-- `make e2e`
-- `make load-test`
-- `make down`
-
-Current behavior:
-
-- `setup` installs pnpm dependencies with the existing lockfile, performs frozen uv sync for API and worker, and normal uv sync for LLM gateway because its lockfile is missing;
-- `dev` starts the core Compose infrastructure and prints the separate application/service commands instead of inventing an unsupported process supervisor;
-- `lint`, `typecheck`, and `test` delegate to the existing pnpm/Python commands;
-- `down` stops the Compose project;
-- `security`, `e2e`, and `load-test` intentionally exit non-zero until their dedicated tickets implement real gates.
-
-A fake-success placeholder is forbidden because CI must not report a quality gate as green when no real gate ran.
-
-## 12. Testing reality
-
-### JavaScript / frontend
-
-Root scripts recursively call workspace package scripts using pnpm.
-
-The three frontend apps currently provide lint/typecheck/build commands, but there is no established production component/unit-test framework or committed browser E2E suite yet.
-
-### Python
-
-Each Python service has pytest/Ruff/mypy configuration in its `pyproject.toml`.
-
-Real smoke/import tests exist in the service test directories. They validate scaffold integrity, not business behavior.
-
-### E2E and load testing
-
-`make e2e` and `make load-test` deliberately fail because those systems are not implemented yet.
-
-## 13. CI reality
-
-Baseline CI is now implemented at `.github/workflows/ci.yml`.
-
-It triggers on:
-
-- pull requests;
-- pushes to `main`.
-
-It uses read-only repository-content permission, a 20-minute job timeout, explicit setup actions for pnpm/Node/Python/uv, and no paid-service secret.
-
-The required gates are:
-
-1. `make setup`
-2. `make lint`
-3. `make typecheck`
-4. `make test`
-5. Docker Compose configuration validation
-
-GitHub Actions run `31778357529` passed the complete workflow on the final OPE-269 branch before PR #62 merged into `main`.
-
-The older design workflow remains at `.github/workflows/build-4k-designs.yml` and was not modified by OPE-269.
-
-## 14. File storage reality
-
-S3-compatible local object storage exists through SeaweedFS in the Docker stack.
-
-OPE-301 adds the application-owned object-storage boundary at `services/api/app/core/object_storage.py`. The API uses the AWS-maintained low-level `botocore` S3 client behind Serviq's own interface, with the exact dependency patch frozen by `services/api/uv.lock`. The adapter exposes only put, get, delete, and exists operations. It uses explicit 5-second connect and 30-second read timeouts, one total SDK attempt, path-style S3 addressing for local compatibility, and stable Serviq-owned errors instead of leaking SDK details.
-
-Object keys are generated only through typed UUID-based helpers for the exact architecture-owned knowledge raw, knowledge normalized, export, and evaluation layouts. User-controlled filenames are not accepted by the key helpers and cannot become storage paths. Every tenant-owned key begins with `tenants/{tenantId}/...`.
-
-The local bucket is `serviq-local-objects`, matching both Architecture and Docker Compose. `.env.example` now uses that same local bucket and the Compose development credentials so the API and local infrastructure agree out of the box.
-
-There is still no implemented production file-upload workflow, presigned-URL contract, MIME/extension/size validation pipeline, knowledge-ingestion upload API, export writer, customer attachment workflow, or production AWS S3 deployment yet. Those remain separate tickets.
-
-Future application code must depend on the Serviq object-storage interface and typed key helpers, not vendor-specific SeaweedFS behavior or arbitrary full object-key strings. ADR-016 owns the Python S3 client, timeout, retry, and error-boundary decision.
-
-## 15. Eventing reality
-
-Redpanda provides a Kafka-compatible local broker under the optional `events` profile.
-
-No Serviq topics exist yet. No application service depends on the broker yet. No producer/consumer/event-schema implementation exists yet.
-
-Future event tickets may use `KAFKA_BOOTSTRAP_SERVERS`, but exact topic names and payload contracts remain architecture-owned.
-
-## 16. Observability reality
-
-The local telemetry infrastructure exists, but application instrumentation does not.
-
-Do not confuse “Grafana/Loki/Tempo/Prometheus/OTel Collector containers are available” with “Serviq application traces, logs, metrics, SLOs, dashboards, or alerts exist.” They do not yet.
-
-`packages/observability` is also only a shared package boundary at this stage.
-
-## 17. Security reality
-
-Current real security foundations include:
-
-- separate public/tenant/platform frontend applications;
-- local Keycloak infrastructure;
-- reserved `packages/security` ownership boundary;
-- API auth/tenancy/idempotency/rate-limit core boundary files;
-- local services bound/configured for development rather than treated as production deployment settings;
-- baseline CI with read-only token permissions.
-
-Not implemented yet:
-
-- user authentication;
-- tenant authorization;
-- RBAC enforcement;
-- provider-secret storage;
-- upload security pipeline;
-- security scanner CI gate;
-- dependency/container/secret scanning;
-- production WAF/rate limiting.
-
-The presence of placeholders must never be described as completed protection.
-
-## 18. Reusable utilities and examples
-
-Use these only for the limited patterns they actually prove:
-
-- API envelope types: `packages/contracts/src/api/envelopes.ts`
-- correlation identifier: `packages/contracts/src/api/correlation.ts`
-- frontend route shell: any current `apps/*/src/app/page.tsx`
-- API application root: `services/api/app/main.py`
-- LLM gateway application root: `services/llm-gateway/app/main.py`
-- worker process scaffold: `services/worker/app/main.py`
-- root developer lifecycle: `Makefile`
-- local infrastructure: `infra/docker/compose.yml`
-- baseline CI: `.github/workflows/ci.yml`
-
-There is no real example yet for a production business route, service class, repository class, database model, authenticated page, tenant guard, background job, event consumer, provider adapter, or production React component library.
-
-## 19. Known landmines / unknowns
-
-1. `services/llm-gateway/uv.lock` is missing. Do not run frozen uv sync for that service until a dedicated dependency decision adds the lockfile.
-2. Authentication infrastructure exists locally, but application auth is not implemented.
-3. PostgreSQL and Alembic dependencies exist, but application models/migrations/session patterns are not implemented.
-4. Architecture defines Router -> Service -> Repository, but no real feature currently demonstrates it.
-5. The shared UI package is not yet a production component library.
-6. Observability containers exist, but app instrumentation and dashboards do not.
-7. Redpanda exists, but no Serviq topics/events/producers/consumers exist.
-8. Security/E2E/load-test Make targets intentionally fail and must not be reported as passing gates.
-9. The architecture and Premium Product Builder remain the contract source for future implementation decisions that are not demonstrated in repository code.
-10. When a future ticket changes repository structure, dependency versions, commands, auth/database/API conventions, CI gates, or reusable patterns, this file must be re-audited in the affected sections.
-
-## 20. Downstream builder start gate
-
-Every implementation ticket after OPE-270 must do the following before coding:
-
-1. read the Linear/GitHub ticket as the exact scope source;
-2. inspect `docs/repo_context.md`;
-3. inspect the exact target files/directories from the current branch;
-4. verify relevant dependency/tool versions from current manifests/lockfiles;
-5. identify at least one real existing pattern when one exists;
-6. explicitly state when no real pattern exists;
-7. stop and record `Needs Architect Decision` when the ticket requires an undefined contract;
-8. do not silently implement architecture changes while executing a builder ticket.
-
-## 21. Current test commands
-
-Repository-wide commands:
-
-```bash
-make setup
-make lint
-make typecheck
-make test
-```
-
-Local infrastructure:
-
-```bash
-make dev
-make down
-```
-
-Intentional non-implemented gates:
-
-```bash
-make security
-make e2e
-make load-test
-```
-
-Those three commands are expected to fail until their dedicated tickets replace the placeholders with real implementations.
-
-## 22. Audit conclusion
-
-The repository now has a credible production-oriented foundation: separated frontend surfaces, shared package boundaries, Python service boundaries, local relational/cache/object/identity/event/observability infrastructure, one root developer command surface, and baseline CI.
-
-The repository does **not** yet have the core product runtime: real authentication, tenant permissions, database models/migrations, support chat, knowledge ingestion/retrieval, agent execution, LLM provider routing, policy authorization, refund/order tools, human handoff, analytics, or application observability.
-
-Future builders must preserve this distinction. The safest implementation is the one that starts from what the repository actually contains today rather than what the architecture intends it to contain later.
-
-## OPE-304 release-system convention update
-
-This section records a repository convention added after the original OPE-270 audit. It supplements the audit snapshot instead of pretending the original audited commit already contained these files.
-
-GitHub Releases are now the repository's official public version-history boundary. The permanent release-management files are:
-
-- `.github/release.yml` — generated release-note categories and exclusions;
-- `.github/workflows/release.yml` — validated release publishing;
-- `docs/RELEASING.md` — operator/versioning policy;
-- `.github/pull_request_template.md` — release-impact declaration on every PR;
-- `CONTRIBUTING.md` — contributor-facing Semantic Versioning and release rules.
-
-Serviq release tags use `vMAJOR.MINOR.PATCH` with optional prerelease suffixes such as `-alpha.1`, `-beta.1`, and `-rc.1`. Published tags are treated as permanent history and must never be silently moved to different code.
-
-The release workflow supports two permanent publishing paths: an authorized manual GitHub Actions run from `main`, and a semantic-version tag whose commit is already contained in `main`. Both paths execute `make setup`, `make lint`, `make typecheck`, `make test`, and Docker Compose configuration validation before publishing. The workflow intentionally does not claim `make security`, `make e2e`, or `make load-test` are release gates while those targets remain explicit non-zero placeholders.
-
-OPE-304 also contains a one-time idempotent bootstrap for the first prerelease, `v0.1.0-alpha.1`, after the release-system files merge into `main`. That bootstrap creates the release labels, validates the merged code, refuses to overwrite an existing tag/release, and publishes `Serviq v0.1.0-alpha.1 — Platform Foundation` as a prerelease. Later release-system edits detect the existing bootstrap release and leave it unchanged.
-
-Release publishing is not deployment. There is currently no release-triggered production deployment, GHCR container publication, SBOM, signing, provenance/attestation, backport branch, or automatic SemVer calculation. Those remain future reviewed work.
-
-Builder start rule: when a later ticket changes release/versioning behavior, read `.github/workflows/release.yml`, `.github/release.yml`, `docs/RELEASING.md`, and the current PR template/CONTRIBUTING policy before editing. Release governance is repository behavior and must not be inferred from an old architecture snapshot.
-
-### OPE-304 verified release state
-
-The OPE-304 release system has now been exercised successfully, not merely configured. PR #67 merged to `main` at `46a02b53ea9e3340c90d3aa8c5291f7dd15edf07`; baseline CI run `31832353639` and Release workflow run `31832353708` both succeeded. The first repository tag and GitHub Release are `v0.1.0-alpha.1`, with the tag pointing to that exact merge commit and the release marked as a prerelease.
-
-The release labels defined by OPE-304 now exist in GitHub. Future builders should treat the release workflow, generated-release-note configuration, PR release-impact fields, `CONTRIBUTING.md`, and `docs/RELEASING.md` as implemented repository behavior rather than future planning.
-
-
-
-### OPE-272 security-gate reality
-
-`.github/workflows/security.yml` is now the repository security gate. It runs on pull requests and pushes to `main` with separate CodeQL, Gitleaks, Trivy filesystem/configuration, and dependency-audit jobs. Scanner/setup actions are pinned to exact commits, required findings are not configured with blanket `continue-on-error`, and workflow permissions are read-only except CodeQL's job-scoped `security-events: write`.
-
-`make security` now runs the local dependency-audit subset (`pnpm audit` plus pinned `pip-audit` for the frozen API and worker lockfiles) and points contributors to the GitHub workflow for CodeQL/Gitleaks/Trivy. The LLM gateway still has no committed uv lockfile, so the Python lockfile audit intentionally covers only the API and worker until that repository landmine is resolved.
-
-
-### OPE-273 platform configuration reality
-
-`services/api/app/core/config.py` is the authoritative API adapter for Architecture v1.3 platform environment names. `services/worker/app/core/config.py` mirrors the same frozen contract because that service already had an approved config boundary; the repository still has no approved cross-service Python package. Do not create one from a feature ticket. The LLM gateway did not have an existing core config path when OPE-273 was implemented, so it remains unchanged rather than inventing a new package boundary.
-
-Configuration is loaded through `load_settings()` rather than scattered `os.getenv()` calls. Startup errors expose invalid/missing field names only and must not echo raw values. Production requires non-empty object-storage credentials, OIDC client secret, session secret, and LLM gateway internal token. Tenant/provider BYOK keys are not platform environment variables. Root `.env.example` contains placeholders only and is the local-development template.
-
-
-### OPE-275 database persistence reality
-
-ADR-001 freezes the API on one async SQLAlchemy 2 + Psycopg 3 persistence pattern. `services/api/app/core/database.py` exclusively owns SQLAlchemy database URL adaptation, AsyncEngine construction, the process-cached `async_sessionmaker`, the session dependency, and engine disposal. Do not create a parallel sync SQLAlchemy engine/session path. `services/api/app/models/base.py` is the one declarative metadata root.
-
-`DATABASE_URL` remains the architecture-owned external name. The adapter converts `postgresql://` to `postgresql+psycopg://` internally and safely rejects non-PostgreSQL schemes without printing the URL. `services/api/alembic.ini` plus `services/api/alembic/` are the migration boundary; the first revision `20260814_0001` is intentionally empty and creates no product table.
-
-`.github/workflows/ci.yml` now has a permanent `database-integration` job using `pgvector/pgvector:0.8.6-pg18-bookworm`. It upgrades Alembic, runs the real PostgreSQL session integration test, and downgrades to base. Normal unit tests skip that integration test unless `SERVIQ_DATABASE_INTEGRATION=1`. Future database migrations and repository code must preserve this real-PostgreSQL path.
-
-
-### OPE-276 health/readiness reality
-
-ADR-002 establishes `services/api/app/modules/health/` as the infrastructure health module. `router.py` owns `/health/live` and `/health/ready`; `service.py` owns dependency orchestration and the 2.0-second PostgreSQL readiness budget; `services/api/app/core/database.py` owns `ping_database()` and executes only `SELECT 1`; `services/api/app/main.py` composes the router.
-
-`GET /health/live` is process-only and returns `{"status":"live"}`. It must not acquire dependency checks. `GET /health/ready` currently checks PostgreSQL only. Success is exactly HTTP 200 `{"status":"ready"}`. Database exception/unavailability/timeout is exactly HTTP 503 `{"status":"not_ready","dependency":"database"}`. Health failure logs use stable event names only and must not attach raw dependency exceptions or connection details.
-
-API HTTP contract tests now use `httpx` as a development-only dependency. The permanent CI `database-integration` job runs the entire `services/api/tests/integration` directory after Alembic upgrade and before downgrade, so readiness is exercised against real PostgreSQL in addition to mocked unit/contract tests.
-
-
-### OPE-277 tenant/workforce/RBAC schema reality
-
-Alembic revision `20260814_0002_tenant_workforce_rbac.py` is the first Serviq product-schema migration. It creates exactly `tenants`, `users`, `memberships`, `roles`, `role_permissions`, and `membership_roles` after baseline revision `20260814_0001`. Tables use PostgreSQL `uuid DEFAULT uuidv7()` primary keys plus `created_at`/`updated_at timestamptz NOT NULL DEFAULT now()` under the Architecture convention.
-
-CCR-004 resolves the invitation dependency cycle: OPE-277 creates nullable `memberships.created_by_invitation_id` plus its index but intentionally does not create its FK because `organization_invitations` does not exist until OPE-278. OPE-278 must create the invitation table and then add `memberships.created_by_invitation_id -> organization_invitations(id) ON DELETE SET NULL`; its downgrade must drop that FK before the invitation table. No runtime code may rely on the invitation-origin relationship before OPE-278.
-
-`roles` uses the exact PostgreSQL `UNIQUE NULLS NOT DISTINCT(tenant_id, key)` contract, not a normal unique pair. Real PostgreSQL integration tests cover schema/table expectations, CHECK/unique constraints, duplicate global-role behavior, the CCR-004 intermediate state, and migration reversibility. The permanent database CI sequence is upgrade head -> integration tests -> downgrade to `20260814_0001` -> upgrade head -> downgrade base.
-
-
-### OPE-278 organization invitation schema reality
-
-Alembic revision `20260814_0003_organization_invitations.py` creates exactly `organization_invitations` and `organization_invitation_roles` after OPE-277 revision `20260814_0002`. Invitation persistence contains `token_hash` only; no plaintext token column exists. `token_hash` is globally unique. Invitation status is constrained to `pending|accepted|revoked|expired`, normalized email length is constrained to 3..320, and the partial unique index `uq_organization_invitations_pending_tenant_email` enforces one pending row per `(tenant_id, email_normalized)` while allowing accepted/revoked/expired history.
-
-The invitation table has architecture-required tenant/status/expiry and tenant/email indexes plus explicit indexes for `invited_by_user_id` and nullable `accepted_by_user_id`, because repository database rules require FK columns to be indexed. `organization_invitation_roles` uniquely maps invitation/role with invitation CASCADE and role RESTRICT behavior plus both FK indexes.
-
-CCR-004 is now complete at migration head: revision `20260814_0003` adds `fk_memberships_created_by_invitation_id` from `memberships.created_by_invitation_id` to `organization_invitations.id` with `ON DELETE SET NULL`. Its downgrade drops this FK before dropping invitation tables, restoring the intentional OPE-277 intermediate state. Later invitation runtime/API code may now depend on the final FK but must not alter the schema contract without a CCR.
-
-Real PostgreSQL integration tests cover plaintext-token absence, exact pending partial-index behavior, duplicate pending and token-hash rejection, historical-invite coexistence, status/email constraints, invitation-role uniqueness/FKs, and membership-origin SET NULL behavior. Permanent database CI now performs upgrade head -> all integration tests -> downgrade to `20260814_0002` -> re-upgrade head -> downgrade base.
+> Current-state engineering map, audited on 2026-08-22 at `main` commit
+> `258d189` (`Merge OPE-304 release system reconciliation`). This describes
+> code that exists. Future contracts remain in `PRD.md`, `ARCHITECTURE.md`, and
+> the staged roadmap.
+
+## Executive snapshot
+
+Serviq is a multi-tenant AI customer-operations platform. It is designed to
+combine grounded retrieval, customer-specific typed tools, deterministic policy
+and approval controls, a bounded agent, human handoff, and auditable operations.
+The reference product uses synthetic DoorDash-like support scenarios and a
+separate Stripe-like payment/refund integration; it is unaffiliated with either
+company and must never move real money in the demo environment.
+
+The repository contains a credible foundation, not an end-to-end product.
+Tenant/RBAC, invitations, provider/model configuration, knowledge-source
+registration/uploads, schema migrations, CI/security workflows, and supporting
+infrastructure exist. Retrieval, conversations, the agent runtime, tools and
+policies, human support workflows, product UIs, analytics/privacy operations,
+and production deployment do not yet exist.
+
+Do not infer runtime completion from a design document, migration, route stub,
+or Linear status. The evidence ladder is: implemented code, focused test,
+cross-service integration test, end-to-end flow, then deployed acceptance.
+
+## Repository layout
+
+| Path | Responsibility | Current state |
+|---|---|---|
+| `apps/tenant-console` | Tenant/workforce Next.js surface | Scaffold page only |
+| `apps/customer-web` | End-customer Next.js surface | Scaffold page only |
+| `apps/platform-console` | Separate platform-operator surface | Scaffold page only |
+| `services/api` | FastAPI control plane and domain APIs | Active; most implemented surface |
+| `services/worker` | Durable asynchronous execution | Minimal health/entrypoint foundation |
+| `services/llm-gateway` | Provider abstraction/connectivity | Active adapters and internal test route |
+| `packages/*` | Shared TypeScript packages | Early scaffolding |
+| `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Service exists; no committed Serviq realm/client fixture |
+| `infra/observability` | OTel, Prometheus, Grafana, Loki, Tempo | Templates; little app instrumentation |
+| `migrations` | Alembic schema history | Nine revisions through knowledge permissions |
+| `docs` | Product, architecture, operations, evidence | Extensive; contracts are not implementation |
+
+The intended shape is a modular monolith for control-plane APIs, a durable
+worker for asynchronous jobs, and an independently bounded LLM gateway. Avoid
+splitting new services unless observed scaling, isolation, or ownership needs
+justify it.
+
+## Runtime and dependencies
+
+- Node: `.nvmrc` pins `24.18.0`; workflows use pnpm `10.15.0`.
+- Web: Next.js `16.3.1`, React `19.2.0`, TypeScript `5.9.3`, Tailwind `4.3.3`.
+- Python: `>=3.14,<3.15` for API, worker, and LLM gateway.
+- API: FastAPI, SQLAlchemy async, Alembic, Pydantic, PostgreSQL/pgvector.
+- Gateway: OpenAI, Anthropic, and Google GenAI adapters behind a normalized
+  provider contract.
+- Local infrastructure: PostgreSQL/pgvector, Keycloak, Valkey, and SeaweedFS
+  through its S3-compatible API. Redpanda and observability are optional
+  Compose profiles.
+
+There is no committed Python lockfile. Dependency resolution is less
+reproducible than the JavaScript workspace and should be resolved before a
+production release policy is claimed.
+
+## Conventions
+
+### Python services
+
+- Source uses a `src/` layout; tests live under each service's `tests/`.
+- FastAPI routers are thin; domain work belongs in service modules.
+- SQLAlchemy access is asynchronous; Pydantic defines public boundaries.
+- Ruff, mypy, and pytest are mandatory quality tools.
+- IDs are opaque UUIDs. Organization scope is established server-side.
+
+### TypeScript applications
+
+- All three Next.js applications use the App Router.
+- Share code only when at least two consumers need the same contract.
+- ESLint and `tsc --noEmit` are active. There are no JavaScript test scripts,
+  so a successful recursive `pnpm test` is not UI test evidence.
+
+### API behavior
+
+- Versioned external routes use `/api/v1`; gateway-only routes use `/internal`.
+- Health endpoints are `/health/live` and `/health/ready`.
+- Provider credentials are write-only at the public boundary.
+- Logs should contain bounded IDs, counts, outcomes, and timings—not tokens,
+  prompts, raw documents, credentials, or personal data.
+
+## Authentication and authorization
+
+Implemented foundations include OIDC/JWT validation and user provisioning,
+organization membership and active-organization resolution, permission checks,
+organization invitation flows, seeded workforce roles/permissions, and
+provider/model/knowledge permissions.
+
+The external API authentication is workforce-oriented. Customer identity and
+session boundaries and full platform-console isolation remain future work. A
+browser-level proof for all three trust surfaces does not exist.
+
+## Implemented HTTP surface
+
+- organizations: create, list, read, update;
+- invitations: create, list, revoke, accept;
+- organization members: list and update role/state;
+- provider connections: CRUD and connectivity test;
+- model configurations: create, list, update, delete;
+- knowledge sources: URL/sitemap registration and PDF/Markdown/text uploads;
+- service liveness/readiness;
+- internal normalized provider-connectivity testing.
+
+Knowledge sources can be registered and stored, but the complete
+fetch/parse/chunk/embed/index/retrieve lifecycle is pending.
+
+## Data and migrations
+
+Alembic revisions cover baseline identity/organizations, tenant/RBAC,
+invitations, workforce permissions, providers/models, provider permissions,
+model references, knowledge sources/documents/chunks, and knowledge permissions.
+Mapped models include users, organizations, memberships, roles, permissions,
+invitations, providers, model configurations/references, and knowledge sources.
+
+Migration upgrade/downgrade/re-upgrade is exercised in CI against PostgreSQL.
+Production migration runbooks, backup/restore evidence, and rollback drills are
+not present.
+
+## Testing and delivery
+
+Primary commands are `make setup`, `make lint`, `make typecheck`, `make test`,
+`make compose-config`, and `make security`. CI includes quality checks, real
+PostgreSQL migration/integration checks, and object-storage integration checks.
+A separate security workflow includes CodeQL, Gitleaks, Trivy, and dependency
+audits. A release workflow is source-quality evidence, not deployed acceptance.
+
+`make e2e` and `make load-test` intentionally fail because their harnesses do
+not exist. There are no frontend tests. Many API integration tests are skipped
+unless their infrastructure environment is enabled.
+
+Audit results on 2026-08-22:
+
+- all TypeScript apps: lint and type-check passed;
+- TypeScript test command: exited successfully but ran no tests;
+- API: Ruff/mypy passed; 78 tests passed, 61 integration tests skipped;
+- worker: Ruff/mypy passed; 5 tests passed;
+- LLM gateway: Ruff/mypy passed; 93 tests passed;
+- Compose configuration rendered successfully;
+- security scans, enabled PostgreSQL/object-store integration, browser E2E,
+  load, deployment, and real-device acceptance were not run.
+
+## Reusable implementation points
+
+Reuse the existing OIDC helpers, permission/active-organization dependencies,
+provider normalization and error mapping, knowledge object-storage boundary,
+database/migration conventions, health patterns, and CI infrastructure setup
+before adding parallel abstractions.
+
+## Capability boundary
+
+Implemented and evidenced at repository level:
+
+- monorepo, tooling, local infrastructure, CI/security foundations;
+- workforce identity, tenants, invitations, roles, permissions;
+- provider/model configuration with secret-safe responses;
+- knowledge registration/upload foundations;
+- migrations and focused service tests.
+
+Not implemented end to end:
+
+- safe crawling, parsing, chunking, embeddings, indexing, hybrid retrieval;
+- customer identity, conversations, messages, SSE;
+- bounded agent execution, budgets, retries, and failure classification;
+- demo tools, policy, confirmation, approval, reconciliation, compensation;
+- human inbox, takeover, notes, tags, and resume;
+- product-ready interfaces;
+- analytics, audit export, privacy/retention operations;
+- app telemetry, alerts, SLOs, incident runbooks;
+- E2E/load harnesses and production deployment.
+
+## Landmines and unknowns
+
+- Linear's V1 percentage measures created foundation issues, not total scope.
+- The staged roadmap has 198 additional tickets. Counts are not estimates, and
+  several nominal 1–3 hour items are operational or multi-day programs.
+- Embedding profile/index and hybrid-ranking decisions should precede retrieval
+  schema and quality commitments.
+- Customer identity, production secrets, deployment, E2E/load harnesses, and
+  operational ownership remain unresolved.
+- End-customer attachments remain a product decision.
+- Design documents describe future behavior; verify an active code path.
+- Keep demo integrations synthetic and idempotent; never use real payments or
+  production customer data.
+
+## Live tracker snapshot
+
+At audit time, GitHub `anmolsansi/Serviq` had no open pull requests or issues,
+and `main` held the latest merged release-reconciliation commit. Linear had 55
+issues: 51 Done, one In Progress, and three In Review. OPE-300, OPE-302,
+OPE-303, and OPE-304 remained non-terminal despite their relevant changes being
+merged. That is tracking debt. The 198-ticket V1.3.05-to-V4 staged backlog was
+not yet in Linear.
+
+See `PROJECT_STATUS_AND_ROADMAP.md` for the reconciled product assessment and
+execution recommendation.

@@ -40,8 +40,6 @@ So Serviq is not being designed as “a chatbot that writes answers.”
 
 It is being designed more like a digital support employee that can read company instructions, check company systems, follow rules, take approved actions, and know when a human must take over.
 
-That separation is one of the main differences between a demo chatbot and a production system.
-
 ---
 
 ## 2. The easiest way to understand the Serviq architecture

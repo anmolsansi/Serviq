@@ -44,6 +44,29 @@ jobs:
       - name: Install dependencies
         run: make setup
 
+      - name: Verify dependency setup leaves checkout clean
+        shell: bash
+        run: |
+          status="$(git status --porcelain)"
+          if [[ -n "$status" ]]; then
+            printf '%s\n' "$status"
+            echo "Dependency setup modified the checkout."
+            exit 1
+          fi
+
+      - name: Prove a stale gateway lock fails
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          cp services/llm-gateway/pyproject.toml services/llm-gateway/uv.lock "$temp_dir"/
+          sed -i 's/requires-python = ">=3.14,<3.15"/requires-python = ">=3.13,<3.15"/' "$temp_dir/pyproject.toml"
+          if (cd "$temp_dir" && uv lock --check); then
+            echo "Expected stale gateway lock validation to fail."
+            exit 1
+          fi
+
       - name: Lint
         run: make lint
 

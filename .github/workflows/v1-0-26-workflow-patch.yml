@@ -1,0 +1,71 @@
+name: V1.0.26 Workflow Patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch-reproducible-dependencies:
+    if: github.head_ref == 'v1.0.26'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: v1.0.26
+
+      - name: Apply deterministic workflow changes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          clean_step = '''      - name: Verify dependency setup leaves checkout clean\n        shell: bash\n        run: |\n          status="$(git status --porcelain)"\n          if [[ -n "$status" ]]; then\n            printf '%s\\n' "$status"\n            echo "Dependency setup modified the checkout."\n            exit 1\n          fi\n\n'''
+
+          ci_path = Path('.github/workflows/ci.yml')
+          ci = ci_path.read_text()
+          install = '      - name: Install dependencies\n        run: make setup\n\n'
+          if clean_step not in ci:
+              if ci.count(install) != 1:
+                  raise SystemExit(f'Expected exactly one CI install step, found {ci.count(install)}')
+              ci = ci.replace(install, install + clean_step, 1)
+              ci_path.write_text(ci)
+
+          security_path = Path('.github/workflows/security.yml')
+          security = security_path.read_text()
+          lock_step = '''      - name: Validate Python dependency locks\n        run: make dependency-lock-check\n\n'''
+          anchor = '      - name: Audit pnpm lockfile\n'
+          if lock_step not in security:
+              if security.count(anchor) != 1:
+                  raise SystemExit('Security audit anchor changed')
+              security = security.replace(anchor, lock_step + anchor, 1)
+          security = security.replace('uvx --from pip-audit==2.10.1', 'uvx --python 3.14 --from pip-audit==2.10.1')
+          security = security.replace('uv export --no-dev --format requirements-txt --output-file /tmp/serviq-llm-gateway-requirements.txt', 'uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-llm-gateway-requirements.txt')
+          security_path.write_text(security)
+
+          release_path = Path('.github/workflows/release.yml')
+          release = release_path.read_text()
+          if clean_step not in release:
+              count = release.count(install)
+              if count != 3:
+                  raise SystemExit(f'Expected three release install steps, found {count}')
+              release = release.replace(install, install + clean_step)
+              release_path.write_text(release)
+
+      - name: Commit permanent workflow changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .github/workflows/ci.yml .github/workflows/security.yml .github/workflows/release.yml; then
+            echo "Permanent workflow changes are already applied."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/ci.yml .github/workflows/security.yml .github/workflows/release.yml
+          git commit -m "V1.0.26.3: enforce reproducible dependencies in workflows"
+          git push origin HEAD:v1.0.26

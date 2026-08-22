@@ -111,6 +111,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
 
+      - name: Validate Python dependency locks
+        run: make dependency-lock-check
+
       - name: Audit pnpm lockfile
         shell: bash
         run: |
@@ -126,7 +129,7 @@ jobs:
           cd services/api
           uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-api-requirements.txt
           set +e
-          uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-api-requirements.txt -f json -o ../../api-pip-audit.json
+          uvx --python 3.14 --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-api-requirements.txt -f json -o ../../api-pip-audit.json
           status=$?
           set -e
           echo "API_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
@@ -137,7 +140,7 @@ jobs:
           cd services/worker
           uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-worker-requirements.txt
           set +e
-          uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-worker-requirements.txt -f json -o ../../worker-pip-audit.json
+          uvx --python 3.14 --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-worker-requirements.txt -f json -o ../../worker-pip-audit.json
           status=$?
           set -e
           echo "WORKER_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
@@ -146,9 +149,9 @@ jobs:
         shell: bash
         run: |
           cd services/llm-gateway
-          uv export --no-dev --format requirements-txt --output-file /tmp/serviq-llm-gateway-requirements.txt
+          uv export --frozen --no-dev --format requirements-txt --output-file /tmp/serviq-llm-gateway-requirements.txt
           set +e
-          uvx --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-llm-gateway-requirements.txt -f json -o ../../llm-gateway-pip-audit.json
+          uvx --python 3.14 --from pip-audit==2.10.1 pip-audit -r /tmp/serviq-llm-gateway-requirements.txt -f json -o ../../llm-gateway-pip-audit.json
           status=$?
           set -e
           echo "LLM_GATEWAY_PIP_AUDIT_STATUS=$status" >> "$GITHUB_ENV"

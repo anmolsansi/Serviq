@@ -6,6 +6,14 @@ Use one ticket per branch and pull request. A typical branch name is `ope-271-re
 
 Use `make setup` to install dependencies. Before review, run `make lint`, `make typecheck`, and `make test`. `make security` runs local dependency vulnerability audits; CodeQL, Gitleaks, and Trivy run in GitHub Actions. The `make e2e` and `make load-test` targets are intentional non-zero placeholders, so do not report them as passing. Use `make dev` for core local infrastructure and `make down` to stop it.
 
+## Python dependency reproducibility
+
+Serviq's API, worker, and LLM gateway require Python 3.14.x and each Python service owns a committed `uv.lock`. Normal setup and security commands validate every lock before use and then operate with frozen dependency resolution. A stale `pyproject.toml`/`uv.lock` pair is a failure condition; `make setup` and `make security` must not silently repair or replace the lock.
+
+Python vulnerability audits run `pip-audit==2.10.1` through `uvx --python 3.14`, so the audit tool itself uses the same required Python line instead of whichever interpreter happens to be selected on a contributor machine. Dependency exports are frozen and normal setup/audit commands must not create or modify tracked lockfiles.
+
+When intentionally changing Python dependencies, edit the owning service's `pyproject.toml`, regenerate that service's `uv.lock` under Python 3.14, review both changes together, and commit the lock update with the dependency change. Do not hand-edit a lockfile to make validation pass.
+
 Do not silently invent or change architecture-owned API, database, event, authentication, authorization, or shared contracts. If a required contract is missing, record `Needs Architect Decision: ...`. If an approved contract changes, reference its Contract Change Record under `docs/contract-changes/`.
 
 Use `.github/pull_request_template.md` to report the ticket, summary, important files, validation, manual QA, contract-change status, security impact, unresolved architect decisions, completed scope, deferred work, and follow-up work. A pushed branch or open pull request is not the same as a completed ticket.

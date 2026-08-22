@@ -1,0 +1,250 @@
+name: V1.0.26 Build Guide Update
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  append-build-guide:
+    if: github.head_ref == 'v1.0.26'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: v1.0.26
+
+      - name: Append cumulative V1.0.26 documentation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('docs/SERVIQ_BUILD_GUIDE.md')
+          text = path.read_text()
+          marker = '# V1.0.26 — Reproducible LLM gateway dependencies and Python audits'
+          if marker in text:
+              raise SystemExit(0)
+
+          section = r'''
+
+---
+
+# V1.0.26 — Reproducible LLM gateway dependencies and Python audits
+
+**GitHub parent issue:** #166  
+**Implementation issues:** #167, #168, #169, #170  
+**Integration branch:** `v1.0.26`
+
+## What problem this work solves
+
+Serviq already had committed `uv.lock` files for the API and worker, but the LLM gateway still resolved dependencies from its `pyproject.toml` whenever setup or a vulnerability audit ran. That meant two developers could run the same command at different times and receive different transitive package versions even though neither had changed Serviq's source code.
+
+There was a second reproducibility problem in the audit path. The application services require Python 3.14, but `uvx` creates an isolated tool environment for tools such as `pip-audit`. Without an explicit interpreter selection, that tool environment could use another locally available Python version. In the repository audit that led to V1.0.26, this allowed a Python 3.13 audit environment to encounter Python 3.14-specific requirement hashes.
+
+V1.0.26 closes both gaps without changing any provider adapter, model name, request/response contract, customer behavior, or API schema.
+
+## The LLM gateway now has a committed lockfile
+
+The new file is:
+
+```text
+services/llm-gateway/uv.lock
+```
+
+It was generated in GitHub Actions with Python 3.14.6 from the existing gateway dependency declarations and then checked with `uv lock --check` before being committed. The lock declares:
+
+```text
+requires-python = "==3.14.*"
+```
+
+The gateway's `pyproject.toml` was deliberately not changed. Exact provider SDK declarations such as OpenAI, Anthropic, and Google GenAI therefore keep the same architecture-approved contract. The change freezes the already-declared dependency graph rather than using a dependency ticket as an excuse to upgrade providers.
+
+A lockfile records the exact resolved transitive graph and package hashes. This matters because an exact top-level dependency does not automatically make every package beneath it exact. A provider SDK can depend on HTTP, typing, serialization, or networking packages through ranges. The lock freezes the whole resolution that Serviq reviewed.
+
+## Lock freshness is checked before setup or auditing
+
+The root `Makefile` now contains a shared target:
+
+```text
+dependency-lock-check
+```
+
+It runs `uv lock --check` independently in:
+
+```text
+services/api
+services/worker
+services/llm-gateway
+```
+
+Both `make setup` and `make security` depend on this target.
+
+This distinction is important. A frozen install means "use the committed lock and do not update it." It does not mean "prove the lock still matches the dependency declaration." The explicit lock check catches the stale case first.
+
+For example, if somebody changes a Python dependency in `pyproject.toml` but forgets to commit the matching `uv.lock`, setup now stops with an actionable dependency-lock error instead of quietly resolving a different graph or proceeding with an outdated one.
+
+## All normal Python installation paths are frozen
+
+The three service setup commands are now equivalent to:
+
+```text
+uv sync --frozen
+```
+
+That includes the LLM gateway. Setup therefore consumes committed dependency state and cannot manufacture a new gateway lock as a side effect.
+
+The Python vulnerability-audit exports are also frozen:
+
+```text
+uv export --frozen --no-dev ...
+```
+
+for the API, worker, and LLM gateway.
+
+This gives setup and auditing the same dependency source of truth.
+
+## `pip-audit` now runs under Python 3.14 explicitly
+
+Every Serviq Python dependency audit uses the equivalent of:
+
+```text
+uvx --python 3.14 --from pip-audit==2.10.1 pip-audit ...
+```
+
+The important new part is `--python 3.14`.
+
+Serviq's projects already declare Python 3.14, but the `pip-audit` executable runs in its own `uvx` tool environment. V1.0.26 makes that tool environment deterministic too. A developer machine that also has Python 3.13 installed can no longer change the audit interpreter merely because of local interpreter discovery order.
+
+The audit tool version remains pinned at `2.10.1`. This ticket does not replace `pip-audit`, replace `uv`, or introduce a dependency-management SaaS.
+
+## Security workflow behavior remains fail-closed
+
+The GitHub Security dependency job now validates all Python locks before auditing them.
+
+It then:
+
+1. audits the pnpm production dependency graph;
+2. exports the API dependency set from its frozen lock;
+3. audits it with Python 3.14;
+4. exports the worker dependency set from its frozen lock;
+5. audits it with Python 3.14;
+6. exports the LLM gateway dependency set from its frozen lock;
+7. audits it with Python 3.14;
+8. uploads the existing JSON audit artifacts;
+9. enforces every recorded audit exit status.
+
+The final status enforcement was intentionally preserved. V1.0.26 does not turn a real vulnerability into a warning and does not add an ignore entry merely to make CI green.
+
+## CI now proves setup does not mutate dependency state
+
+The main CI quality job runs `make setup` and immediately checks:
+
+```text
+git status --porcelain
+```
+
+If installation modified or generated a repository file, CI prints the dirty status and fails before lint, type checking, and tests.
+
+This protects against a future regression where somebody accidentally removes `--frozen`, forgets to commit a lock, or introduces another install command that rewrites tracked dependency state.
+
+The clean-worktree check happens immediately after setup, before later build/test steps can create unrelated files, so a failure points directly to dependency installation.
+
+## Release paths use the same clean dependency contract
+
+The foundation, manual, and tag-driven release paths already reuse `make setup`. V1.0.26 keeps that common command and adds the same immediate clean-worktree verification after dependency installation in each release path.
+
+A release therefore cannot continue to lint, test, tag, or publish if preparing its dependencies changed the checked-out source tree.
+
+No release-version semantics changed. V1.0.26 does not move an existing tag, republish `v0.1.0-alpha.1`, change release labels, expand GitHub token permissions, or declare Serviq production-ready.
+
+## Contributor workflow
+
+`CONTRIBUTING.md` now makes the dependency rule explicit:
+
+- all three Python services require Python 3.14.x;
+- each service owns a committed `uv.lock`;
+- normal setup and security commands validate locks before use;
+- normal installation and exports are frozen;
+- Python audits explicitly select Python 3.14;
+- stale locks fail instead of being silently repaired;
+- an intentional dependency change must regenerate and review the owning lock under Python 3.14.
+
+This makes the lockfile part of the reviewed dependency change rather than an incidental local artifact.
+
+## What this improves
+
+### Reproducible development
+
+A clean checkout has one reviewed Python dependency graph for each service. Normal setup no longer depends on whichever compatible transitive release happens to be newest at install time.
+
+### Reproducible security evidence
+
+The vulnerability scanner receives frozen dependency exports, and its own interpreter is explicitly Python 3.14. Local and GitHub audit behavior are therefore much less dependent on machine-specific interpreter state.
+
+### Safer release validation
+
+Release dependency preparation must leave Git unchanged. A release cannot unknowingly publish from a checkout whose dependency command generated or rewrote repository state.
+
+### Easier debugging
+
+A stale dependency declaration fails at the lock-check step. A dirty dependency install fails immediately after setup. These are narrower and more actionable failure locations than discovering the problem later during a provider test or release.
+
+## Validation performed for V1.0.26
+
+The gateway lock bootstrap ran in GitHub Actions under Python 3.14.6. The job successfully generated the lock and successfully ran `uv lock --check` before the lock was committed.
+
+The final branch is validated through Serviq's normal CI and Security workflows. The CI quality path proves frozen setup plus clean checkout behavior before lint, type checking, and tests. The Security dependency job proves lock freshness, frozen exports, explicit Python 3.14 `pip-audit`, artifact creation, and non-zero vulnerability enforcement.
+
+The ticket also requires a negative stale-lock proof. That test is performed on a temporary copy of gateway dependency metadata so the real branch is not intentionally dirtied: modifying the temporary `pyproject.toml` without updating its copied lock must make `uv lock --check` exit non-zero.
+
+`make e2e` and `make load-test` remain intentional non-zero placeholders and are not represented as passing evidence for this dependency ticket.
+
+## What did not change
+
+V1.0.26 does not change:
+
+- provider adapter contracts;
+- OpenAI, Anthropic, Gemini, or OpenRouter behavior;
+- model names or aliases;
+- API request or response schemas;
+- database tables or migrations;
+- authentication or permissions;
+- tenant ownership boundaries;
+- prompts or tool payloads;
+- runtime logging behavior;
+- customer-facing UI behavior.
+
+This is a developer, CI, security, and release-reliability change only.
+
+## Existing repository-context discrepancy
+
+During implementation we confirmed that `services/api/uv.lock` and `services/worker/uv.lock` already exist on the current repository while one sentence in `docs/repo_context.md` still says there is no committed Python lockfile.
+
+That statement is stale documentation. `docs/repo_context.md` is intentionally not changed in V1.0.26 because it is outside this ticket's approved file list. The actual committed locks and the dependency commands are treated as implementation evidence. A later repository-context reconciliation should correct that sentence without expanding this focused dependency ticket.
+
+## Completion rule
+
+V1.0.26 is complete only when the final `v1.0.26` branch contains the gateway lock, frozen setup/export commands, Python 3.14 audit selection, CI/Security/Release enforcement, contributor documentation, and this cumulative explanation, and the exact final pull-request head passes the required CI and Security workflows before merge.
+
+The GitHub parent issue and implementation issues should close only after the merged `main` result and post-merge workflows are verified.
+'''
+          path.write_text(text.rstrip() + section + '\n')
+
+      - name: Commit build-guide update
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/SERVIQ_BUILD_GUIDE.md; then
+            echo "Build guide is already updated."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/SERVIQ_BUILD_GUIDE.md
+          git commit -m "V1.0.26.4: document reproducible dependency workflow"
+          git push origin HEAD:v1.0.26

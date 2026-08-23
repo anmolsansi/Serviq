@@ -3,7 +3,8 @@
 > Current-state engineering map, audited on 2026-08-22 at `main` commit
 > `258d189` (`Merge OPE-304 release system reconciliation`). This describes
 > code that exists. Future contracts remain in `PRD.md`, `ARCHITECTURE.md`, and
-> the staged roadmap.
+> the staged roadmap. The workforce OIDC integration-evidence notes below were
+> refreshed on 2026-08-23 for V1.1.15 against `main` base `1422834`.
 
 ## Executive snapshot
 
@@ -36,7 +37,7 @@ cross-service integration test, end-to-end flow, then deployed acceptance.
 | `services/worker` | Durable asynchronous execution | Minimal health/entrypoint foundation |
 | `services/llm-gateway` | Provider abstraction/connectivity | Active adapters and internal test route |
 | `packages/*` | Shared TypeScript packages | Early scaffolding |
-| `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Service exists; no committed Serviq realm/client fixture |
+| `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Keycloak 26.7.1 service; V1.1.15 adds a deterministic test-only realm/client fixture at `infra/keycloak/serviq-test-realm.json`, mounted only by the opt-in integration harness |
 | `infra/observability` | OTel, Prometheus, Grafana, Loki, Tempo | Templates; little app instrumentation |
 | `migrations` | Alembic schema history | Nine revisions through knowledge permissions |
 | `docs` | Product, architecture, operations, evidence | Extensive; contracts are not implementation |
@@ -58,9 +59,10 @@ justify it.
   through its S3-compatible API. Redpanda and observability are optional
   Compose profiles.
 
-There is no committed Python lockfile. Dependency resolution is less
-reproducible than the JavaScript workspace and should be resolved before a
-production release policy is claimed.
+The API, worker, and LLM gateway each have a committed `uv.lock`. The root
+Makefile checks lock freshness and uses frozen installs/exports so local setup,
+CI, release validation, and Python dependency auditing consume reviewed lock
+state.
 
 ## Conventions
 
@@ -84,7 +86,7 @@ production release policy is claimed.
 - Versioned external routes use `/api/v1`; gateway-only routes use `/internal`.
 - Health endpoints are `/health/live` and `/health/ready`.
 - Provider credentials are write-only at the public boundary.
-- Logs should contain bounded IDs, counts, outcomes, and timings—not tokens,
+- Logs should contain bounded IDs, counts, outcomes, and timings, not tokens,
   prompts, raw documents, credentials, or personal data.
 
 ## Authentication and authorization
@@ -93,6 +95,24 @@ Implemented foundations include OIDC/JWT validation and user provisioning,
 organization membership and active-organization resolution, permission checks,
 organization invitation flows, seeded workforce roles/permissions, and
 provider/model/knowledge permissions.
+
+The workforce validator resolves discovery/JWKS from the configured issuer,
+requires the configured audience, verifies RS256 signatures and temporal
+claims, requires a non-empty subject, and normalizes only the approved trusted
+identity fields. V1.1.15 adds a deterministic, test-only Keycloak realm/client
+fixture and an opt-in integration test that exercises this existing validator
+against a token issued by the real local Keycloak service. The fixture is not a
+production IdP configuration and is not loaded by the ordinary local Compose
+stack unless the integration harness explicitly mounts it.
+
+The live integration path proves a real issued token succeeds, wrong audience
+and wrong issuer fail closed through real Keycloak metadata/JWKS, disabled and
+unknown test users cannot obtain tokens, tenant/permission claims do not enter
+the trusted identity DTO, and raw tokens do not appear in captured Python logs
+or safe authentication errors. The direct password grant exists only on the
+deterministic test client so CI can obtain a token non-interactively; the
+product architecture remains Authorization Code + PKCE for workforce browser
+login.
 
 The external API authentication is workforce-oriented. Customer identity and
 session boundaries and full platform-console isolation remain future work. A
@@ -128,9 +148,18 @@ not present.
 
 Primary commands are `make setup`, `make lint`, `make typecheck`, `make test`,
 `make compose-config`, and `make security`. CI includes quality checks, real
-PostgreSQL migration/integration checks, and object-storage integration checks.
-A separate security workflow includes CodeQL, Gitleaks, Trivy, and dependency
+PostgreSQL migration/integration checks, object-storage integration checks, and
+V1.1.15 adds a dedicated live Keycloak workforce OIDC integration job. A
+separate security workflow includes CodeQL, Gitleaks, Trivy, and dependency
 audits. A release workflow is source-quality evidence, not deployed acceptance.
+
+The Keycloak OIDC integration is opt-in outside its dedicated CI job through
+`SERVIQ_KEYCLOAK_OIDC_INTEGRATION=1`. CI reuses the existing Compose Keycloak
+service definition, mounts `infra/keycloak/serviq-test-realm.json` only into a
+one-off container, starts Keycloak with `start-dev --import-realm`, waits for
+both management readiness and realm discovery, runs only the live OIDC test
+module, and always removes the test container. Readiness-timeout diagnostics are
+bounded and token/secret-shaped values are redacted before output.
 
 `make e2e` and `make load-test` intentionally fail because their harnesses do
 not exist. There are no frontend tests. Many API integration tests are skipped
@@ -147,12 +176,19 @@ Audit results on 2026-08-22:
 - security scans, enabled PostgreSQL/object-store integration, browser E2E,
   load, deployment, and real-device acceptance were not run.
 
+The V1.1.15 Keycloak integration evidence is newer than that 2026-08-22 audit
+snapshot and should be interpreted from the ticket/CI run recorded when the
+branch is finalized.
+
 ## Reusable implementation points
 
-Reuse the existing OIDC helpers, permission/active-organization dependencies,
-provider normalization and error mapping, knowledge object-storage boundary,
-database/migration conventions, health patterns, and CI infrastructure setup
-before adding parallel abstractions.
+Reuse the existing OIDC helpers and the deterministic Keycloak integration
+fixture for workforce trust-boundary regression tests. Keep the fixture
+strictly test-only and do not turn its direct-access grant or placeholder users
+into product login behavior. Also reuse permission/active-organization
+dependencies, provider normalization and error mapping, knowledge object-storage
+boundary, database/migration conventions, health patterns, and CI infrastructure
+setup before adding parallel abstractions.
 
 ## Capability boundary
 

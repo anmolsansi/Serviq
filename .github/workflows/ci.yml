@@ -342,7 +342,7 @@ jobs:
             --name serviq-keycloak-oidc \
             --service-ports \
             --no-deps \
-            --volume "${GITHUB_WORKSPACE}/infra/keycloak/serviq-test-realm.json:/opt/keycloak/data/import/serviq-test-realm.json:ro" \
+            --volume "${GITHUB_WORKSPACE}/infra/keycloak/serviq-test-realm.json:/opt/keycloak/data/import/serviq-realm.json:ro" \
             keycloak start-dev --import-realm
 
       - name: Wait for Keycloak readiness and imported realm
@@ -397,30 +397,3 @@ jobs:
         run: |
           docker rm -f serviq-keycloak-oidc >/dev/null 2>&1 || true
           docker compose -f infra/docker/compose.yml down --volumes --remove-orphans
-
-# V1.1.15 TEMP BUILD GUIDE FINALIZER START
-  v1115-build-guide-finalizer:
-    if: github.head_ref == 'v1.1.15' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - name: Check out V1.1.15 branch
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: v1.1.15
-
-      - name: Append guide and remove temporary finalizer files
-        run: python .github/v1.1.15-build-guide-finalizer.py
-
-      - name: Commit cumulative documentation
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m 'docs(v1.1.15): explain live Keycloak OIDC integration [41-43/46] (#175)'
-          git push origin HEAD:v1.1.15
-# V1.1.15 TEMP BUILD GUIDE FINALIZER END

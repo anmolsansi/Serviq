@@ -40,6 +40,8 @@ jobs:
               _, ref = reference.rsplit("@", 1)
               return full_commit_sha.fullmatch(ref) is not None
 
+          # Keep both sides of the policy executable so a future edit cannot
+          # accidentally weaken the predicate while leaving the scan green.
           assert is_immutable(
               "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
           )
@@ -114,6 +116,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: services/*/uv.lock
 
+      # Keep CI on the same high-level command surface contributors use locally.
       - name: Install dependencies
         run: make setup
 

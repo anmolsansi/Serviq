@@ -5849,3 +5849,126 @@ That sentence is stale documentation. `docs/repo_context.md` is outside the appr
 V1.0.26 is complete only when the final `v1.0.26` head contains the committed gateway lock, frozen setup/export paths, explicit Python 3.14 audit selection, CI/Security/Release enforcement, contributor documentation, and this cumulative implementation record, and that exact head passes CI and Security before merge.
 
 The GitHub task issues and parent issue close only after the merged `main` result and post-merge workflows are verified.
+
+---
+
+# V1.0.27 — Immutable GitHub Action resolution
+
+**GitHub parent issue:** #173  
+**Linear ticket:** OPE-306  
+**Integration branch:** `v1.0.27`
+
+## Why this ticket exists
+
+Serviq's Security workflow already pinned every third-party GitHub Action to an immutable commit SHA, but CI, Release, and the permanent 4K design-asset workflow still used mutable major-version references such as `actions/checkout@v4`.
+
+A mutable tag is convenient for humans, but it is not an immutable execution identity. If a tag is moved or compromised upstream, GitHub Actions could execute different third-party code even though no Serviq repository commit changed. V1.0.27 removes that avoidable supply-chain ambiguity.
+
+## Scope clarification discovered during intake
+
+The original audit ticket named `.github/workflows/ci.yml` and `.github/workflows/release.yml` as editable workflow files. Repository inspection found that `.github/workflows/build-4k-designs.yml` is also a permanent workflow and still contained mutable `uses:` references.
+
+That conflicted with the ticket's own repository-wide validation rule that no permanent workflow may contain an unpinned action reference. The user explicitly approved expanding the allowed change set to include the 4K design workflow and this cumulative Build Guide. `.github/workflows/security.yml` remains inspection-only because it was already compliant.
+
+## Reviewed immutable action identities
+
+The currently declared major-version tags were resolved against their official GitHub repositories. This ticket does not upgrade action major versions. It freezes the code identity behind the versions already in use:
+
+```text
+actions/checkout@v4
+  -> actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+pnpm/action-setup@v4
+  -> pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+actions/setup-node@v4
+  -> actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+
+actions/setup-python@v5
+  -> actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+
+astral-sh/setup-uv@v6
+  -> astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+```
+
+The version comments remain beside each SHA for readability. The SHA is the executable identity; the comment is human context only.
+
+## Repository-wide regression guard
+
+The CI quality job now checks every `.github/workflows/*.yml` and `.github/workflows/*.yaml` file before dependency installation.
+
+The rule is:
+
+- an external `owner/repository[/path]@ref` action must resolve to a full 40-character hexadecimal commit SHA;
+- a repository-local action beginning with `./` is allowed because it is resolved from the checked-out Serviq commit;
+- a `docker://` action is accepted only when it uses a full `sha256` image digest;
+- mutable tags, mutable branches, and mutable Docker tags fail the check.
+
+The checker includes executable self-tests. It proves that a full action SHA, local action, and Docker digest are accepted, while `actions/checkout@v4` and a Docker `:latest` reference are rejected. This prevents a future edit from weakening the predicate while leaving the repository scan apparently green.
+
+When a violation exists, CI prints only the workflow path, line number, and mutable reference. It does not need or expose secrets, tokens, prompts, customer data, or provider payloads.
+
+## Behavior intentionally preserved
+
+The workflow changes are supply-chain resolution changes only.
+
+V1.0.27 does not intentionally change:
+
+- workflow triggers;
+- job permissions;
+- runner operating systems;
+- action inputs;
+- dependency versions;
+- build/test commands;
+- release version validation;
+- release publication semantics;
+- release tags or published releases;
+- product/application code;
+- APIs, databases, authentication, tenants, or event contracts;
+- customer-facing behavior.
+
+The Security workflow is left source-identical because it already demonstrates the desired SHA-pinning pattern.
+
+## How to update an action safely later
+
+When a GitHub Action needs an intentional update:
+
+1. inspect the official action repository and the desired official release/tag;
+2. resolve that reviewed version to its exact commit SHA;
+3. update the SHA and readable version comment together;
+4. review the workflow diff for unintended trigger, permission, runner, input, or command changes;
+5. let the immutable-reference guard, CI, and Security validate the final branch head.
+
+Do not replace a SHA with a convenient major tag merely because the version comment already names that major version.
+
+## Release validation nuance
+
+The permanent Release workflow does not run on pull requests. Its manual `workflow_dispatch` path is a publishing path, so V1.0.27 does not invoke it merely to prove a feature branch. Doing so would violate the ticket's rule not to publish or alter releases during validation.
+
+Before merge, Release validation therefore consists of source/diff equivalence plus the common repository quality gates exercised by CI. After merge, the existing push-to-`main` Release path is the safe runtime evidence. Its foundation bootstrap is already idempotent and must detect the existing `v0.1.0-alpha.1` release rather than publishing a new one.
+
+Post-merge Release evidence must be observed directly. It must not be inferred from a green PR-only CI run.
+
+## What this improves
+
+### Supply-chain determinism
+
+A reviewed Serviq commit now names the exact third-party action code GitHub should execute rather than delegating that choice to a movable tag.
+
+### Reviewability
+
+The SHA is immutable and the adjacent version comment remains readable, so reviewers get both machine identity and human release context.
+
+### Regression prevention
+
+A future mutable external `uses:` reference makes CI fail immediately instead of silently weakening the repository's supply-chain policy.
+
+### Consistency
+
+CI, Release, Security, and the permanent design-asset workflow now follow the same immutable-action rule.
+
+## Completion rule
+
+V1.0.27 is complete only when the final branch contains exactly the approved workflow/documentation changes, the repository scan finds zero mutable permanent action references, exact-head CI and Security are green, the PR is merged, and the post-merge `main` CI/Security/Release executions are observed where the available GitHub interface exposes them.
+
+GitHub issue #173 and Linear OPE-306 close only after that evidence is recorded. If a post-merge workflow cannot be observed directly, the tracking item remains open rather than treating unobserved automation as successful.

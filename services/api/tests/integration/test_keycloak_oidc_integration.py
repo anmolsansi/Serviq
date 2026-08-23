@@ -7,7 +7,7 @@ from collections.abc import Mapping
 import httpx
 import pytest
 
-from app.core.auth import WorkforceOidcValidator
+from app.core.auth import OidcMetadataCache, WorkforceOidcValidator
 from app.core.config import PlatformSettings, load_settings
 from app.core.errors import AuthenticationError
 
@@ -88,10 +88,13 @@ def test_real_keycloak_token_with_wrong_audience_fails_closed() -> None:
 
 
 def test_real_keycloak_token_with_wrong_issuer_fails_closed() -> None:
-    raw_token = _access_token(issuer=ALTERNATE_LOOPBACK_ISSUER)
+    raw_token = _access_token()
+    settings = _settings().model_copy(update={"oidc_issuer_url": ALTERNATE_LOOPBACK_ISSUER})
+    real_keycloak_metadata = OidcMetadataCache(issuer=ISSUER, environment="test")
+    validator = WorkforceOidcValidator(settings, metadata_cache=real_keycloak_metadata)
 
     with pytest.raises(AuthenticationError) as exc_info:
-        asyncio.run(WorkforceOidcValidator(_settings()).validate(raw_token))
+        asyncio.run(validator.validate(raw_token))
 
     assert exc_info.value.error_code == "UNAUTHENTICATED"
     assert str(exc_info.value) == "Authentication failed."

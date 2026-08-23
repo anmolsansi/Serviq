@@ -113,7 +113,7 @@ def test_disabled_or_unknown_subject_cannot_obtain_token(
 ) -> None:
     response = _request_token(username=username, password=password)
 
-    assert response.status_code == 401
+    assert response.status_code == 400
     payload = response.json()
     assert isinstance(payload, Mapping)
     assert payload.get("error") == "invalid_grant"

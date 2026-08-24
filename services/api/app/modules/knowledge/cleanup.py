@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
-from app.modules.knowledge.models import KnowledgeUploadCleanup
 from app.modules.knowledge.repository import (
     get_upload_cleanup_for_update,
     list_due_upload_cleanup_ids,
@@ -29,6 +28,8 @@ SECOND_RETRY_DELAY = timedelta(minutes=5)
 THIRD_RETRY_DELAY = timedelta(minutes=30)
 MAX_RECONCILIATION_ATTEMPTS = 3
 OBJECT_STORAGE_ERROR_CODE = "OBJECT_STORAGE_UNAVAILABLE"
+PUT_OUTCOME_AMBIGUOUS_ERROR_CODE = "OBJECT_STORAGE_PUT_OUTCOME_AMBIGUOUS"
+SOURCE_PERSISTENCE_ERROR_CODE = "KNOWLEDGE_SOURCE_PERSISTENCE_FAILED"
 KEY_MISMATCH_ERROR_CODE = "KNOWLEDGE_UPLOAD_CLEANUP_KEY_MISMATCH"
 
 CleanupReplayOutcome = Literal[
@@ -63,6 +64,7 @@ class _CleanupClaim:
     source_id: UUID
     object_id: UUID
     attempt_count: int
+    requires_presence_confirmation: bool
     object_key: str = field(repr=False)
 
 
@@ -106,9 +108,10 @@ async def arm_upload_cleanup(
     *,
     tenant_id: UUID,
     cleanup_id: UUID,
+    error_code: str = OBJECT_STORAGE_ERROR_CODE,
     now: datetime | None = None,
 ) -> None:
-    """Move a prepared intent to pending after a known request failure."""
+    """Move a prepared intent to pending after a confirmed request failure."""
 
     current = now or datetime.now(UTC)
     async with session.begin():
@@ -124,7 +127,7 @@ async def arm_upload_cleanup(
         mark_upload_cleanup_pending(
             cleanup,
             next_attempt_at=first_retry_due_at(current),
-            error_code=OBJECT_STORAGE_ERROR_CODE,
+            error_code=error_code,
             now=current,
         )
         await session.flush()
@@ -146,7 +149,7 @@ async def mark_inline_cleanup_succeeded(
     cleanup_id: UUID,
     now: datetime | None = None,
 ) -> None:
-    """Record a request-time idempotent delete without exposing the object key."""
+    """Record a safe request-time delete without exposing the object key."""
 
     current = now or datetime.now(UTC)
     async with session.begin():
@@ -269,10 +272,16 @@ async def _claim_due_cleanup(
             )
             return result
 
+        requires_presence_confirmation = (
+            cleanup.status == "prepared"
+            or cleanup.last_error_code == PUT_OUTCOME_AMBIGUOUS_ERROR_CODE
+        )
+        if cleanup.status == "prepared" and cleanup.last_error_code is None:
+            cleanup.last_error_code = PUT_OUTCOME_AMBIGUOUS_ERROR_CODE
+
         cleanup.attempt_count += 1
         cleanup.status = "pending"
         cleanup.next_attempt_at = _lease_until(now, cleanup.attempt_count)
-        cleanup.last_error_code = None
         cleanup.updated_at = now
         await session.flush()
         return _CleanupClaim(
@@ -282,7 +291,77 @@ async def _claim_due_cleanup(
             object_id=cleanup.object_id,
             object_key=cleanup.object_key,
             attempt_count=cleanup.attempt_count,
+            requires_presence_confirmation=requires_presence_confirmation,
         )
+
+
+async def _record_failed_attempt(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    cleanup_id: UUID,
+    error_code: str,
+    now: datetime,
+) -> CleanupReplayResult:
+    async with session.begin():
+        cleanup = await get_upload_cleanup_for_update(
+            session,
+            tenant_id=tenant_id,
+            cleanup_id=cleanup_id,
+        )
+        if cleanup is None:
+            raise KnowledgeUploadCleanupUnavailableError from None
+        if cleanup.status in {"referenced", "succeeded"}:
+            outcome: CleanupReplayOutcome = (
+                "noop_referenced" if cleanup.status == "referenced" else "noop_succeeded"
+            )
+            return CleanupReplayResult(
+                cleanup_id=cleanup.id,
+                tenant_id=cleanup.tenant_id,
+                outcome=outcome,
+                attempt_count=cleanup.attempt_count,
+            )
+        if cleanup.status == "exhausted":
+            return CleanupReplayResult(
+                cleanup_id=cleanup.id,
+                tenant_id=cleanup.tenant_id,
+                outcome="exhausted",
+                attempt_count=cleanup.attempt_count,
+            )
+
+        if cleanup.attempt_count >= MAX_RECONCILIATION_ATTEMPTS:
+            mark_upload_cleanup_exhausted(
+                cleanup,
+                error_code=error_code,
+                now=now,
+            )
+            outcome = "exhausted"
+            log_level = logging.ERROR
+            log_event = "knowledge_upload_cleanup_exhausted"
+        else:
+            cleanup.status = "pending"
+            cleanup.last_error_code = error_code
+            cleanup.updated_at = now
+            outcome = "retry_scheduled"
+            log_level = logging.WARNING
+            log_event = "knowledge_upload_cleanup_pending"
+        await session.flush()
+        attempt_count = cleanup.attempt_count
+
+    _safe_log(
+        log_level,
+        log_event,
+        cleanup_id=cleanup_id,
+        tenant_id=tenant_id,
+        status="exhausted" if outcome == "exhausted" else "pending",
+        attempt_count=attempt_count,
+    )
+    return CleanupReplayResult(
+        cleanup_id=cleanup_id,
+        tenant_id=tenant_id,
+        outcome=outcome,
+        attempt_count=attempt_count,
+    )
 
 
 async def reconcile_upload_cleanup(
@@ -312,59 +391,40 @@ async def reconcile_upload_cleanup(
         object_id=claim.object_id,
     )
 
-    try:
-        await run_in_threadpool(storage.delete_object, key)
-    except ObjectStorageError:
-        failure_time = datetime.now(UTC)
-        async with session.begin():
-            cleanup = await get_upload_cleanup_for_update(
+    if claim.requires_presence_confirmation:
+        try:
+            object_visible = await run_in_threadpool(storage.exists, key)
+        except ObjectStorageError:
+            return await _record_failed_attempt(
                 session,
                 tenant_id=tenant_id,
                 cleanup_id=cleanup_id,
+                error_code=PUT_OUTCOME_AMBIGUOUS_ERROR_CODE,
+                now=datetime.now(UTC),
             )
-            if cleanup is None:
-                raise KnowledgeUploadCleanupUnavailableError from None
-            if cleanup.status in {"referenced", "succeeded"}:
-                outcome: CleanupReplayOutcome = (
-                    "noop_referenced" if cleanup.status == "referenced" else "noop_succeeded"
-                )
-                return CleanupReplayResult(
-                    cleanup_id=cleanup.id,
-                    tenant_id=cleanup.tenant_id,
-                    outcome=outcome,
-                    attempt_count=cleanup.attempt_count,
-                )
-            if cleanup.attempt_count >= MAX_RECONCILIATION_ATTEMPTS:
-                mark_upload_cleanup_exhausted(
-                    cleanup,
-                    error_code=OBJECT_STORAGE_ERROR_CODE,
-                    now=failure_time,
-                )
-                outcome = "exhausted"
-                log_level = logging.ERROR
-                log_event = "knowledge_upload_cleanup_exhausted"
-            else:
-                cleanup.status = "pending"
-                cleanup.last_error_code = OBJECT_STORAGE_ERROR_CODE
-                cleanup.updated_at = failure_time
-                outcome = "retry_scheduled"
-                log_level = logging.WARNING
-                log_event = "knowledge_upload_cleanup_pending"
-            await session.flush()
-            attempt_count = cleanup.attempt_count
-        _safe_log(
-            log_level,
-            log_event,
-            cleanup_id=cleanup_id,
+
+        if not object_visible:
+            # Absence is not proof of cleanup when the original PUT outcome was
+            # ambiguous. A delayed server-side PUT may still materialize later.
+            # Keep the obligation replayable, and exhaust visibly rather than
+            # silently declaring success after the bounded observation budget.
+            return await _record_failed_attempt(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+                error_code=PUT_OUTCOME_AMBIGUOUS_ERROR_CODE,
+                now=datetime.now(UTC),
+            )
+
+    try:
+        await run_in_threadpool(storage.delete_object, key)
+    except ObjectStorageError:
+        return await _record_failed_attempt(
+            session,
             tenant_id=tenant_id,
-            status="exhausted" if outcome == "exhausted" else "pending",
-            attempt_count=attempt_count,
-        )
-        return CleanupReplayResult(
             cleanup_id=cleanup_id,
-            tenant_id=tenant_id,
-            outcome=outcome,
-            attempt_count=attempt_count,
+            error_code=OBJECT_STORAGE_ERROR_CODE,
+            now=datetime.now(UTC),
         )
 
     success_time = datetime.now(UTC)

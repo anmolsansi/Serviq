@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
+from app.core.object_storage import (
+    KnowledgeRawObjectKey,
+    ObjectStorage,
+    ObjectStorageError,
+    knowledge_raw_key,
+)
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
 from app.modules.knowledge.models import KnowledgeSource
 from app.modules.knowledge.repository import (
@@ -291,21 +296,20 @@ async def _recover_failed_file_upload(
     storage: ObjectStorage,
     tenant_id: UUID,
     cleanup_id: UUID,
-    key: object,
+    key: KnowledgeRawObjectKey,
     error_code: str,
 ) -> None:
     """Best-effort fast recovery; the pre-PUT prepared row remains the durable fallback."""
 
-    armed = await _best_effort_arm_cleanup(
+    await _best_effort_arm_cleanup(
         session,
         tenant_id=tenant_id,
         cleanup_id=cleanup_id,
         error_code=error_code,
     )
-    del armed  # Recovery correctness does not depend on this best-effort transition.
 
     try:
-        await run_in_threadpool(storage.delete_object, key)  # type: ignore[arg-type]
+        await run_in_threadpool(storage.delete_object, key)
     except Exception:
         # Never mask the request's original failure. If delete or storage is unavailable,
         # prepared/pending state remains durable and the bounded reconciler can retry.

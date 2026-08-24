@@ -64,6 +64,8 @@ def add_file_knowledge_source(
     object_key: str,
     access_scope: str,
     created_by: UUID,
+    status: str,
+    last_error_code: str | None,
     now: datetime,
 ) -> KnowledgeSource:
     source = KnowledgeSource(
@@ -74,13 +76,25 @@ def add_file_knowledge_source(
         source_uri=None,
         object_key=object_key,
         access_scope=access_scope,
-        status="pending",
+        status=status,
         sync_version=0,
         last_synced_at=None,
-        last_error_code=None,
+        last_error_code=last_error_code,
         created_by=created_by,
         created_at=now,
         updated_at=now,
     )
     session.add(source)
     return source
+
+
+def mark_file_knowledge_source_upload_complete(
+    source: KnowledgeSource,
+    *,
+    now: datetime,
+) -> None:
+    """Promote a durably registered file source after its raw object PUT succeeds."""
+
+    source.status = "pending"
+    source.last_error_code = None
+    source.updated_at = now

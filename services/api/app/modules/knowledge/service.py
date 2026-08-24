@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
+from app.core.object_storage import (
+    KnowledgeRawObjectKey,
+    ObjectStorage,
+    ObjectStorageError,
+    knowledge_raw_key,
+)
 from app.modules.knowledge.cleanup import (
     arm_upload_cleanup,
     mark_inline_cleanup_succeeded,
@@ -180,7 +185,7 @@ async def _best_effort_failed_upload_cleanup(
     storage: ObjectStorage,
     tenant_id: UUID,
     cleanup_id: UUID,
-    key: object,
+    key: KnowledgeRawObjectKey,
 ) -> None:
     """Try immediate cleanup without allowing secondary failures to hide the original error.
 

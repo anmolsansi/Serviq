@@ -14,6 +14,7 @@ from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
 from app.core.object_storage import ObjectStorageError, ObjectStorageKey, knowledge_raw_key
 from app.modules.knowledge.cleanup import (
+    PUT_OUTCOME_AMBIGUOUS_ERROR_CODE,
     KnowledgeUploadCleanupUnavailableError,
     arm_upload_cleanup,
     first_retry_due_at,
@@ -113,7 +114,8 @@ def test_cleanup_replay_is_idempotent_tenant_safe_and_bounded(
 
             t0 = datetime(2026, 8, 24, 18, 0, tzinfo=UTC)
 
-            # A due prepared record is deterministic crash/ambiguous-outcome recovery.
+            # A due prepared record with a visible object is deterministic
+            # crash/ambiguous-outcome recovery.
             storage = CleanupStorage()
             async with session_factory() as session:
                 cleanup_id, key = await _create_cleanup(
@@ -144,6 +146,56 @@ def test_cleanup_replay_is_idempotent_tenant_safe_and_bounded(
                 )
                 assert replay.outcome == "noop_succeeded"
                 assert storage.deleted == [key.value]
+
+            # Absence is not proof that an ambiguous PUT is finished. Keep the
+            # obligation replayable, then remove an object that materializes later.
+            delayed_storage = CleanupStorage()
+            async with session_factory() as session:
+                delayed_cleanup_id, delayed_key = await _create_cleanup(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    now=t0 - timedelta(minutes=16),
+                    due_at=t0,
+                )
+                absent = await reconcile_upload_cleanup(
+                    session,
+                    storage=delayed_storage,
+                    tenant_id=fixture.tenant_a,
+                    cleanup_id=delayed_cleanup_id,
+                    now=t0,
+                )
+                assert absent.outcome == "retry_scheduled"
+                assert absent.attempt_count == 1
+                assert delayed_storage.deleted == []
+
+                row = (
+                    await session.execute(
+                        text(
+                            "SELECT status, next_attempt_at, last_error_code "
+                            "FROM knowledge_upload_cleanups WHERE id=:id"
+                        ),
+                        {"id": delayed_cleanup_id},
+                    )
+                ).one()
+                assert row.status == "pending"
+                assert row.next_attempt_at == t0 + timedelta(minutes=5)
+                assert row.last_error_code == PUT_OUTCOME_AMBIGUOUS_ERROR_CODE
+                await session.rollback()
+
+                # Simulate the original timed-out PUT materializing after the
+                # first absence observation.
+                delayed_storage.objects[delayed_key.value] = b"late"
+                resolved = await reconcile_upload_cleanup(
+                    session,
+                    storage=delayed_storage,
+                    tenant_id=fixture.tenant_a,
+                    cleanup_id=delayed_cleanup_id,
+                    now=t0 + timedelta(minutes=5),
+                )
+                assert resolved.outcome == "succeeded"
+                assert resolved.attempt_count == 2
+                assert delayed_storage.deleted == [delayed_key.value]
+                assert delayed_storage.objects == {}
 
             # Tenant-scoped lookup fails closed. It does not reveal or delete the key.
             foreign_storage = CleanupStorage()
@@ -277,7 +329,7 @@ def test_cleanup_replay_is_idempotent_tenant_safe_and_bounded(
                 ]
 
                 counts = await count_upload_cleanups_by_status(session)
-                assert counts["succeeded"] >= 1
+                assert counts["succeeded"] >= 2
                 assert counts["exhausted"] >= 1
 
             # The complete generated object key never appears in safe cleanup logs.

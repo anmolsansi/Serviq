@@ -275,7 +275,10 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                     tenant_id=fixture.tenant_a,
                     object_key=failing_storage.deleted[0],
                 )
-                assert cleanup.status == "succeeded"
+                assert cleanup.status == "prepared"
+                assert cleanup.attempt_count == 0
+                assert cleanup.next_attempt_at is not None
+                assert cleanup.resolved_at is None
 
             ambiguous_storage = FakeStorage(fail_after_put=True)
             monkeypatch.setattr(
@@ -312,7 +315,10 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                     tenant_id=fixture.tenant_a,
                     object_key=ambiguous_storage.deleted[0],
                 )
-                assert cleanup.status == "succeeded"
+                assert cleanup.status == "prepared"
+                assert cleanup.attempt_count == 0
+                assert cleanup.next_attempt_at is not None
+                assert cleanup.resolved_at is None
 
             no_put_storage = FakeStorage()
             monkeypatch.setattr(

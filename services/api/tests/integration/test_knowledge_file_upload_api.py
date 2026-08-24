@@ -40,12 +40,15 @@ class FakeStorage:
         *,
         fail_put: bool = False,
         fail_after_put: bool = False,
+        fail_delete: bool = False,
     ) -> None:
         self.fail_put = fail_put
         self.fail_after_put = fail_after_put
+        self.fail_delete = fail_delete
         self.objects: dict[str, bytes] = {}
         self.deleted: list[str] = []
         self.metadata: dict[str, Mapping[str, str]] = {}
+        self.put_calls = 0
 
     def put_object(
         self,
@@ -55,6 +58,7 @@ class FakeStorage:
         content_type: str,
         metadata: Mapping[str, str] | None = None,
     ) -> None:
+        self.put_calls += 1
         if self.fail_put:
             raise ObjectStorageError
         payload = data if isinstance(data, bytes) else data.read()
@@ -65,6 +69,8 @@ class FakeStorage:
 
     def delete_object(self, key: ObjectStorageKey) -> None:
         self.deleted.append(key.value)
+        if self.fail_delete:
+            raise ObjectStorageError
         self.objects.pop(key.value, None)
 
     def get_object(self, key: ObjectStorageKey) -> Any:
@@ -94,6 +100,25 @@ def _install_overrides(
 
 def _clear_overrides() -> None:
     app.dependency_overrides.clear()
+
+
+async def _cleanup_row_for_key(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    object_key: str,
+) -> Any:
+    return (
+        await session.execute(
+            text(
+                "SELECT id, source_id, object_id, object_key, status, attempt_count, "
+                "next_attempt_at, last_error_code, resolved_at "
+                "FROM knowledge_upload_cleanups "
+                "WHERE tenant_id=:tenant AND object_key=:object_key"
+            ),
+            {"tenant": tenant_id, "object_key": object_key},
+        )
+    ).one()
 
 
 def test_file_upload_storage_persistence_permissions_and_consistency(
@@ -137,6 +162,7 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                 assert "objectKey" not in data
                 assert "createdBy" not in data
 
+            assert storage.put_calls == 1
             assert len(storage.objects) == 1
             key = next(iter(storage.objects))
             assert key.startswith(f"tenants/{fixture.tenant_a}/knowledge/")
@@ -159,6 +185,16 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                 assert row.status == "pending"
                 assert row.sync_version == 0
                 assert row.last_error_code is None
+                cleanup = await _cleanup_row_for_key(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    object_key=key,
+                )
+                assert cleanup.source_id == UUID(data["id"])
+                assert cleanup.status == "referenced"
+                assert cleanup.attempt_count == 0
+                assert cleanup.next_attempt_at is None
+                assert cleanup.resolved_at is not None
 
             _install_overrides(
                 session_factory,
@@ -202,17 +238,6 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                 )
                 assert foreign_denied.status_code == 403
             assert len(storage.objects) == object_count_before_foreign_attempt
-            async with session_factory() as session:
-                foreign_count = (
-                    await session.execute(
-                        text(
-                            "SELECT count(*) FROM knowledge_sources "
-                            "WHERE tenant_id=:tenant AND name='Foreign tenant denied'"
-                        ),
-                        {"tenant": fixture.tenant_b},
-                    )
-                ).scalar_one()
-                assert foreign_count == 0
 
             failing_storage = FakeStorage(fail_put=True)
             monkeypatch.setattr(
@@ -233,23 +258,24 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                 )
                 assert failed.status_code == 503
             assert failing_storage.objects == {}
-            assert failing_storage.deleted == []
+            assert len(failing_storage.deleted) == 1
             async with session_factory() as session:
-                failed_row = (
+                failed_source_count = (
                     await session.execute(
                         text(
-                            "SELECT object_key, status, last_error_code FROM knowledge_sources "
+                            "SELECT count(*) FROM knowledge_sources "
                             "WHERE tenant_id=:tenant AND name='Storage fail'"
                         ),
                         {"tenant": fixture.tenant_a},
                     )
-                ).one()
-                assert failed_row.object_key is not None
-                assert failed_row.status == "failed"
-                assert (
-                    failed_row.last_error_code
-                    == knowledge_service.KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE
+                ).scalar_one()
+                assert failed_source_count == 0
+                cleanup = await _cleanup_row_for_key(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    object_key=failing_storage.deleted[0],
                 )
+                assert cleanup.status == "succeeded"
 
             ambiguous_storage = FakeStorage(fail_after_put=True)
             monkeypatch.setattr(
@@ -268,86 +294,71 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                     files={"file": ("ambiguous.txt", b"safe", "text/plain")},
                 )
                 assert ambiguous.status_code == 503
-            assert len(ambiguous_storage.objects) == 1
-            ambiguous_key = next(iter(ambiguous_storage.objects))
+            assert ambiguous_storage.objects == {}
+            assert len(ambiguous_storage.deleted) == 1
             async with session_factory() as session:
-                ambiguous_row = (
+                ambiguous_source_count = (
                     await session.execute(
                         text(
-                            "SELECT object_key, status, last_error_code FROM knowledge_sources "
+                            "SELECT count(*) FROM knowledge_sources "
                             "WHERE tenant_id=:tenant AND name='Ambiguous storage outcome'"
                         ),
                         {"tenant": fixture.tenant_a},
                     )
-                ).one()
-                assert ambiguous_row.object_key == ambiguous_key
-                assert ambiguous_row.status == "failed"
-                assert (
-                    ambiguous_row.last_error_code
-                    == knowledge_service.KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE
+                ).scalar_one()
+                assert ambiguous_source_count == 0
+                cleanup = await _cleanup_row_for_key(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    object_key=ambiguous_storage.deleted[0],
                 )
+                assert cleanup.status == "succeeded"
 
-            transition_storage = FakeStorage()
+            no_put_storage = FakeStorage()
             monkeypatch.setattr(
                 knowledge_router,
                 "get_knowledge_object_storage",
-                lambda: transition_storage,
+                lambda: no_put_storage,
             )
 
-            def fail_completion(*args: Any, **kwargs: Any) -> Any:
-                raise RuntimeError("synthetic completion database failure")
+            def fail_cleanup_intent(*args: Any, **kwargs: Any) -> Any:
+                raise RuntimeError("synthetic cleanup intent database failure")
 
-            with monkeypatch.context() as completion_patch:
-                completion_patch.setitem(
+            with monkeypatch.context() as intent_patch:
+                intent_patch.setitem(
                     knowledge_service.__dict__,
-                    "mark_file_knowledge_source_upload_complete",
-                    fail_completion,
+                    "add_upload_cleanup_intent",
+                    fail_cleanup_intent,
                 )
                 async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                    failed_completion = await client.post(
+                    failed_intent = await client.post(
                         "/api/v1/knowledge-sources",
                         data={
                             "sourceType": "text",
-                            "name": "Completion fail",
+                            "name": "Intent fail",
                             "accessScope": "customer",
                         },
-                        files={"file": ("completion.txt", b"safe", "text/plain")},
+                        files={"file": ("intent.txt", b"safe", "text/plain")},
                     )
-                    assert failed_completion.status_code == 500
-            assert len(transition_storage.objects) == 1
-            transition_key = next(iter(transition_storage.objects))
-            async with session_factory() as session:
-                transition_row = (
-                    await session.execute(
-                        text(
-                            "SELECT object_key, status, last_error_code FROM knowledge_sources "
-                            "WHERE tenant_id=:tenant AND name='Completion fail'"
-                        ),
-                        {"tenant": fixture.tenant_a},
-                    )
-                ).one()
-                assert transition_row.object_key == transition_key
-                assert transition_row.status == "failed"
-                assert (
-                    transition_row.last_error_code
-                    == knowledge_service.KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE
-                )
+                    assert failed_intent.status_code == 500
+            assert no_put_storage.put_calls == 0
+            assert no_put_storage.objects == {}
 
-            registration_storage = FakeStorage()
+            db_failure_storage = FakeStorage()
             monkeypatch.setattr(
                 knowledge_router,
                 "get_knowledge_object_storage",
-                lambda: registration_storage,
+                lambda: db_failure_storage,
             )
 
-            def fail_database(*args: Any, **kwargs: Any) -> Any:
-                raise RuntimeError("synthetic database failure")
+            def fail_source_insert(*args: Any, **kwargs: Any) -> Any:
+                raise RuntimeError("synthetic source database failure")
 
-            with monkeypatch.context() as registration_patch:
-                registration_patch.setitem(
+            with monkeypatch.context() as source_patch:
+                source_patch.setitem(
                     knowledge_service.__dict__,
                     "add_file_knowledge_source",
-                    fail_database,
+                    fail_source_insert,
                 )
                 async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                     failed_db = await client.post(
@@ -360,12 +371,123 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                         files={"file": ("db.txt", b"safe", "text/plain")},
                     )
                     assert failed_db.status_code == 500
-            assert registration_storage.objects == {}
-            assert registration_storage.deleted == []
+            assert db_failure_storage.objects == {}
+            assert len(db_failure_storage.deleted) == 1
+            async with session_factory() as session:
+                db_source_count = (
+                    await session.execute(
+                        text(
+                            "SELECT count(*) FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='DB registration fail'"
+                        ),
+                        {"tenant": fixture.tenant_a},
+                    )
+                ).scalar_one()
+                assert db_source_count == 0
+                cleanup = await _cleanup_row_for_key(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    object_key=db_failure_storage.deleted[0],
+                )
+                assert cleanup.status == "succeeded"
+
+            double_failure_storage = FakeStorage(fail_delete=True)
+            monkeypatch.setattr(
+                knowledge_router,
+                "get_knowledge_object_storage",
+                lambda: double_failure_storage,
+            )
+            with monkeypatch.context() as source_patch:
+                source_patch.setitem(
+                    knowledge_service.__dict__,
+                    "add_file_knowledge_source",
+                    fail_source_insert,
+                )
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                    double_failed = await client.post(
+                        "/api/v1/knowledge-sources",
+                        data={
+                            "sourceType": "text",
+                            "name": "Double failure",
+                            "accessScope": "customer",
+                        },
+                        files={"file": ("double.txt", b"safe", "text/plain")},
+                    )
+                    assert double_failed.status_code == 500
+            assert len(double_failure_storage.objects) == 1
+            double_key = next(iter(double_failure_storage.objects))
+            assert double_failure_storage.deleted == [double_key]
+            async with session_factory() as session:
+                double_source_count = (
+                    await session.execute(
+                        text(
+                            "SELECT count(*) FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='Double failure'"
+                        ),
+                        {"tenant": fixture.tenant_a},
+                    )
+                ).scalar_one()
+                assert double_source_count == 0
+                cleanup = await _cleanup_row_for_key(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    object_key=double_key,
+                )
+                assert cleanup.status == "pending"
+                assert cleanup.attempt_count == 0
+                assert cleanup.next_attempt_at is not None
+                assert cleanup.resolved_at is None
+
+            prepared_failure_storage = FakeStorage(fail_delete=True)
+            monkeypatch.setattr(
+                knowledge_router,
+                "get_knowledge_object_storage",
+                lambda: prepared_failure_storage,
+            )
+
+            async def fail_arm(*args: Any, **kwargs: Any) -> None:
+                raise RuntimeError("synthetic retry-arm database failure")
+
+            with monkeypatch.context() as prepared_patch:
+                prepared_patch.setitem(
+                    knowledge_service.__dict__,
+                    "add_file_knowledge_source",
+                    fail_source_insert,
+                )
+                prepared_patch.setitem(
+                    knowledge_service.__dict__,
+                    "arm_upload_cleanup",
+                    fail_arm,
+                )
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                    prepared_failed = await client.post(
+                        "/api/v1/knowledge-sources",
+                        data={
+                            "sourceType": "text",
+                            "name": "Prepared fallback",
+                            "accessScope": "customer",
+                        },
+                        files={"file": ("prepared.txt", b"safe", "text/plain")},
+                    )
+                    assert prepared_failed.status_code == 500
+            prepared_key = next(iter(prepared_failure_storage.objects))
+            async with session_factory() as session:
+                cleanup = await _cleanup_row_for_key(
+                    session,
+                    tenant_id=fixture.tenant_a,
+                    object_key=prepared_key,
+                )
+                assert cleanup.status == "prepared"
+                assert cleanup.attempt_count == 0
+                assert cleanup.next_attempt_at is not None
         finally:
             _clear_overrides()
             if seeded:
                 async with session_factory() as session, session.begin():
+                    await session.execute(
+                        text("DELETE FROM knowledge_upload_cleanups WHERE tenant_id IN (:a, :b)"),
+                        {"a": fixture.tenant_a, "b": fixture.tenant_b},
+                    )
                     await session.execute(
                         text("DELETE FROM knowledge_sources WHERE tenant_id IN (:a, :b)"),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},

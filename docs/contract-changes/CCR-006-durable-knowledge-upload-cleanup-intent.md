@@ -45,6 +45,7 @@ Columns:
 id               uuid primary key default uuidv7()
 tenant_id        uuid not null -> tenants(id) ON DELETE RESTRICT
 source_id        uuid not null
+object_id        uuid not null
 object_key       text not null
 status           text not null
 attempt_count    integer not null default 0
@@ -55,7 +56,7 @@ created_at       timestamptz not null default now()
 updated_at       timestamptz not null default now()
 ```
 
-`source_id` is deliberately not a foreign key. The cleanup record is created before the `knowledge_sources` row, and a failed upload may correctly end with no source row at all.
+`source_id` is deliberately not a foreign key. The cleanup record is created before the `knowledge_sources` row, and a failed upload may correctly end with no source row at all. `object_id` is the server-generated raw-object identifier retained so recovery can reconstruct the existing typed OPE-301 key without parsing an unrestricted string.
 
 ## Constraints
 

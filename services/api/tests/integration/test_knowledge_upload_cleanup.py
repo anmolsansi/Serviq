@@ -270,7 +270,11 @@ def test_cleanup_replay_is_idempotent_tenant_safe_and_bounded(
                 assert row.next_attempt_at is None
                 assert row.resolved_at is not None
                 assert row.last_error_code == "OBJECT_STORAGE_UNAVAILABLE"
-                assert failing_storage.deleted == [retry_key.value, retry_key.value, retry_key.value]
+                assert failing_storage.deleted == [
+                    retry_key.value,
+                    retry_key.value,
+                    retry_key.value,
+                ]
 
                 counts = await count_upload_cleanups_by_status(session)
                 assert counts["succeeded"] >= 1

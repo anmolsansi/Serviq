@@ -48,7 +48,7 @@ Extension, MIME, declared source type, and content sanity must agree. PDF conten
 
 **Superseded by ADR-018.** The original OPE-303 implementation authorized first, validated the upload, stored the generated raw object, then created the pending database row in a separate transaction with best-effort deletion on database failure.
 
-V1.3.04A reverses that durability ordering. The generated file-backed `knowledge_sources` row is committed first in a safe failed/incomplete state, object storage is called only after that durable reference exists, and a second transaction promotes the source to `pending` after a successful PUT. See ADR-018 for the frozen failure and recovery semantics.
+V1.3.04A now commits an internal `knowledge_upload_cleanups` intent before the object PUT. A successful source insert and cleanup `referenced` transition commit together after the PUT. Failed uploads still create no tenant-visible source row, while the internal cleanup state can drive bounded idempotent deletion. See ADR-018 and CCR-006 for the frozen failure, retry, tenant, retention, and rollback semantics.
 
 ## Explicit non-decisions
 

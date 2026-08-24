@@ -184,6 +184,36 @@ def test_file_upload_storage_persistence_permissions_and_consistency(
                 ).scalar_one()
                 assert denied_count == 0
 
+            object_count_before_foreign_attempt = len(storage.objects)
+            _install_overrides(
+                session_factory,
+                user_id=fixture.owner_a,
+                tenant_id=fixture.tenant_b,
+            )
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                foreign_denied = await client.post(
+                    "/api/v1/knowledge-sources",
+                    data={
+                        "sourceType": "text",
+                        "name": "Foreign tenant denied",
+                        "accessScope": "customer",
+                    },
+                    files={"file": ("foreign.txt", b"no", "text/plain")},
+                )
+                assert foreign_denied.status_code == 403
+            assert len(storage.objects) == object_count_before_foreign_attempt
+            async with session_factory() as session:
+                foreign_count = (
+                    await session.execute(
+                        text(
+                            "SELECT count(*) FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='Foreign tenant denied'"
+                        ),
+                        {"tenant": fixture.tenant_b},
+                    )
+                ).scalar_one()
+                assert foreign_count == 0
+
             failing_storage = FakeStorage(fail_put=True)
             monkeypatch.setattr(
                 knowledge_router,

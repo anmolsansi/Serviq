@@ -202,7 +202,8 @@ def test_file_upload_durable_cleanup_consistency_and_replay(
                 cleanup_row = (
                     await session.execute(
                         text(
-                            "SELECT object_key, status, attempt_count, next_attempt_at, resolved_at "
+                            "SELECT object_key, status, attempt_count, "
+                            "next_attempt_at, resolved_at "
                             "FROM knowledge_upload_cleanups "
                             "WHERE source_id=:source AND tenant_id=:tenant"
                         ),

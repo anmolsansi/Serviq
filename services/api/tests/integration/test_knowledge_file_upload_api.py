@@ -35,8 +35,14 @@ pytestmark = pytest.mark.skipif(
 
 
 class FakeStorage:
-    def __init__(self, *, fail_put: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_put: bool = False,
+        fail_after_put: bool = False,
+    ) -> None:
         self.fail_put = fail_put
+        self.fail_after_put = fail_after_put
         self.objects: dict[str, bytes] = {}
         self.deleted: list[str] = []
         self.metadata: dict[str, Mapping[str, str]] = {}
@@ -54,6 +60,8 @@ class FakeStorage:
         payload = data if isinstance(data, bytes) else data.read()
         self.objects[key.value] = payload
         self.metadata[key.value] = dict(metadata or {})
+        if self.fail_after_put:
+            raise ObjectStorageError
 
     def delete_object(self, key: ObjectStorageKey) -> None:
         self.deleted.append(key.value)
@@ -88,7 +96,7 @@ def _clear_overrides() -> None:
     app.dependency_overrides.clear()
 
 
-def test_file_upload_storage_persistence_permissions_and_compensation(
+def test_file_upload_storage_persistence_permissions_and_consistency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def scenario() -> None:
@@ -125,6 +133,7 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                 assert data["sourceUri"] is None
                 assert data["status"] == "pending"
                 assert data["syncVersion"] == 0
+                assert data["lastErrorCode"] is None
                 assert "objectKey" not in data
                 assert "createdBy" not in data
 
@@ -139,7 +148,7 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                 row = (
                     await session.execute(
                         text(
-                            "SELECT object_key, source_uri, status, sync_version "
+                            "SELECT object_key, source_uri, status, sync_version, last_error_code "
                             "FROM knowledge_sources WHERE id=:id AND tenant_id=:tenant"
                         ),
                         {"id": UUID(data["id"]), "tenant": fixture.tenant_a},
@@ -149,6 +158,7 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                 assert row.source_uri is None
                 assert row.status == "pending"
                 assert row.sync_version == 0
+                assert row.last_error_code is None
 
             _install_overrides(
                 session_factory,
@@ -162,6 +172,17 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                     files={"file": ("denied.txt", b"no", "text/plain")},
                 )
                 assert denied.status_code == 403
+            async with session_factory() as session:
+                denied_count = (
+                    await session.execute(
+                        text(
+                            "SELECT count(*) FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='Denied'"
+                        ),
+                        {"tenant": fixture.tenant_a},
+                    )
+                ).scalar_one()
+                assert denied_count == 0
 
             failing_storage = FakeStorage(fail_put=True)
             monkeypatch.setattr(
@@ -181,31 +202,136 @@ def test_file_upload_storage_persistence_permissions_and_compensation(
                     files={"file": ("fail.txt", b"safe", "text/plain")},
                 )
                 assert failed.status_code == 503
+            assert failing_storage.objects == {}
+            assert failing_storage.deleted == []
+            async with session_factory() as session:
+                failed_row = (
+                    await session.execute(
+                        text(
+                            "SELECT object_key, status, last_error_code FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='Storage fail'"
+                        ),
+                        {"tenant": fixture.tenant_a},
+                    )
+                ).one()
+                assert failed_row.object_key is not None
+                assert failed_row.status == "failed"
+                assert (
+                    failed_row.last_error_code
+                    == knowledge_service.KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE
+                )
 
-            compensation_storage = FakeStorage()
+            ambiguous_storage = FakeStorage(fail_after_put=True)
             monkeypatch.setattr(
                 knowledge_router,
                 "get_knowledge_object_storage",
-                lambda: compensation_storage,
+                lambda: ambiguous_storage,
+            )
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                ambiguous = await client.post(
+                    "/api/v1/knowledge-sources",
+                    data={
+                        "sourceType": "text",
+                        "name": "Ambiguous storage outcome",
+                        "accessScope": "customer",
+                    },
+                    files={"file": ("ambiguous.txt", b"safe", "text/plain")},
+                )
+                assert ambiguous.status_code == 503
+            assert len(ambiguous_storage.objects) == 1
+            ambiguous_key = next(iter(ambiguous_storage.objects))
+            async with session_factory() as session:
+                ambiguous_row = (
+                    await session.execute(
+                        text(
+                            "SELECT object_key, status, last_error_code FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='Ambiguous storage outcome'"
+                        ),
+                        {"tenant": fixture.tenant_a},
+                    )
+                ).one()
+                assert ambiguous_row.object_key == ambiguous_key
+                assert ambiguous_row.status == "failed"
+                assert (
+                    ambiguous_row.last_error_code
+                    == knowledge_service.KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE
+                )
+
+            transition_storage = FakeStorage()
+            monkeypatch.setattr(
+                knowledge_router,
+                "get_knowledge_object_storage",
+                lambda: transition_storage,
+            )
+
+            def fail_completion(*args: Any, **kwargs: Any) -> Any:
+                raise RuntimeError("synthetic completion database failure")
+
+            with monkeypatch.context() as completion_patch:
+                completion_patch.setitem(
+                    knowledge_service.__dict__,
+                    "mark_file_knowledge_source_upload_complete",
+                    fail_completion,
+                )
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                    failed_completion = await client.post(
+                        "/api/v1/knowledge-sources",
+                        data={
+                            "sourceType": "text",
+                            "name": "Completion fail",
+                            "accessScope": "customer",
+                        },
+                        files={"file": ("completion.txt", b"safe", "text/plain")},
+                    )
+                    assert failed_completion.status_code == 500
+            assert len(transition_storage.objects) == 1
+            transition_key = next(iter(transition_storage.objects))
+            async with session_factory() as session:
+                transition_row = (
+                    await session.execute(
+                        text(
+                            "SELECT object_key, status, last_error_code FROM knowledge_sources "
+                            "WHERE tenant_id=:tenant AND name='Completion fail'"
+                        ),
+                        {"tenant": fixture.tenant_a},
+                    )
+                ).one()
+                assert transition_row.object_key == transition_key
+                assert transition_row.status == "failed"
+                assert (
+                    transition_row.last_error_code
+                    == knowledge_service.KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE
+                )
+
+            registration_storage = FakeStorage()
+            monkeypatch.setattr(
+                knowledge_router,
+                "get_knowledge_object_storage",
+                lambda: registration_storage,
             )
 
             def fail_database(*args: Any, **kwargs: Any) -> Any:
                 raise RuntimeError("synthetic database failure")
 
-            monkeypatch.setitem(
-                knowledge_service.__dict__,
-                "add_file_knowledge_source",
-                fail_database,
-            )
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                failed_db = await client.post(
-                    "/api/v1/knowledge-sources",
-                    data={"sourceType": "text", "name": "DB fail", "accessScope": "customer"},
-                    files={"file": ("db.txt", b"safe", "text/plain")},
+            with monkeypatch.context() as registration_patch:
+                registration_patch.setitem(
+                    knowledge_service.__dict__,
+                    "add_file_knowledge_source",
+                    fail_database,
                 )
-                assert failed_db.status_code == 500
-            assert compensation_storage.objects == {}
-            assert len(compensation_storage.deleted) == 1
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                    failed_db = await client.post(
+                        "/api/v1/knowledge-sources",
+                        data={
+                            "sourceType": "text",
+                            "name": "DB registration fail",
+                            "accessScope": "customer",
+                        },
+                        files={"file": ("db.txt", b"safe", "text/plain")},
+                    )
+                    assert failed_db.status_code == 500
+            assert registration_storage.objects == {}
+            assert registration_storage.deleted == []
         finally:
             _clear_overrides()
             if seeded:

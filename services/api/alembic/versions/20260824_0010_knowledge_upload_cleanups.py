@@ -30,9 +30,10 @@ def upgrade() -> None:
             server_default=sa.text("uuidv7()"),
         ),
         sa.Column("tenant_id", UUID, nullable=False),
-        # Intentionally not a foreign key: the cleanup obligation exists before
+        # Intentionally not foreign keys: the cleanup obligation exists before
         # a knowledge_sources row and a failed upload may never create that row.
         sa.Column("source_id", UUID, nullable=False),
+        sa.Column("object_id", UUID, nullable=False),
         sa.Column("object_key", sa.Text(), nullable=False),
         sa.Column(
             "status",

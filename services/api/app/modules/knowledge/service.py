@@ -1,5 +1,6 @@
 """Knowledge source registration, listing, tenant isolation, and capability checks."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from uuid import UUID, uuid4
@@ -38,6 +39,8 @@ from app.modules.knowledge.schemas import (
 from app.modules.knowledge.uploads import FileKnowledgeSourceType, validate_upload
 from app.modules.tenancy.errors import TenantMembershipAccessError
 from app.modules.tenancy.service import resolve_tenant_membership
+
+logger = logging.getLogger(__name__)
 
 KNOWLEDGE_SOURCE_MANAGE_PERMISSION = "knowledge.sources.manage"
 KNOWLEDGE_UPLOAD_SOURCE_PERSISTENCE_ERROR_CODE = "KNOWLEDGE_UPLOAD_SOURCE_PERSISTENCE_FAILED"
@@ -128,6 +131,12 @@ async def create_file_source(
             now=prepared_at,
         )
         await session.flush()
+    _emit_cleanup_state(
+        cleanup_id=cleanup_id,
+        tenant_id=tenant_id,
+        status="prepared",
+        attempt_count=0,
+    )
 
     try:
         await run_in_threadpool(
@@ -184,6 +193,13 @@ async def create_file_source(
             error_code=KNOWLEDGE_UPLOAD_SOURCE_PERSISTENCE_ERROR_CODE,
         )
         raise
+
+    _emit_cleanup_state(
+        cleanup_id=cleanup_id,
+        tenant_id=tenant_id,
+        status="referenced",
+        attempt_count=0,
+    )
     return view
 
 
@@ -199,6 +215,7 @@ async def reconcile_file_upload_cleanup(
 
     effective_now = datetime.now(UTC) if now is None else now
     await session.rollback()
+    exhausted_before_delete = False
 
     async with session.begin():
         cleanup = await get_knowledge_upload_cleanup_for_update(
@@ -221,18 +238,31 @@ async def reconcile_file_upload_cleanup(
                 now=effective_now,
             )
             await session.flush()
-            return "exhausted"
+            exhausted_before_delete = True
+            attempt_count = cleanup.attempt_count
+            source_id = cleanup.source_id
+            object_id = cleanup.object_id
+        else:
+            cleanup.status = "pending"
+            cleanup.attempt_count += 1
+            attempt_count = cleanup.attempt_count
+            cleanup.next_attempt_at = effective_now + _retry_delay_after_claim(attempt_count)
+            cleanup.last_error_code = ObjectStorageError.error_code
+            cleanup.resolved_at = None
+            cleanup.updated_at = effective_now
+            source_id = cleanup.source_id
+            object_id = cleanup.object_id
+            await session.flush()
 
-        cleanup.status = "pending"
-        cleanup.attempt_count += 1
-        attempt_count = cleanup.attempt_count
-        cleanup.next_attempt_at = effective_now + _retry_delay_after_claim(attempt_count)
-        cleanup.last_error_code = ObjectStorageError.error_code
-        cleanup.resolved_at = None
-        cleanup.updated_at = effective_now
-        source_id = cleanup.source_id
-        object_id = cleanup.object_id
-        await session.flush()
+    if exhausted_before_delete:
+        _emit_cleanup_state(
+            cleanup_id=cleanup_id,
+            tenant_id=tenant_id,
+            status="exhausted",
+            attempt_count=attempt_count,
+            error_code=ObjectStorageError.error_code,
+        )
+        return "exhausted"
 
     key = knowledge_raw_key(
         tenant_id=tenant_id,
@@ -243,6 +273,7 @@ async def reconcile_file_upload_cleanup(
         await run_in_threadpool(storage.delete_object, key)
     except ObjectStorageError:
         failure_at = datetime.now(UTC)
+        exhausted_after_delete = False
         async with session.begin():
             cleanup = await get_knowledge_upload_cleanup_for_update(
                 session,
@@ -261,9 +292,26 @@ async def reconcile_file_upload_cleanup(
                     error_code=ObjectStorageError.error_code,
                     now=failure_at,
                 )
-                await session.flush()
-                return "exhausted"
+                exhausted_after_delete = True
             await session.flush()
+
+        if exhausted_after_delete:
+            _emit_cleanup_state(
+                cleanup_id=cleanup_id,
+                tenant_id=tenant_id,
+                status="exhausted",
+                attempt_count=attempt_count,
+                error_code=ObjectStorageError.error_code,
+            )
+            return "exhausted"
+
+        _emit_cleanup_state(
+            cleanup_id=cleanup_id,
+            tenant_id=tenant_id,
+            status="pending",
+            attempt_count=attempt_count,
+            error_code=ObjectStorageError.error_code,
+        )
         return "retry_scheduled"
 
     succeeded_at = datetime.now(UTC)
@@ -279,6 +327,13 @@ async def reconcile_file_upload_cleanup(
             return "not_due"
         mark_knowledge_upload_cleanup_succeeded(cleanup, now=succeeded_at)
         await session.flush()
+
+    _emit_cleanup_state(
+        cleanup_id=cleanup_id,
+        tenant_id=tenant_id,
+        status="succeeded",
+        attempt_count=attempt_count,
+    )
     return "succeeded"
 
 
@@ -332,6 +387,8 @@ async def _best_effort_arm_cleanup(
     now = datetime.now(UTC)
     try:
         await session.rollback()
+        changed = False
+        attempt_count = 0
         async with session.begin():
             cleanup = await get_knowledge_upload_cleanup_for_update(
                 session,
@@ -346,8 +403,17 @@ async def _best_effort_arm_cleanup(
                 error_code=error_code,
                 now=now,
             )
+            attempt_count = cleanup.attempt_count
             await session.flush()
-            return changed
+        if changed:
+            _emit_cleanup_state(
+                cleanup_id=cleanup_id,
+                tenant_id=tenant_id,
+                status="pending",
+                attempt_count=attempt_count,
+                error_code=error_code,
+            )
+        return changed
     except Exception:
         await _best_effort_rollback(session)
         return False
@@ -362,6 +428,8 @@ async def _best_effort_mark_cleanup_succeeded(
     now = datetime.now(UTC)
     try:
         await session.rollback()
+        changed = False
+        attempt_count = 0
         async with session.begin():
             cleanup = await get_knowledge_upload_cleanup_for_update(
                 session,
@@ -371,8 +439,16 @@ async def _best_effort_mark_cleanup_succeeded(
             if cleanup is None:
                 return False
             changed = mark_knowledge_upload_cleanup_succeeded(cleanup, now=now)
+            attempt_count = cleanup.attempt_count
             await session.flush()
-            return changed
+        if changed:
+            _emit_cleanup_state(
+                cleanup_id=cleanup_id,
+                tenant_id=tenant_id,
+                status="succeeded",
+                attempt_count=attempt_count,
+            )
+        return changed
     except Exception:
         await _best_effort_rollback(session)
         return False
@@ -389,6 +465,27 @@ def _retry_delay_after_claim(attempt_count: int) -> timedelta:
     if attempt_count == 1:
         return timedelta(minutes=5)
     return timedelta(minutes=30)
+
+
+def _emit_cleanup_state(
+    *,
+    cleanup_id: UUID,
+    tenant_id: UUID,
+    status: str,
+    attempt_count: int,
+    error_code: str | None = None,
+) -> None:
+    """Emit bounded cleanup state only; never include object keys or upload content."""
+
+    extra: dict[str, object] = {
+        "cleanup_id": str(cleanup_id),
+        "tenant_id": str(tenant_id),
+        "cleanup_status": status,
+        "attempt_count": attempt_count,
+    }
+    if error_code is not None:
+        extra["error_code"] = error_code
+    logger.info("knowledge_upload_cleanup_state", extra=extra)
 
 
 async def _require_permission(

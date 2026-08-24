@@ -45,6 +45,7 @@ Columns:
 id               uuid primary key default uuidv7()
 tenant_id        uuid not null -> tenants(id) ON DELETE RESTRICT
 source_id        uuid not null
+object_id        uuid not null
 object_key       text not null
 status           text not null
 attempt_count    integer not null default 0
@@ -55,14 +56,14 @@ created_at       timestamptz not null default now()
 updated_at       timestamptz not null default now()
 ```
 
-`source_id` is deliberately not a foreign key. The cleanup record is created before the `knowledge_sources` row, and a failed upload may correctly end with no source row at all.
+`source_id` and `object_id` are deliberately not foreign keys. The cleanup record is created before the `knowledge_sources` row, and a failed upload may correctly end with no source row at all. Persisting both IDs lets trusted recovery regenerate the typed OPE-301 raw key and compare it with the stored key before any destructive storage action.
 
 ## Constraints
 
 - `status IN ('prepared','pending','referenced','succeeded','exhausted')`.
 - `attempt_count BETWEEN 0 AND 3`.
 - `(tenant_id, source_id)` is unique.
-- `object_key` is unique. Generated OPE-301 keys are globally tenant-prefixed and one cleanup intent owns one generated object.
+- `object_key` is unique. Generated OPE-301 keys are tenant-prefixed and one cleanup intent owns one generated object.
 - `prepared` and `pending` require `next_attempt_at IS NOT NULL` and `resolved_at IS NULL`.
 - `referenced`, `succeeded`, and `exhausted` require `next_attempt_at IS NULL` and `resolved_at IS NOT NULL`.
 
@@ -79,11 +80,11 @@ The tenant-leading index supports trusted tenant/operator inspection. The due-wo
 
 ### prepared
 
-Committed before object storage. The initial `next_attempt_at` is 15 minutes after creation. A successful source transaction changes it to `referenced`; a known failure normally arms it as `pending` sooner. If the process/database becomes unavailable before that transition, the stored preparation deadline makes the ambiguous upload discoverable to reconciliation.
+Committed before object storage. The initial `next_attempt_at` is 15 minutes after creation. A successful source transaction changes it to `referenced`. A generic PUT error remains `prepared` because its server-side outcome is ambiguous. If the process/database becomes unavailable before a later transition, the stored deadline still makes the upload discoverable to reconciliation.
 
 ### pending
 
-Cleanup is required. The first background retry is scheduled 30 seconds after the request failure is armed.
+Cleanup is known to be required, normally because PUT success was confirmed but source persistence failed. The first background retry is scheduled 30 seconds after that failure is armed.
 
 ### referenced
 
@@ -91,17 +92,17 @@ A durable `knowledge_sources` row owns this object. Cleanup must never delete it
 
 ### succeeded
 
-The object was deleted or was already absent. Replays are successful no-ops.
+The object was safely deleted after a confirmed object outcome. Replays are successful no-ops.
 
 ### exhausted
 
-Three reconciliation attempts were consumed without confirmed deletion. This is the V1.3.04A DLQ-equivalent durable state. It remains operator-visible and is not automatically purged.
+Three reconciliation attempts were consumed without safe confirmation of cleanup. This is the V1.3.04A DLQ-equivalent durable state. It remains operator-visible and is not automatically purged.
 
-## Retry contract
+## Retry and ambiguous-PUT contract
 
 The request-time immediate delete is not counted as a background retry.
 
-Reconciliation deletion attempts are bounded:
+Known cleanup failures use:
 
 ```text
 arm failure -> first retry due in 30 seconds
@@ -110,9 +111,9 @@ attempt 2 failure -> retry due in 30 minutes
 attempt 3 failure -> exhausted
 ```
 
-A due `prepared` row also enters reconciliation because it represents an abandoned/ambiguous request.
+A generic PUT error is treated conservatively. The cleanup remains `prepared` until its 15-minute stale-preparation deadline, which exceeds the S3 adapter's configured 5-second connect and 30-second read timeouts. A due `prepared` cleanup performs a typed metadata existence check before destructive action. If the object is absent or storage is unavailable, absence is not treated as terminal proof. The bounded observation budget advances and unresolved ambiguity eventually becomes `exhausted` rather than disappearing.
 
-Claiming uses `SELECT ... FOR UPDATE` in a short transaction. The claim increments `attempt_count` and advances `next_attempt_at` before the object-storage call. Storage I/O is always outside the database transaction.
+Claiming uses `SELECT ... FOR UPDATE` in a short transaction. The claim increments `attempt_count` and advances `next_attempt_at` before storage I/O. Storage HEAD/DELETE operations are always outside the database transaction.
 
 ## Upload transaction contract
 
@@ -137,19 +138,27 @@ If transaction B fails, neither source creation nor `referenced` commits. The or
 
 ## Immediate recovery contract
 
-After a PUT error/ambiguous result or transaction-B failure:
+### Generic PUT error or ambiguous PUT result
 
-1. best-effort arm `prepared -> pending` with first retry due in 30 seconds;
-2. perform one idempotent delete outside a DB transaction;
+1. keep the cleanup `prepared` with its original 15-minute deadline;
+2. perform one idempotent DELETE outside a DB transaction as a fast recovery attempt;
+3. do not mark `succeeded` from this immediate DELETE alone;
+4. later reconciliation confirms object visibility/absence through the typed storage boundary and uses the bounded observation budget.
+
+### Confirmed PUT success followed by source persistence failure
+
+1. best-effort arm `prepared -> pending` with first retry due in 30 seconds and a bounded source-persistence error code;
+2. perform one idempotent DELETE outside a DB transaction;
 3. if delete succeeds, best-effort mark `succeeded`;
-4. if delete fails, leave the row recoverable as `pending`, or as the original `prepared` row if PostgreSQL is unavailable.
+4. if delete fails, leave the row recoverable as `pending`, or as the original `prepared` row if PostgreSQL is unavailable during the arm.
 
-A failure to update cleanup state never justifies deleting the durable intent. A failure to mark a successful delete is safe because later delete replay is idempotent.
+A failure to update cleanup state never deletes the durable intent. A failure to mark a successful delete is safe because later delete replay is idempotent.
 
 ## Tenant and authorization contract
 
 - Cleanup IDs and keys are server-owned.
 - Repository/replay lookup uses both `tenant_id` and cleanup ID.
+- Recovery regenerates the typed raw key from `tenant_id`, `source_id`, and `object_id` and exhausts safely if it does not match the persisted key.
 - Foreign-tenant cleanup lookup/replay returns no object key and fails closed.
 - No tenant-facing cleanup CRUD route is created.
 - Trusted worker/platform operations may consume the internal cleanup state.
@@ -186,4 +195,4 @@ The downgrade must refuse to drop the table when any row has status `prepared`, 
 
 ## Compatibility and later outbox integration
 
-V1.3.06 may schedule/publish reconciliation from this durable state. It must not require a public API change or change the pre-PUT durability invariant. V1.10.09 DLQ operations may use the `exhausted` state and status-count contract as their inspection input.
+V1.3.06 may schedule or publish reconciliation from this durable state. It must not require a public API change or change the pre-PUT durability invariant. V1.10.09 DLQ operations may use the `exhausted` state and status-count contract as their inspection input.

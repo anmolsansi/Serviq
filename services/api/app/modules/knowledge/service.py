@@ -1,6 +1,5 @@
 """Knowledge source registration, listing, tenant isolation, and capability checks."""
 
-from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
@@ -9,13 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
+from app.core.object_storage import ObjectStorage, knowledge_raw_key
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
 from app.modules.knowledge.models import KnowledgeSource
 from app.modules.knowledge.repository import (
     add_file_knowledge_source,
     add_knowledge_source,
     list_knowledge_sources,
+    mark_file_knowledge_source_upload_complete,
 )
 from app.modules.knowledge.schemas import (
     KnowledgeAccessScope,
@@ -29,6 +29,7 @@ from app.modules.tenancy.errors import TenantMembershipAccessError
 from app.modules.tenancy.service import resolve_tenant_membership
 
 KNOWLEDGE_SOURCE_MANAGE_PERMISSION = "knowledge.sources.manage"
+KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE = "KNOWLEDGE_UPLOAD_INCOMPLETE"
 
 
 async def list_sources(
@@ -88,6 +89,26 @@ async def create_file_source(
 
     source_id = uuid4()
     key = knowledge_raw_key(tenant_id=tenant_id, source_id=source_id, object_id=uuid4())
+
+    # Record first so any object that may be created by the subsequent S3 PUT is
+    # already durably referenced, including ambiguous transport-failure outcomes.
+    async with session.begin():
+        now = datetime.now(UTC)
+        source = add_file_knowledge_source(
+            session,
+            source_id=source_id,
+            tenant_id=tenant_id,
+            source_type=source_type,
+            name=name,
+            object_key=key.value,
+            access_scope=access_scope,
+            created_by=user_id,
+            status="failed",
+            last_error_code=KNOWLEDGE_UPLOAD_INCOMPLETE_ERROR_CODE,
+            now=now,
+        )
+        await session.flush()
+
     await run_in_threadpool(
         storage.put_object,
         key,
@@ -96,26 +117,12 @@ async def create_file_source(
         metadata={"original-filename": validated.original_filename},
     )
 
-    try:
-        async with session.begin():
-            now = datetime.now(UTC)
-            source = add_file_knowledge_source(
-                session,
-                source_id=source_id,
-                tenant_id=tenant_id,
-                source_type=source_type,
-                name=name,
-                object_key=key.value,
-                access_scope=access_scope,
-                created_by=user_id,
-                now=now,
-            )
-            await session.flush()
-            view = _to_view(source)
-    except Exception:
-        with suppress(ObjectStorageError):
-            await run_in_threadpool(storage.delete_object, key)
-        raise
+    # Storage I/O remains outside database transactions. A failure here leaves the
+    # durable source in a safe failed state rather than creating an untracked object.
+    async with session.begin():
+        mark_file_knowledge_source_upload_complete(source, now=datetime.now(UTC))
+        await session.flush()
+        view = _to_view(source)
     return view
 
 

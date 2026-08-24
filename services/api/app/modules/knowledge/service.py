@@ -15,6 +15,7 @@ from app.core.object_storage import (
     knowledge_raw_key,
 )
 from app.modules.knowledge.cleanup import (
+    SOURCE_PERSISTENCE_ERROR_CODE,
     arm_upload_cleanup,
     mark_inline_cleanup_succeeded,
     prepared_cleanup_due_at,
@@ -138,6 +139,7 @@ async def create_file_source(
             tenant_id=tenant_id,
             cleanup_id=cleanup_id,
             key=key,
+            put_outcome_confirmed=False,
         )
         raise
 
@@ -173,6 +175,7 @@ async def create_file_source(
             tenant_id=tenant_id,
             cleanup_id=cleanup_id,
             key=key,
+            put_outcome_confirmed=True,
         )
         raise
 
@@ -186,27 +189,41 @@ async def _best_effort_failed_upload_cleanup(
     tenant_id: UUID,
     cleanup_id: UUID,
     key: KnowledgeRawObjectKey,
+    put_outcome_confirmed: bool,
 ) -> None:
-    """Try immediate cleanup without allowing secondary failures to hide the original error.
+    """Try immediate cleanup without hiding the original upload failure.
 
-    The durable cleanup row already exists before this helper runs. Any failure here is
-    therefore recoverable by the reconciliation sweep.
+    A generic PUT error is ambiguous. In that path the durable `prepared` row keeps
+    its 15-minute stale-preparation deadline even if the immediate DELETE succeeds,
+    because an in-flight server-side PUT may still materialize afterward.
+
+    Once PUT success was confirmed and only source persistence failed, the object is
+    safe to delete immediately and a successful delete can terminally resolve the
+    cleanup obligation.
     """
 
-    try:
-        await arm_upload_cleanup(
-            session,
-            tenant_id=tenant_id,
-            cleanup_id=cleanup_id,
-        )
-    except Exception:
-        # The pre-existing `prepared` row remains the durable obligation and becomes
-        # sweepable at its stale-preparation deadline.
-        await session.rollback()
+    if put_outcome_confirmed:
+        try:
+            await arm_upload_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+                error_code=SOURCE_PERSISTENCE_ERROR_CODE,
+            )
+        except Exception:
+            # The pre-existing `prepared` row remains the durable obligation and
+            # becomes sweepable at its stale-preparation deadline.
+            await session.rollback()
 
     try:
         await run_in_threadpool(storage.delete_object, key)
     except ObjectStorageError:
+        return
+
+    if not put_outcome_confirmed:
+        # Do not terminalize an ambiguous PUT from request-time DELETE alone.
+        # Reconciliation must later confirm visibility before declaring success,
+        # or exhaust visibly after the bounded observation budget.
         return
 
     try:

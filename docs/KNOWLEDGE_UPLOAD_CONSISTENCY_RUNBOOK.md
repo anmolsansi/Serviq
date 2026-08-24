@@ -2,109 +2,166 @@
 
 ## Purpose
 
-This runbook covers file-backed knowledge sources that remain in the durable V1.3.04A incomplete state after a failed or interrupted upload request.
+This runbook covers V1.3.04A durable cleanup/reconciliation for raw knowledge uploads whose request did not complete successfully.
 
-The authoritative architecture decision is `docs/architecture-decisions/ADR-018-durable-knowledge-upload-consistency.md`.
+The authoritative contracts are:
+
+- `docs/architecture-decisions/ADR-018-durable-knowledge-upload-consistency.md`;
+- `docs/contract-changes/CCR-006-durable-knowledge-upload-cleanup-intent.md`.
 
 ## Durable signal
 
-A source requires operator investigation when all of these are true:
+The operator source of truth is `knowledge_upload_cleanups`, not tenant-visible `knowledge_sources` rows.
 
-- it is a file-backed source (`pdf`, `markdown`, or `text`);
-- `status = 'failed'`;
-- `last_error_code = 'KNOWLEDGE_UPLOAD_INCOMPLETE'`.
+Investigate rows in these states:
 
-This state is intentionally durable. The generated `object_key` may point to an object that does not exist, or to an object that storage accepted even though the request later failed. Either case is safe because any object that may exist is already referenced by the source row.
+- `prepared` — the cleanup intent committed before object storage, but no terminal source/cleanup transition completed. It becomes eligible after its stored 15-minute grace deadline.
+- `pending` — cleanup is required and `next_attempt_at` controls the bounded retry schedule.
+- `exhausted` — three reconciliation attempts failed. This is the V1.3.04A DLQ-equivalent state and requires operator review.
+
+`referenced` means the normal source transaction committed and the raw object must not be deleted. `succeeded` means deletion succeeded or the object was already absent.
 
 ## Security boundary
 
-Only trusted platform/worker operations may inspect or act on the stored object key.
+Only trusted platform/worker operations may inspect or act on cleanup records.
 
 Do not:
 
-- return `object_key` through a tenant-facing API;
-- paste object keys, filenames, document content, credentials, tokens, or request bodies into logs or tickets;
-- use production customer data for failure injection;
-- delete an object only because a client request failed.
+- expose cleanup IDs or `object_key` through tenant-facing APIs;
+- paste object keys, filenames, document content, credentials, tokens, bucket names, endpoints, or request bodies into logs or tickets;
+- use production customer content for failure injection;
+- delete an object for a `referenced` cleanup record;
+- run cleanup for a tenant other than the row's server-owned `tenant_id`.
 
-Safe operational evidence is limited to bounded tenant/source IDs, status, error code, timestamps, outcome, attempt count when a future reconciliation worker exists, and correlation IDs.
+Safe evidence is limited to bounded tenant/cleanup/source IDs, status, attempt count, error code, timestamps, outcome, duration, and correlation IDs.
 
 ## Detection
 
-Use a trusted database session and count incomplete rows without selecting document content:
+Use a trusted database session and inspect state without selecting object keys:
 
 ```sql
-SELECT tenant_id, id AS source_id, status, last_error_code, created_at, updated_at
-FROM knowledge_sources
-WHERE source_type IN ('pdf', 'markdown', 'text')
-  AND status = 'failed'
-  AND last_error_code = 'KNOWLEDGE_UPLOAD_INCOMPLETE'
-ORDER BY created_at, id;
+SELECT tenant_id, id AS cleanup_id, source_id, status, attempt_count,
+       next_attempt_at, last_error_code, created_at, updated_at
+FROM knowledge_upload_cleanups
+WHERE status IN ('prepared', 'pending', 'exhausted')
+ORDER BY next_attempt_at NULLS LAST, created_at, id;
 ```
 
-The count of these rows is the V1.3.04A operator-visible backlog. Alerting thresholds are not frozen by this ticket.
+For dashboard/alert inputs, use grouped counts only:
+
+```sql
+SELECT status, count(*)
+FROM knowledge_upload_cleanups
+GROUP BY status
+ORDER BY status;
+```
+
+The API service exposes the same internal status-count contract without object keys. Alert thresholds are not frozen by this ticket.
+
+## Request-time recovery
+
+A file upload follows this durability order:
+
+1. authorize and validate the upload;
+2. generate the server-owned source/object identifiers and existing OPE-301 raw key;
+3. commit a `prepared` cleanup intent before object storage I/O;
+4. call the S3-compatible PUT outside any database transaction;
+5. after PUT success, create the normal `knowledge_sources` row and transition the cleanup to `referenced` in one PostgreSQL transaction;
+6. return HTTP 201 only after that transaction commits.
+
+If PUT fails or the source transaction fails, the request does not report success and does not create a tenant-visible failed source. The service best-effort arms cleanup as `pending`, performs one immediate idempotent delete, and best-effort marks cleanup `succeeded` if deletion confirms success/absence.
+
+The immediate delete does not consume the background retry budget. If PostgreSQL is unavailable during recovery, the already committed `prepared` row remains durable. If deletion also fails, `prepared` or `pending` remains discoverable for replay.
+
+## Reconciliation replay
+
+The trusted replay entry point is `reconcile_file_upload_cleanup(...)`. No tenant-facing cleanup route exists.
+
+Replay rules:
+
+- lookup requires both `tenant_id` and cleanup ID;
+- foreign-tenant lookup returns no work and never reveals or uses the foreign object key;
+- `referenced` and `succeeded` are no-ops;
+- `exhausted` does not retry automatically;
+- only due `prepared`/`pending` work can be claimed;
+- claim happens under `SELECT ... FOR UPDATE` in a short DB transaction;
+- claim increments `attempt_count` and advances `next_attempt_at` before storage I/O;
+- object deletion happens only after that DB transaction closes;
+- S3-compatible delete is idempotent, so an already-absent object counts as success.
+
+Background retries are bounded to exactly three deletion attempts:
+
+```text
+request failure -> first retry due in 30 seconds
+attempt 1 failure -> next due in 5 minutes
+attempt 2 failure -> next due in 30 minutes
+attempt 3 failure -> exhausted
+```
+
+A stale `prepared` row first becomes eligible at its stored 15-minute grace deadline. If a worker crashes after claiming an attempt, the advanced `next_attempt_at` makes the obligation eligible again. A row already at three attempts transitions to `exhausted` rather than starting an unbounded fourth delete.
 
 ## Investigation
 
-For one source, use trusted internal tooling to read its server-owned `object_key` and perform a metadata-only object-storage HEAD request.
+For an unresolved cleanup ID:
 
-Classify the result as one of:
+1. Confirm the row's tenant and status through trusted internal tooling.
+2. If status is `prepared`/`pending` and due, prefer the normal reconciliation replay rather than manual object deletion.
+3. If object storage is unavailable, leave the durable state unchanged and retry through the approved replay path later.
+4. If status is `exhausted`, record the incident and resolve the storage/platform fault before any operator-approved requeue or manual recovery.
+5. Never infer object absence from a timeout or generic storage error.
 
-1. **Object exists.** The upload may have succeeded but the request or final DB transition failed. Keep the object. Do not compensate-delete it.
-2. **Object is absent.** The PUT failed before object creation, or the request stopped before PUT. The failed row remains safe durable evidence.
-3. **Storage is unavailable or outcome is unknown.** Make no destructive change. Retry the metadata-only check later through approved operational tooling.
-
-Do not infer object absence from a timeout or generic storage error.
-
-## Recovery
-
-V1.3.04A deliberately does not create a new worker, cleanup queue, DLQ, or object-list sweeper. V1.3.06 owns the first general durable knowledge outbox contract.
-
-Until a later trusted reconciliation command is frozen:
-
-- do not manually set a failed source to `pending` unless an approved incident procedure has independently proved the object exists and the change is reviewed;
-- do not manually delete the source row when the object outcome is unknown;
-- do not manually delete a raw object whose durable source row still exists;
-- if the user needs the content immediately, have them submit a new upload through the normal API. Treat the old failed row as operational evidence until an approved reconciliation path retires it.
-
-A future recovery command may safely use the failed source row as its source of truth. It must verify tenant ownership, use the stored generated key, be idempotent, and avoid exposing the key to tenant users.
+A metadata-only HEAD may be used by trusted incident tooling for diagnosis, but it is not required for normal idempotent cleanup replay.
 
 ## Failure-injection QA
 
 Use only local/test infrastructure and synthetic content.
 
-1. **Initial DB failure**
-   - Inject failure while inserting the file source.
-   - Expected: request fails, storage PUT is never called, and no object exists from the attempt.
-2. **Storage failure before acceptance**
-   - Commit the failed/incomplete source row, then make PUT fail.
-   - Expected: request returns the existing storage-unavailable error and the durable row remains failed.
-3. **Ambiguous storage outcome**
-   - Make test storage persist the object and then raise `ObjectStorageError`.
-   - Expected: request fails, the object remains present, and its exact generated key equals the failed source row's `object_key`.
-4. **Final DB transition failure**
-   - Let PUT succeed, then fail the `failed -> pending` transition.
-   - Expected: request fails, object remains present, and the failed source row still references it.
-5. **Success**
-   - Expected: one raw object, one matching source row, `status = 'pending'`, and `last_error_code IS NULL`.
-6. **Authorization**
-   - Use a tenant member without `knowledge.sources.manage` and a foreign-tenant context.
-   - Expected: request is rejected before the durable source row or storage object is created.
+1. **Cleanup-intent DB failure before PUT**
+   - Inject failure while creating `knowledge_upload_cleanups`.
+   - Expected: request fails and object-storage PUT is never called.
+2. **Normal success**
+   - Expected: one source row, one raw object, and cleanup status `referenced` with attempt count `0`.
+3. **PUT failure + immediate delete success**
+   - Expected: existing storage error response, no source row, cleanup reaches `succeeded`.
+4. **Ambiguous PUT + immediate delete failure**
+   - Make test storage persist the object and then raise `ObjectStorageError`; make delete fail too.
+   - Expected: request fails, no source row is created, raw object remains, and a durable `pending`/`prepared` cleanup row contains its generated key.
+5. **PUT success + source transaction failure + delete failure**
+   - Expected: source insert and `referenced` transition roll back together; the raw object remains discoverable by the durable cleanup intent.
+6. **Replay success**
+   - Restore storage, make cleanup due, replay once.
+   - Expected: object is deleted once/idempotently and cleanup becomes `succeeded`.
+7. **Foreign-tenant replay**
+   - Replay a known cleanup ID using another tenant ID.
+   - Expected: no storage call and no object-key disclosure.
+8. **Retry exhaustion**
+   - Fail three due reconciliation deletes.
+   - Expected: attempt count `3`, status `exhausted`, no further automatic retry.
+9. **Authorization**
+   - Use a member without `knowledge.sources.manage` and a foreign tenant context.
+   - Expected: rejection occurs before cleanup-intent creation or storage I/O.
 
 ## Rollback
 
-No schema rollback is required because V1.3.04A reuses existing `knowledge_sources` columns.
+Migration `20260824_0010` is additive, but its downgrade has a safety gate.
 
-Do not roll application code back to ADR-017's store-first compensation behavior as a routine recovery step. That ordering reintroduces the audited double-failure orphan risk. If a rollback is unavoidable, record the risk explicitly and run a separate storage/database reconciliation before declaring the incident closed.
+Before rollback:
+
+1. stop new V1.3.04A upload traffic or deploy code that no longer creates cleanup intents;
+2. inspect cleanup counts;
+3. resolve every `prepared`, `pending`, and `exhausted` row;
+4. confirm the unresolved count is zero;
+5. only then downgrade `20260824_0010`.
+
+The migration refuses to drop the table while unresolved obligations exist. Rolling application code back to OPE-303 store-first behavior reintroduces the audited double-failure orphan risk and requires an explicit operational decision.
 
 ## Evidence to retain
 
 For acceptance or incident review, retain only:
 
 - commit/PR and CI run identifiers;
-- synthetic tenant/source IDs;
-- failure phase and safe error code;
-- whether the object metadata check returned exists/absent/unknown;
-- test outcome and timing.
+- synthetic tenant/source/cleanup IDs;
+- failure phase, status, attempt count, and safe error code;
+- replay outcome and timing.
 
-Never retain raw uploaded content, unrestricted object keys, credentials, or tokens in the runbook evidence.
+Never retain raw uploaded content, unrestricted object keys, credentials, tokens, bucket names, or endpoints in runbook evidence.

@@ -405,6 +405,22 @@ knowledge_sources
 Constraints: URL/sitemap requires source_uri; file types require object_key
 Indexes: (tenant_id, status), (tenant_id, source_type)
 
+knowledge_upload_cleanups
+  id uuid PK DEFAULT uuidv7()
+  tenant_id uuid NOT NULL FK tenants RESTRICT
+  source_id uuid NOT NULL
+  object_id uuid NOT NULL
+  object_key text NOT NULL
+  status text NOT NULL CHECK prepared|pending|referenced|succeeded|exhausted
+  attempt_count integer NOT NULL DEFAULT 0 CHECK 0..3
+  next_attempt_at timestamptz NULL
+  last_error_code text NULL
+  resolved_at timestamptz NULL
+  created_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now()
+Constraints: UNIQUE(tenant_id, source_id), UNIQUE(object_key); unresolved states require next_attempt_at and no resolved_at; terminal states require resolved_at and no next_attempt_at
+Indexes: (tenant_id, status, next_attempt_at), (status, next_attempt_at)
+
 knowledge_documents
   id uuid PK
   tenant_id uuid NOT NULL FK tenants RESTRICT
@@ -1503,3 +1519,18 @@ Still blocked:
 - `Needs Product Decision: Resolve end-customer attachment scope before any customer upload endpoint, object path, validation rule, or UI is created.`
 
 Builders must not guess the remaining attachment decision. The OPE-251 demo-domain decision is no longer blocked.
+
+## V1.3.04A durable knowledge-upload consistency contract
+
+ADR-018 and CCR-006 freeze the cross-store raw-upload boundary. Before any raw object PUT, the API commits a tenant-scoped `knowledge_upload_cleanups` row containing generated source/object identity and the typed raw key. A confirmed successful PUT is followed by one PostgreSQL transaction that creates the normal `knowledge_sources` row and changes cleanup to `referenced` atomically.
+
+Storage I/O is never performed while the cleanup/source transaction is open. Confirmed source-persistence failure keeps the durable intent, schedules first replay after 30 seconds, and may perform one immediate idempotent delete as a fast path. Background failures retry after 5 minutes and 30 minutes; the third failed replay becomes `exhausted`.
+
+A generic PUT error is outcome-ambiguous. Its `prepared` intent remains durable for a 15-minute grace period and due reconciliation uses the typed `exists`/HEAD operation before deciding whether deletion is required. The same bounded observation/retry budget applies when presence cannot be safely resolved.
+
+Replay is tenant-scoped and regenerates the expected typed key from tenant/source/object identity. A key mismatch fails closed. Structured state logs and internal status counts omit object keys, file contents, credentials, and tokens. No public cleanup API is added.
+
+Resolved `referenced`/`succeeded` rows are eligible for a future purge after 14 days; unresolved and `exhausted` work is retained for reconciliation/operator recovery. Alembic downgrade refuses to drop the table while unresolved `prepared`, `pending`, or `exhausted` obligations exist.
+
+This preserves the existing knowledge-upload HTTP envelope, supported file rules, RBAC behavior, tenant-visible source listing, and raw object-key layout. General outbox/broker integration remains future work.
+

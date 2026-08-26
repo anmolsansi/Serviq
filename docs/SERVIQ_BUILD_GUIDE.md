@@ -6164,3 +6164,146 @@ V1.1.15 is complete only when the deterministic fixture, live integration tests,
 
 GitHub issue #175 and Linear OPE-307 close only after that merged evidence is recorded. Documentation does not substitute for a green real-integration job.
 
+---
+
+## V1.3.04A — Durable knowledge-upload consistency
+
+V1.3.04A closes the cross-system failure gap in file-backed knowledge uploads tracked by GitHub #178 and Linear OPE-308. The implementation merged through PR #180.
+
+### Problem and invariant
+
+A raw knowledge upload crosses S3-compatible object storage and PostgreSQL. Before this ticket, a raw object could upload successfully, the `knowledge_sources` transaction could fail, and the compensating delete could fail too. That left an object with neither a normal source reference nor durable cleanup work.
+
+The implemented invariant is:
+
+> Before Serviq attempts a raw-object PUT, PostgreSQL already contains enough tenant-scoped information to reconcile that exact generated object later.
+
+Every attempted raw upload is therefore either referenced by normal product state or represented by durable cleanup state until it is resolved or explicitly exhausted for operator action.
+
+### Architecture selected
+
+ADR-018 and CCR-006 freeze a pre-upload PostgreSQL cleanup-intent design. Serviq does not create a tenant-visible failed source before storage succeeds, does not depend on bucket-wide object listing, and does not add a new broker/outbox dependency before the planned asynchronous platform work.
+
+The internal `knowledge_upload_cleanups` table stores the cleanup ID, tenant ID, intended source/object IDs, exact generated raw key, status, bounded attempt count, next retry time, safe error code, resolution time, and audit timestamps.
+
+The states are `prepared`, `pending`, `referenced`, `succeeded`, and `exhausted`.
+
+- `prepared`: PostgreSQL knows the upload identity before the PUT.
+- `pending`: cleanup/reconciliation work remains.
+- `referenced`: normal source creation and cleanup reference transition committed together.
+- `succeeded`: cleanup completed.
+- `exhausted`: the bounded DLQ-equivalent state requiring operator recovery.
+
+### Successful upload flow
+
+For an authorized valid file upload, Serviq:
+
+1. enforces the existing `knowledge.sources.manage` permission;
+2. validates the existing upload type/size contract;
+3. generates source ID, object ID, cleanup ID, and typed raw-object key server-side;
+4. commits a `prepared` cleanup intent before object-storage I/O;
+5. performs the PUT outside a database transaction;
+6. after confirmed PUT success, row-locks the cleanup and creates the normal `knowledge_sources` row while transitioning cleanup to `referenced` in the same PostgreSQL transaction;
+7. returns the existing success response.
+
+The public request/response envelope, generated key layout, supported types/size limits, permission rule, and tenant-visible source-list behavior remain unchanged.
+
+### Confirmed source-persistence failure
+
+If storage confirms the PUT but the source transaction fails, the source transaction rolls back while the pre-existing cleanup row survives. Serviq then performs fast recovery outside the database transaction: it arms cleanup for reconciliation, attempts one immediate idempotent delete, and records success when possible. If delete or the follow-up state write also fails, the already-durable cleanup row remains available to reconciliation.
+
+The failed request is never converted into upload success merely because cleanup work was scheduled.
+
+### Double-failure guarantee
+
+For the adversarial sequence:
+
+```text
+object PUT succeeds
+        +
+source PostgreSQL transaction fails
+        +
+compensating DELETE fails
+```
+
+Serviq retains a `prepared` or `pending` cleanup obligation for the exact tenant/source/object identity. The object therefore remains discoverable through durable cleanup state even when both request-time recovery operations fail.
+
+### Ambiguous PUT outcome
+
+A client-side object-storage error does not always prove the remote PUT failed. A timeout can occur after the server accepted the object. Generic PUT errors are therefore treated as outcome-ambiguous.
+
+The durable cleanup remains `prepared` with a 15-minute stale deadline. An immediate delete may still run as an optimization, but that delete alone does not terminalize the obligation. When the stale intent is due, reconciliation uses the existing typed `exists`/HEAD operation first. If the object is visible, it deletes it idempotently. If the object is absent or the presence check fails, the bounded ambiguous-outcome retry path remains active instead of silently declaring success.
+
+The 15-minute grace is intentionally much longer than the bounded object-storage adapter request timeouts.
+
+### Retry and exhaustion contract
+
+The request-time immediate delete does not consume the background retry budget.
+
+For confirmed source-persistence failure, the first replay is due after 30 seconds. Background failures then follow:
+
+- attempt 1 failure -> retry in 5 minutes;
+- attempt 2 failure -> retry in 30 minutes;
+- attempt 3 failure -> `exhausted`.
+
+A stale ambiguous `prepared` intent uses the same three-attempt reconciliation budget after its grace period.
+
+The due row is claimed in a short row-locked PostgreSQL transaction. Object-storage HEAD/DELETE operations happen after that transaction ends, so slow storage calls do not hold database locks.
+
+### Tenant, key, and logging safety
+
+Replay is scoped by both tenant ID and cleanup ID. Foreign-tenant access is rejected before storage I/O. The replay path regenerates the typed raw key from stored tenant/source/object identity and compares it with the persisted key; a mismatch fails closed into an exhausted key-mismatch state rather than deleting an unexpected object.
+
+No tenant-facing cleanup endpoint was added.
+
+Structured logs contain only bounded operational fields such as cleanup ID, tenant ID, status, attempt count, and safe error code. They omit raw object keys, file contents, credentials, tokens, and secrets. An internal status-count query provides operator-visible counts without exposing document/key data; this ticket does not add a new metrics SDK.
+
+### Retention and rollback safety
+
+Unresolved `prepared` and `pending` work remains until reconciled. `exhausted` work remains for operator recovery. Resolved `referenced` and `succeeded` rows are eligible for a later purge after 14 days; V1.3.04A intentionally does not implement that purge job.
+
+Alembic revision `20260824_0010_knowledge_upload_cleanups.py` adds the cleanup table and constraints. Its downgrade refuses to drop the table while unresolved `prepared`, `pending`, or `exhausted` obligations remain, preventing rollback from deleting the only durable evidence needed to reconcile an uploaded object.
+
+The operational procedure is documented in `docs/KNOWLEDGE_UPLOAD_CONSISTENCY_RUNBOOK.md`.
+
+### Validation evidence
+
+The merged implementation covers:
+
+- happy upload and durable `referenced` state;
+- cleanup-intent DB failure proving PUT is never attempted;
+- confirmed source DB failure plus delete success;
+- source DB failure plus delete failure leaving durable work;
+- an additional DB failure while arming retry, proving the pre-upload intent survives;
+- ambiguous PUT behavior;
+- due cleanup replay and repeated-replay idempotency;
+- foreign-tenant replay denial before storage access;
+- 30-second / 5-minute / 30-minute scheduling and bounded exhaustion;
+- status counts and safe log non-disclosure;
+- real PostgreSQL migration/schema integration;
+- S3-compatible object-storage integration.
+
+The exact implementation head `22ad508fc148f68759b4b0466323e9ce6e452c1c` passed both CI and Security. PR #180 merged it into `main` as `ae9c2d67b8e09b3db62e824b7868fa3e163324b0` on 2026-08-26.
+
+### Primary implementation and evidence files
+
+```text
+docs/KNOWLEDGE_UPLOAD_CONSISTENCY_RUNBOOK.md
+docs/V1.3.04A_SECURITY_RELIABILITY_REVIEW.md
+docs/architecture-decisions/ADR-017-knowledge-upload-multipart-boundary.md
+docs/architecture-decisions/ADR-018-durable-knowledge-upload-consistency.md
+docs/contract-changes/CCR-006-durable-knowledge-upload-cleanup-intent.md
+services/api/alembic/versions/20260824_0010_knowledge_upload_cleanups.py
+services/api/app/modules/knowledge/cleanup.py
+services/api/app/modules/knowledge/models.py
+services/api/app/modules/knowledge/repository.py
+services/api/app/modules/knowledge/service.py
+services/api/tests/integration/test_database_integration.py
+services/api/tests/integration/test_knowledge_file_upload_api.py
+services/api/tests/integration/test_knowledge_upload_cleanup.py
+```
+
+### Intentionally out of scope
+
+V1.3.04A does not implement knowledge parsing/indexing, customer attachments, bucket lifecycle policies, a new storage service, a general transactional outbox, new broker consumers/topics, a cleanup UI, or changes to generated object-key/file rules.
+

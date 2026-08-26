@@ -1,6 +1,5 @@
 """Knowledge source registration, listing, tenant isolation, and capability checks."""
 
-from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID, uuid4
@@ -9,13 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app.core.object_storage import ObjectStorage, ObjectStorageError, knowledge_raw_key
+from app.core.object_storage import (
+    KnowledgeRawObjectKey,
+    ObjectStorage,
+    ObjectStorageError,
+    knowledge_raw_key,
+)
+from app.modules.knowledge.cleanup import (
+    SOURCE_PERSISTENCE_ERROR_CODE,
+    arm_upload_cleanup,
+    mark_inline_cleanup_succeeded,
+    prepared_cleanup_due_at,
+)
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
 from app.modules.knowledge.models import KnowledgeSource
 from app.modules.knowledge.repository import (
     add_file_knowledge_source,
     add_knowledge_source,
+    add_upload_cleanup_intent,
+    get_upload_cleanup_for_update,
     list_knowledge_sources,
+    mark_upload_cleanup_referenced,
 )
 from app.modules.knowledge.schemas import (
     KnowledgeAccessScope,
@@ -80,24 +93,66 @@ async def create_file_source(
     access_scope: Literal["customer", "internal"],
     upload: UploadFile,
 ) -> KnowledgeSourceView:
-    """Validate and durably register one untrusted file-backed knowledge source."""
+    """Create a file source without ever allowing an untracked raw object."""
 
     await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+    # Permission resolution performs reads and therefore opens an implicit SQLAlchemy
+    # transaction. Close it before the explicit durability transactions below.
     await session.rollback()
     validated = await validate_upload(upload, source_type=source_type)
 
     source_id = uuid4()
-    key = knowledge_raw_key(tenant_id=tenant_id, source_id=source_id, object_id=uuid4())
-    await run_in_threadpool(
-        storage.put_object,
-        key,
-        upload.file,
-        content_type=validated.content_type,
-        metadata={"original-filename": validated.original_filename},
+    object_id = uuid4()
+    cleanup_id = uuid4()
+    key = knowledge_raw_key(
+        tenant_id=tenant_id,
+        source_id=source_id,
+        object_id=object_id,
     )
+
+    prepared_at = datetime.now(UTC)
+    async with session.begin():
+        add_upload_cleanup_intent(
+            session,
+            cleanup_id=cleanup_id,
+            tenant_id=tenant_id,
+            source_id=source_id,
+            object_id=object_id,
+            object_key=key.value,
+            next_attempt_at=prepared_cleanup_due_at(prepared_at),
+            now=prepared_at,
+        )
+        await session.flush()
+
+    try:
+        await run_in_threadpool(
+            storage.put_object,
+            key,
+            upload.file,
+            content_type=validated.content_type,
+            metadata={"original-filename": validated.original_filename},
+        )
+    except ObjectStorageError:
+        await _best_effort_failed_upload_cleanup(
+            session,
+            storage=storage,
+            tenant_id=tenant_id,
+            cleanup_id=cleanup_id,
+            key=key,
+            put_outcome_confirmed=False,
+        )
+        raise
 
     try:
         async with session.begin():
+            cleanup = await get_upload_cleanup_for_update(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+            )
+            if cleanup is None or cleanup.status != "prepared":
+                raise RuntimeError("Knowledge upload cleanup is not in the prepared state.")
+
             now = datetime.now(UTC)
             source = add_file_knowledge_source(
                 session,
@@ -110,13 +165,76 @@ async def create_file_source(
                 created_by=user_id,
                 now=now,
             )
+            mark_upload_cleanup_referenced(cleanup, now=now)
             await session.flush()
             view = _to_view(source)
     except Exception:
-        with suppress(ObjectStorageError):
-            await run_in_threadpool(storage.delete_object, key)
+        await _best_effort_failed_upload_cleanup(
+            session,
+            storage=storage,
+            tenant_id=tenant_id,
+            cleanup_id=cleanup_id,
+            key=key,
+            put_outcome_confirmed=True,
+        )
         raise
+
     return view
+
+
+async def _best_effort_failed_upload_cleanup(
+    session: AsyncSession,
+    *,
+    storage: ObjectStorage,
+    tenant_id: UUID,
+    cleanup_id: UUID,
+    key: KnowledgeRawObjectKey,
+    put_outcome_confirmed: bool,
+) -> None:
+    """Try immediate cleanup without hiding the original upload failure.
+
+    A generic PUT error is ambiguous. In that path the durable `prepared` row keeps
+    its 15-minute stale-preparation deadline even if the immediate DELETE succeeds,
+    because an in-flight server-side PUT may still materialize afterward.
+
+    Once PUT success was confirmed and only source persistence failed, the object is
+    safe to delete immediately and a successful delete can terminally resolve the
+    cleanup obligation.
+    """
+
+    if put_outcome_confirmed:
+        try:
+            await arm_upload_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+                error_code=SOURCE_PERSISTENCE_ERROR_CODE,
+            )
+        except Exception:
+            # The pre-existing `prepared` row remains the durable obligation and
+            # becomes sweepable at its stale-preparation deadline.
+            await session.rollback()
+
+    try:
+        await run_in_threadpool(storage.delete_object, key)
+    except ObjectStorageError:
+        return
+
+    if not put_outcome_confirmed:
+        # Do not terminalize an ambiguous PUT from request-time DELETE alone.
+        # Reconciliation must later confirm visibility before declaring success,
+        # or exhaust visibly after the bounded observation budget.
+        return
+
+    try:
+        await mark_inline_cleanup_succeeded(
+            session,
+            tenant_id=tenant_id,
+            cleanup_id=cleanup_id,
+        )
+    except Exception:
+        # A later idempotent replay can delete the already-absent object again.
+        await session.rollback()
 
 
 async def _require_permission(

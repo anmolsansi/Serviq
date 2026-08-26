@@ -1,10 +1,10 @@
 # Serviq Repository Context
 
-> Current-state engineering map, audited on 2026-08-22 at `main` commit
-> `258d189` (`Merge OPE-304 release system reconciliation`). This describes
-> code that exists. Future contracts remain in `PRD.md`, `ARCHITECTURE.md`, and
-> the staged roadmap. The workforce OIDC integration-evidence notes below were
-> refreshed on 2026-08-23 for V1.1.15 against `main` base `1422834`.
+> Current-state engineering map. The knowledge-upload consistency state was
+> refreshed on 2026-08-26 after V1.3.04A merged to `main` as `ae9c2d6`.
+> This describes code that exists. Future contracts remain in `PRD.md`,
+> `ARCHITECTURE.md`, and the staged roadmap. Earlier subsystem evidence notes
+> retain their ticket-specific dates and commit references below.
 
 ## Executive snapshot
 
@@ -39,7 +39,7 @@ cross-service integration test, end-to-end flow, then deployed acceptance.
 | `packages/*` | Shared TypeScript packages | Early scaffolding |
 | `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Keycloak 26.7.1 service; V1.1.15 adds a deterministic test-only realm/client fixture at `infra/keycloak/serviq-test-realm.json`, mounted only by the opt-in integration harness |
 | `infra/observability` | OTel, Prometheus, Grafana, Loki, Tempo | Templates; little app instrumentation |
-| `migrations` | Alembic schema history | Nine revisions through knowledge permissions |
+| `migrations` | Alembic schema history | Ten revisions through durable knowledge-upload cleanup intents |
 | `docs` | Product, architecture, operations, evidence | Extensive; contracts are not implementation |
 
 The intended shape is a modular monolith for control-plane APIs, a durable
@@ -237,3 +237,20 @@ not yet in Linear.
 
 See `PROJECT_STATUS_AND_ROADMAP.md` for the reconciled product assessment and
 execution recommendation.
+
+## V1.3.04A current state — durable knowledge uploads
+
+File-backed knowledge-source registration now has an implemented cross-store consistency boundary. Before the API attempts the generated raw-object PUT, it commits an internal tenant-owned `knowledge_upload_cleanups` row containing the source/object identity, generated key, retry state, bounded error code, and timestamps required for reconciliation.
+
+On confirmed PUT success, the normal `knowledge_sources` insert and cleanup transition to `referenced` occur in the same PostgreSQL transaction. If source persistence fails, the pre-upload intent survives rollback. Request-time cleanup performs a best-effort immediate delete outside the database transaction while durable reconciliation remains available if deletion or the follow-up state write fails.
+
+Generic storage PUT failures are treated as outcome-ambiguous rather than assumed absent. `prepared` work has a 15-minute stale deadline; due reconciliation uses the typed presence check before deletion. Confirmed cleanup replay starts at 30 seconds, then retries after 5 minutes and 30 minutes, with the third failed replay becoming `exhausted`.
+
+Replay is internal, tenant-scoped, idempotent, and key-validated. Foreign-tenant access is rejected before storage I/O. Object keys, file data, credentials, and tokens are excluded from cleanup logs and status-count visibility. There is no public cleanup endpoint.
+
+Alembic revision `20260824_0010` adds the schema and refuses downgrade while unresolved cleanup obligations exist. The worker remains a scaffold: this ticket implements the durable reconciliation service contract but does not claim a general transactional outbox, broker consumer, scheduler, cleanup UI, or resolved-row purge job is deployed.
+
+Primary evidence is ADR-018, CCR-006, `KNOWLEDGE_UPLOAD_CONSISTENCY_RUNBOOK.md`, `V1.3.04A_SECURITY_RELIABILITY_REVIEW.md`, migration 0010, the knowledge cleanup/service/repository modules, and PostgreSQL/S3-compatible integration tests.
+
+The exact implementation head `22ad508fc148f68759b4b0466323e9ce6e452c1c` passed CI and Security before PR #180 merged it into `main` as `ae9c2d67b8e09b3db62e824b7868fa3e163324b0` on 2026-08-26.
+

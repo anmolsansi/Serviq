@@ -79,7 +79,17 @@ def test_knowledge_upload_limit_store_failure_fails_closed_without_raw_detail() 
 
 def test_knowledge_upload_limit_malformed_store_response_fails_closed() -> None:
     async def scenario() -> None:
-        for malformed in ([], [1], [1, 0, 99], ["not-an-int", 0]):
+        malformed_responses: tuple[object, ...] = (
+            [],
+            [1],
+            [1, 0, 99],
+            ["not-an-int", 0],
+            None,
+            1,
+            "unexpected",
+            {"allowed": 1},
+        )
+        for malformed in malformed_responses:
             limiter = ValkeyKnowledgeUploadRateLimiter(FakeEvalClient(malformed))
             with pytest.raises(KnowledgeUploadRateLimitUnavailableError):
                 await limiter.check_and_consume(tenant_id=TENANT_ID, user_id=USER_ID)

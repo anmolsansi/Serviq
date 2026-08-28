@@ -33,6 +33,7 @@ from app.modules.knowledge.repository import (
     add_knowledge_source,
     add_upload_cleanup_intent,
     bind_upload_reservation_to_cleanup,
+    expire_upload_concurrency_lease_for_cleanup,
     get_upload_cleanup_for_update,
     list_knowledge_sources,
     mark_upload_cleanup_referenced,
@@ -238,14 +239,25 @@ async def _best_effort_failed_upload_cleanup(
 ) -> None:
     """Try immediate cleanup without hiding the original upload failure.
 
-    A generic PUT error is ambiguous. In that path the durable `prepared` row and
-    linked quota reservation stay authoritative even if immediate DELETE succeeds,
-    because an in-flight server-side PUT may still materialize afterward.
-
-    Once PUT success was confirmed and only source persistence failed, the object is
-    safe to delete immediately. A successful delete terminally resolves cleanup and
-    releases its linked quota reservation in the same database transaction.
+    Once the request is known to be failing, its active-concurrency lease is ended
+    best-effort. The linked reservation itself remains charged against byte/source
+    quota until object cleanup is confirmed, preserving the durable safety boundary.
     """
+
+    try:
+        current = datetime.now(UTC)
+        async with session.begin():
+            await expire_upload_concurrency_lease_for_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+                now=current,
+            )
+            await session.flush()
+    except Exception:
+        # A crash/DB outage is safe: the original 10-minute lease bounds temporary
+        # over-blocking and the linked reservation still cannot escape quota.
+        await session.rollback()
 
     if put_outcome_confirmed:
         try:

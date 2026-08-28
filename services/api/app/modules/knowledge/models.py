@@ -1,9 +1,9 @@
-"""ORM mappings for tenant-owned knowledge metadata and upload cleanup state."""
+"""ORM mappings for tenant-owned knowledge metadata, upload cleanup, and quota state."""
 
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -18,6 +18,7 @@ class KnowledgeSource(Base):
     name: Mapped[str] = mapped_column(Text)
     source_uri: Mapped[str | None] = mapped_column(Text)
     object_key: Mapped[str | None] = mapped_column(Text)
+    object_size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     access_scope: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
     sync_version: Mapped[int] = mapped_column(Integer)
@@ -43,5 +44,20 @@ class KnowledgeUploadCleanup(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error_code: Mapped[str | None] = mapped_column(Text)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class KnowledgeUploadReservation(Base):
+    """Tenant-owned capacity reservation created before raw-object PUT."""
+
+    __tablename__ = "knowledge_upload_reservations"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id", ondelete="RESTRICT"))
+    source_id: Mapped[UUID]
+    reserved_bytes: Mapped[int] = mapped_column(BigInteger)
+    cleanup_id: Mapped[UUID | None]
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

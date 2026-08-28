@@ -1,4 +1,4 @@
-"""Knowledge source registration, listing, tenant isolation, and capability checks."""
+"""Knowledge source registration, upload durability, quota, and capability checks."""
 
 from datetime import UTC, datetime
 from typing import Literal, cast
@@ -22,13 +22,21 @@ from app.modules.knowledge.cleanup import (
 )
 from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
 from app.modules.knowledge.models import KnowledgeSource
+from app.modules.knowledge.quota import (
+    assert_source_capacity,
+    reconcile_legacy_file_sizes,
+    release_unlinked_reservation,
+    reserve_file_upload,
+)
 from app.modules.knowledge.repository import (
     add_file_knowledge_source,
     add_knowledge_source,
     add_upload_cleanup_intent,
+    bind_upload_reservation_to_cleanup,
     get_upload_cleanup_for_update,
     list_knowledge_sources,
     mark_upload_cleanup_referenced,
+    release_upload_reservation,
 )
 from app.modules.knowledge.schemas import (
     KnowledgeAccessScope,
@@ -62,11 +70,12 @@ async def create_source(
     tenant_id: UUID,
     request: KnowledgeSourceCreateRequest,
 ) -> KnowledgeSourceView:
-    """Register metadata only. Crawling/fetching is deliberately not part of this flow."""
+    """Register URL/sitemap metadata while enforcing the total tenant source cap."""
 
     async with session.begin():
         await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
         now = datetime.now(UTC)
+        await assert_source_capacity(session, tenant_id=tenant_id, now=now)
         source = add_knowledge_source(
             session,
             source_id=uuid4(),
@@ -93,7 +102,7 @@ async def create_file_source(
     access_scope: Literal["customer", "internal"],
     upload: UploadFile,
 ) -> KnowledgeSourceView:
-    """Create a file source without ever allowing an untracked raw object."""
+    """Create a quota-reserved file source without allowing an untracked raw object."""
 
     await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
     # Permission resolution performs reads and therefore opens an implicit SQLAlchemy
@@ -101,7 +110,17 @@ async def create_file_source(
     await session.rollback()
     validated = await validate_upload(upload, source_type=source_type)
 
+    # Migration 0011 intentionally does not perform network I/O. Existing file rows
+    # are measured through typed HEAD calls here before new bytes can be admitted.
+    await reconcile_legacy_file_sizes(session, storage=storage, tenant_id=tenant_id)
+
     source_id = uuid4()
+    reservation = await reserve_file_upload(
+        session,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        reserved_bytes=validated.size,
+    )
     object_id = uuid4()
     cleanup_id = uuid4()
     key = knowledge_raw_key(
@@ -111,18 +130,38 @@ async def create_file_source(
     )
 
     prepared_at = datetime.now(UTC)
-    async with session.begin():
-        add_upload_cleanup_intent(
-            session,
-            cleanup_id=cleanup_id,
-            tenant_id=tenant_id,
-            source_id=source_id,
-            object_id=object_id,
-            object_key=key.value,
-            next_attempt_at=prepared_cleanup_due_at(prepared_at),
-            now=prepared_at,
-        )
-        await session.flush()
+    try:
+        async with session.begin():
+            add_upload_cleanup_intent(
+                session,
+                cleanup_id=cleanup_id,
+                tenant_id=tenant_id,
+                source_id=source_id,
+                object_id=object_id,
+                object_key=key.value,
+                next_attempt_at=prepared_cleanup_due_at(prepared_at),
+                now=prepared_at,
+            )
+            await bind_upload_reservation_to_cleanup(
+                session,
+                tenant_id=tenant_id,
+                reservation_id=reservation.reservation_id,
+                cleanup_id=cleanup_id,
+                now=prepared_at,
+            )
+            await session.flush()
+    except Exception:
+        # No PUT is permitted before this transaction commits. If DB recovery is
+        # unavailable, the still-unlinked reservation self-reclaims after 10 minutes.
+        try:
+            await release_unlinked_reservation(
+                session,
+                tenant_id=tenant_id,
+                reservation_id=reservation.reservation_id,
+            )
+        except Exception:
+            await session.rollback()
+        raise
 
     try:
         await run_in_threadpool(
@@ -161,11 +200,17 @@ async def create_file_source(
                 source_type=source_type,
                 name=name,
                 object_key=key.value,
+                object_size_bytes=validated.size,
                 access_scope=access_scope,
                 created_by=user_id,
                 now=now,
             )
             mark_upload_cleanup_referenced(cleanup, now=now)
+            await release_upload_reservation(
+                session,
+                tenant_id=tenant_id,
+                reservation_id=reservation.reservation_id,
+            )
             await session.flush()
             view = _to_view(source)
     except Exception:
@@ -193,13 +238,13 @@ async def _best_effort_failed_upload_cleanup(
 ) -> None:
     """Try immediate cleanup without hiding the original upload failure.
 
-    A generic PUT error is ambiguous. In that path the durable `prepared` row keeps
-    its 15-minute stale-preparation deadline even if the immediate DELETE succeeds,
+    A generic PUT error is ambiguous. In that path the durable `prepared` row and
+    linked quota reservation stay authoritative even if immediate DELETE succeeds,
     because an in-flight server-side PUT may still materialize afterward.
 
     Once PUT success was confirmed and only source persistence failed, the object is
-    safe to delete immediately and a successful delete can terminally resolve the
-    cleanup obligation.
+    safe to delete immediately. A successful delete terminally resolves cleanup and
+    releases its linked quota reservation in the same database transaction.
     """
 
     if put_outcome_confirmed:
@@ -222,8 +267,6 @@ async def _best_effort_failed_upload_cleanup(
 
     if not put_outcome_confirmed:
         # Do not terminalize an ambiguous PUT from request-time DELETE alone.
-        # Reconciliation must later confirm visibility before declaring success,
-        # or exhaust visibly after the bounded observation budget.
         return
 
     try:

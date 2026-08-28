@@ -268,6 +268,26 @@ async def bind_upload_reservation_to_cleanup(
         raise RuntimeError("Knowledge upload reservation could not be bound to cleanup.")
 
 
+async def expire_upload_concurrency_lease_for_cleanup(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    cleanup_id: UUID,
+    now: datetime,
+) -> None:
+    """End request concurrency while preserving the linked byte/source quota hold."""
+
+    await session.execute(
+        update(KnowledgeUploadReservation)
+        .where(
+            KnowledgeUploadReservation.tenant_id == tenant_id,
+            KnowledgeUploadReservation.cleanup_id == cleanup_id,
+            KnowledgeUploadReservation.lease_expires_at > now,
+        )
+        .values(lease_expires_at=now, updated_at=now)
+    )
+
+
 async def release_upload_reservation(
     session: AsyncSession,
     *,

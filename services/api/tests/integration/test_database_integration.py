@@ -32,6 +32,7 @@ EXPECTED_TABLES = {
     "knowledge_documents",
     "knowledge_chunks",
     "knowledge_upload_cleanups",
+    "knowledge_upload_reservations",
 }
 
 

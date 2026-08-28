@@ -1,6 +1,6 @@
 """Tenant-scoped URL, sitemap, and file knowledge source routes."""
 
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
@@ -13,7 +13,18 @@ from app.core.api import SuccessEnvelope
 from app.core.database import get_database_session
 from app.core.object_storage import ObjectStorageError
 from app.core.principal import require_tenant_id, require_workforce_user_id
-from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
+from app.core.rate_limits import (
+    KnowledgeUploadRateLimiter,
+    KnowledgeUploadRateLimitUnavailableError,
+    get_knowledge_upload_rate_limiter,
+)
+from app.modules.knowledge.errors import (
+    KnowledgeQuotaUnavailableError,
+    KnowledgeSourceForbiddenError,
+    KnowledgeSourceQuotaExceededError,
+    KnowledgeStorageQuotaExceededError,
+    KnowledgeUploadConcurrencyLimitedError,
+)
 from app.modules.knowledge.schemas import KnowledgeSourceCreateRequest, KnowledgeSourceView
 from app.modules.knowledge.service import create_file_source, create_source, list_sources
 from app.modules.knowledge.storage import get_knowledge_object_storage
@@ -29,6 +40,21 @@ router = APIRouter(prefix="/api/v1/knowledge-sources", tags=["knowledge-sources"
 DatabaseSession = Annotated[AsyncSession, Depends(get_database_session)]
 WorkforceUserId = Annotated[UUID, Depends(require_workforce_user_id)]
 TenantId = Annotated[UUID, Depends(require_tenant_id)]
+
+
+def get_knowledge_upload_rate_limiter_dependency(request: Request) -> KnowledgeUploadRateLimiter:
+    """Resolve an injected test double or the process-shared Valkey upload limiter."""
+
+    configured = getattr(request.app.state, "knowledge_upload_rate_limiter", None)
+    if configured is not None:
+        return cast(KnowledgeUploadRateLimiter, configured)
+    return get_knowledge_upload_rate_limiter()
+
+
+UploadRateLimiter = Annotated[
+    KnowledgeUploadRateLimiter,
+    Depends(get_knowledge_upload_rate_limiter_dependency),
+]
 
 
 @router.get("", response_model=SuccessEnvelope[list[KnowledgeSourceView]])
@@ -54,6 +80,7 @@ async def create_knowledge_source(
     session: DatabaseSession,
     user_id: WorkforceUserId,
     tenant_id: TenantId,
+    upload_rate_limiter: UploadRateLimiter,
 ) -> SuccessEnvelope[KnowledgeSourceView] | JSONResponse:
     content_type = http_request.headers.get("content-type", "").lower()
     if content_type.startswith("multipart/form-data"):
@@ -62,6 +89,7 @@ async def create_knowledge_source(
             session=session,
             user_id=user_id,
             tenant_id=tenant_id,
+            upload_rate_limiter=upload_rate_limiter,
         )
     if not content_type.startswith("application/json"):
         return _error(415, "UNSUPPORTED_MEDIA_TYPE", "Use JSON or multipart/form-data.")
@@ -80,6 +108,8 @@ async def create_knowledge_source(
         )
     except KnowledgeSourceForbiddenError:
         return _forbidden()
+    except KnowledgeSourceQuotaExceededError:
+        return _error(409, "KNOWLEDGE_SOURCE_QUOTA_EXCEEDED", "Knowledge source quota exceeded.")
     return SuccessEnvelope(data=source)
 
 
@@ -89,7 +119,28 @@ async def _create_file_knowledge_source(
     session: AsyncSession,
     user_id: UUID,
     tenant_id: UUID,
+    upload_rate_limiter: KnowledgeUploadRateLimiter,
 ) -> SuccessEnvelope[KnowledgeSourceView] | JSONResponse:
+    try:
+        decision = await upload_rate_limiter.check_and_consume(
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+    except KnowledgeUploadRateLimitUnavailableError:
+        return _error(
+            503,
+            "KNOWLEDGE_UPLOAD_LIMITER_UNAVAILABLE",
+            "Knowledge upload limiting is temporarily unavailable.",
+        )
+    if not decision.allowed:
+        retry_after = max(decision.retry_after_seconds or 1, 1)
+        return _error(
+            429,
+            "KNOWLEDGE_UPLOAD_RATE_LIMITED",
+            "Knowledge upload request rate exceeded.",
+            retry_after_seconds=retry_after,
+        )
+
     try:
         form = await request.form(max_files=1, max_fields=3, max_part_size=25 * 1024 * 1024)
         allowed = {"sourceType", "name", "accessScope", "file"}
@@ -122,6 +173,23 @@ async def _create_file_knowledge_source(
         return _error(413, "UPLOAD_TOO_LARGE", "Uploaded knowledge file exceeds the V1 limit.")
     except KnowledgeUploadValidationError:
         return _error(422, "VALIDATION_ERROR", "Knowledge file upload is invalid.")
+    except KnowledgeSourceQuotaExceededError:
+        return _error(409, "KNOWLEDGE_SOURCE_QUOTA_EXCEEDED", "Knowledge source quota exceeded.")
+    except KnowledgeStorageQuotaExceededError:
+        return _error(413, "KNOWLEDGE_STORAGE_QUOTA_EXCEEDED", "Knowledge storage quota exceeded.")
+    except KnowledgeUploadConcurrencyLimitedError as error:
+        return _error(
+            429,
+            "KNOWLEDGE_UPLOAD_CONCURRENCY_LIMITED",
+            "Knowledge upload concurrency limit exceeded.",
+            retry_after_seconds=error.retry_after_seconds,
+        )
+    except KnowledgeQuotaUnavailableError:
+        return _error(
+            503,
+            "KNOWLEDGE_QUOTA_UNAVAILABLE",
+            "Knowledge quota accounting is temporarily unavailable.",
+        )
     except ObjectStorageError:
         return _error(
             503,
@@ -135,8 +203,18 @@ def _forbidden() -> JSONResponse:
     return _error(403, "FORBIDDEN", "Permission denied.")
 
 
-def _error(status_code: int, code: str, message: str) -> JSONResponse:
+def _error(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    retry_after_seconds: int | None = None,
+) -> JSONResponse:
+    headers: dict[str, str] | None = None
+    if retry_after_seconds is not None:
+        headers = {"Retry-After": str(max(retry_after_seconds, 1))}
     return JSONResponse(
         status_code=status_code,
+        headers=headers,
         content={"error": {"code": code, "message": message}},
     )

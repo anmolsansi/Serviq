@@ -184,9 +184,9 @@ def _parse_decision(
     *,
     unavailable: type[RuntimeError],
 ) -> RateLimitDecision:
-    result = cast(list[object], raw_result)
-    if len(result) != 2:
+    if not isinstance(raw_result, (list, tuple)) or len(raw_result) != 2:
         raise unavailable()
+    result = raw_result
     try:
         allowed = int(cast(int | bytes | str, result[0])) == 1
         retry_after = int(cast(int | bytes | str, result[1]))

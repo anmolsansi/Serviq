@@ -130,6 +130,16 @@ async def cleanup_tenant_isolation_fixture(
     """Remove only rows owned by this fixture, leaving shared role bootstrap untouched."""
 
     f = fixture
+    # V1.3.04B reservations deliberately RESTRICT tenant deletion so production
+    # cleanup cannot silently discard possible raw-object obligations. Test fixtures
+    # explicitly own their synthetic reservations and may remove them first.
+    await session.execute(
+        text(
+            "DELETE FROM knowledge_upload_reservations "
+            "WHERE tenant_id IN (:tenant_a, :tenant_b)"
+        ),
+        f.__dict__,
+    )
     await session.execute(
         text(
             """

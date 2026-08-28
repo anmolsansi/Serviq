@@ -116,14 +116,21 @@ async def delete_expired_unlinked_upload_reservations(
     tenant_id: UUID,
     now: datetime,
 ) -> int:
-    result = await session.execute(
-        delete(KnowledgeUploadReservation).where(
-            KnowledgeUploadReservation.tenant_id == tenant_id,
-            KnowledgeUploadReservation.cleanup_id.is_(None),
-            KnowledgeUploadReservation.lease_expires_at <= now,
-        )
+    predicate = (
+        KnowledgeUploadReservation.tenant_id == tenant_id,
+        KnowledgeUploadReservation.cleanup_id.is_(None),
+        KnowledgeUploadReservation.lease_expires_at <= now,
     )
-    return int(result.rowcount or 0)
+    count = int(
+        (
+            await session.execute(
+                select(func.count(KnowledgeUploadReservation.id)).where(*predicate)
+            )
+        ).scalar_one()
+    )
+    if count:
+        await session.execute(delete(KnowledgeUploadReservation).where(*predicate))
+    return count
 
 
 async def get_knowledge_quota_usage(
@@ -209,7 +216,7 @@ async def set_file_source_size_if_unknown(
     object_key: str,
     object_size_bytes: int,
 ) -> None:
-    result = await session.execute(
+    await session.execute(
         update(KnowledgeSource)
         .where(
             KnowledgeSource.tenant_id == tenant_id,
@@ -219,8 +226,6 @@ async def set_file_source_size_if_unknown(
         )
         .values(object_size_bytes=object_size_bytes)
     )
-    if result.rowcount not in {0, 1}:
-        raise RuntimeError("Knowledge source size reconciliation updated multiple rows.")
 
 
 def add_upload_reservation(
@@ -256,16 +261,18 @@ async def bind_upload_reservation_to_cleanup(
     now: datetime,
 ) -> None:
     result = await session.execute(
-        update(KnowledgeUploadReservation)
+        select(KnowledgeUploadReservation)
         .where(
             KnowledgeUploadReservation.tenant_id == tenant_id,
             KnowledgeUploadReservation.id == reservation_id,
-            KnowledgeUploadReservation.cleanup_id.is_(None),
         )
-        .values(cleanup_id=cleanup_id, updated_at=now)
+        .with_for_update()
     )
-    if result.rowcount != 1:
+    reservation = result.scalar_one_or_none()
+    if reservation is None or reservation.cleanup_id is not None:
         raise RuntimeError("Knowledge upload reservation could not be bound to cleanup.")
+    reservation.cleanup_id = cleanup_id
+    reservation.updated_at = now
 
 
 async def expire_upload_concurrency_lease_for_cleanup(

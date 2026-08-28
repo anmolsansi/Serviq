@@ -18,6 +18,7 @@ from app.modules.knowledge.repository import (
     mark_upload_cleanup_exhausted,
     mark_upload_cleanup_pending,
     mark_upload_cleanup_succeeded,
+    release_upload_reservation_for_cleanup,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,7 +150,7 @@ async def mark_inline_cleanup_succeeded(
     cleanup_id: UUID,
     now: datetime | None = None,
 ) -> None:
-    """Record a safe request-time delete without exposing the object key."""
+    """Record a safe request-time delete and atomically release its quota hold."""
 
     current = now or datetime.now(UTC)
     async with session.begin():
@@ -160,11 +161,15 @@ async def mark_inline_cleanup_succeeded(
         )
         if cleanup is None:
             raise KnowledgeUploadCleanupUnavailableError
-        if cleanup.status == "succeeded":
-            return
         if cleanup.status in {"referenced", "exhausted"}:
             return
-        mark_upload_cleanup_succeeded(cleanup, now=current)
+        if cleanup.status != "succeeded":
+            mark_upload_cleanup_succeeded(cleanup, now=current)
+        await release_upload_reservation_for_cleanup(
+            session,
+            tenant_id=tenant_id,
+            cleanup_id=cleanup_id,
+        )
         await session.flush()
         attempt_count = cleanup.attempt_count
     _safe_log(
@@ -193,6 +198,11 @@ async def _claim_due_cleanup(
         if cleanup is None:
             raise KnowledgeUploadCleanupUnavailableError
         if cleanup.status == "referenced":
+            await release_upload_reservation_for_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+            )
             return CleanupReplayResult(
                 cleanup_id=cleanup.id,
                 tenant_id=cleanup.tenant_id,
@@ -200,6 +210,11 @@ async def _claim_due_cleanup(
                 attempt_count=cleanup.attempt_count,
             )
         if cleanup.status == "succeeded":
+            await release_upload_reservation_for_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+            )
             return CleanupReplayResult(
                 cleanup_id=cleanup.id,
                 tenant_id=cleanup.tenant_id,
@@ -315,6 +330,11 @@ async def _record_failed_attempt(
             outcome: CleanupReplayOutcome = (
                 "noop_referenced" if cleanup.status == "referenced" else "noop_succeeded"
             )
+            await release_upload_reservation_for_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+            )
             return CleanupReplayResult(
                 cleanup_id=cleanup.id,
                 tenant_id=cleanup.tenant_id,
@@ -404,10 +424,6 @@ async def reconcile_upload_cleanup(
             )
 
         if not object_visible:
-            # Absence is not proof of cleanup when the original PUT outcome was
-            # ambiguous. A delayed server-side PUT may still materialize later.
-            # Keep the obligation replayable, and exhaust visibly rather than
-            # silently declaring success after the bounded observation budget.
             return await _record_failed_attempt(
                 session,
                 tenant_id=tenant_id,
@@ -437,6 +453,11 @@ async def reconcile_upload_cleanup(
         if cleanup is None:
             raise KnowledgeUploadCleanupUnavailableError
         if cleanup.status == "referenced":
+            await release_upload_reservation_for_cleanup(
+                session,
+                tenant_id=tenant_id,
+                cleanup_id=cleanup_id,
+            )
             return CleanupReplayResult(
                 cleanup_id=cleanup.id,
                 tenant_id=cleanup.tenant_id,
@@ -445,7 +466,12 @@ async def reconcile_upload_cleanup(
             )
         if cleanup.status != "succeeded":
             mark_upload_cleanup_succeeded(cleanup, now=success_time)
-            await session.flush()
+        await release_upload_reservation_for_cleanup(
+            session,
+            tenant_id=tenant_id,
+            cleanup_id=cleanup_id,
+        )
+        await session.flush()
         attempt_count = cleanup.attempt_count
     _safe_log(
         logging.INFO,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -52,8 +52,15 @@ def test_postgres_quota_reservations_are_atomic_and_tenant_scoped() -> None:
                         reserved_bytes=1024,
                     )
 
-            results = await asyncio.gather(*(reserve_one() for _ in range(4)), return_exceptions=True)
-            claims = [result for result in results if isinstance(result, KnowledgeUploadReservationClaim)]
+            results = await asyncio.gather(
+                *(reserve_one() for _ in range(4)),
+                return_exceptions=True,
+            )
+            claims = [
+                result
+                for result in results
+                if isinstance(result, KnowledgeUploadReservationClaim)
+            ]
             rejected = [
                 result
                 for result in results

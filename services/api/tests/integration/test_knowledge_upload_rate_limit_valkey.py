@@ -27,7 +27,11 @@ def _normalized_valkey_url() -> str:
 
 def test_real_valkey_enforces_six_upload_attempts_per_minute_and_tenant_isolation() -> None:
     async def scenario() -> None:
-        client = valkey.from_url(_normalized_valkey_url(), decode_responses=False)
+        # valkey-py 6.1.1 does not annotate its public from_url() factory.
+        client = valkey.from_url(  # type: ignore[no-untyped-call]
+            _normalized_valkey_url(),
+            decode_responses=False,
+        )
         try:
             await client.flushdb()
             limiter = build_knowledge_upload_rate_limiter(load_settings())

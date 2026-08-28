@@ -6307,3 +6307,22 @@ services/api/tests/integration/test_knowledge_upload_cleanup.py
 
 V1.3.04A does not implement knowledge parsing/indexing, customer attachments, bucket lifecycle policies, a new storage service, a general transactional outbox, new broker consumers/topics, a cleanup UI, or changes to generated object-key/file rules.
 
+
+
+---
+
+## V1.3.04B — Knowledge upload quota and abuse controls
+
+V1.3.04 and V1.3.04A made each uploaded file bounded and made failed raw-object cleanup durable. V1.3.04B adds the next protection: one tenant or one authorized-but-compromised employee cannot keep uploading forever and consume unlimited request capacity, database rows, or raw storage.
+
+The V1 hard limits are intentionally simple. One workforce user may attempt six multipart knowledge uploads in 60 seconds. A tenant may have at most three active file uploads, at most 1 GiB of committed or still-held raw knowledge-file bytes, and at most 100 total knowledge sources across URL, sitemap, PDF, Markdown, and text. These are platform safety limits, not billing plans.
+
+The short request-rate counter lives in Valkey because it is temporary and cheap to rebuild. Durable quota accounting lives in PostgreSQL because source rows, committed file bytes, and unresolved upload obligations must not disappear when a cache restarts. Before a new file is admitted, Serviq briefly locks that tenant's database row, calculates committed usage plus held reservations, and either creates one reservation or rejects the request. This prevents two API processes from both seeing the same remaining capacity and overshooting the limit.
+
+Older file rows created before this ticket may not have a stored byte count. Serviq does not guess. It validates the server-generated object key and asks the S3-compatible storage layer for typed `HEAD` metadata outside the database transaction. If authoritative usage cannot be established, the new upload fails closed before PUT.
+
+The reservation also connects directly to the V1.3.04A cleanup contract. Capacity is reserved before raw-object PUT, then bound to the durable cleanup intent. A successful source commit writes the exact validated byte count and releases the reservation. Confirmed cleanup also releases it. If cleanup is still ambiguous, pending, or exhausted, the possible raw object continues consuming byte/source quota so a leak cannot become invisible. Active concurrency is still bounded: handled failures stop occupying a slot, and a crashed request can over-block a slot for at most ten minutes.
+
+Public failures are stable and safe: rate/concurrency limits use HTTP 429, storage quota uses 413, source quota uses 409, and unavailable authoritative limiter/accounting paths use 503. Rejected requests do not PUT a raw object or create a source row, and responses never reveal keys, credentials, raw filenames, content, or another tenant's usage.
+
+Engineering evidence includes ADR-019, CCR-007, migration `20260828_0011`, `KNOWLEDGE_UPLOAD_QUOTA_RUNBOOK.md`, `V1.3.04B_SECURITY_RELIABILITY_REVIEW.md`, unit tests, PostgreSQL race/quota tests, API rejection tests, real Valkey rate-limit tests, and real S3-compatible legacy-size reconciliation. The dedicated `Knowledge Quota Integration` workflow exercises PostgreSQL, Valkey, and object storage together.

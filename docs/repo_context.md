@@ -1,7 +1,7 @@
 # Serviq Repository Context
 
-> Current-state engineering map. The knowledge-upload consistency state was
-> refreshed on 2026-08-26 after V1.3.04A merged to `main` as `ae9c2d6`.
+> Current-state engineering map. Knowledge-upload quota and abuse controls were
+> refreshed on 2026-08-28 after V1.3.04B merged through PR #185 as `e846e0a`.
 > This describes code that exists. Future contracts remain in `PRD.md`,
 > `ARCHITECTURE.md`, and the staged roadmap. Earlier subsystem evidence notes
 > retain their ticket-specific dates and commit references below.
@@ -39,7 +39,7 @@ cross-service integration test, end-to-end flow, then deployed acceptance.
 | `packages/*` | Shared TypeScript packages | Early scaffolding |
 | `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Keycloak 26.7.1 service; V1.1.15 adds a deterministic test-only realm/client fixture at `infra/keycloak/serviq-test-realm.json`, mounted only by the opt-in integration harness |
 | `infra/observability` | OTel, Prometheus, Grafana, Loki, Tempo | Templates; little app instrumentation |
-| `migrations` | Alembic schema history | Ten revisions through durable knowledge-upload cleanup intents |
+| `migrations` | Alembic schema history | Eleven revisions through durable knowledge-upload quota reservations |
 | `docs` | Product, architecture, operations, evidence | Extensive; contracts are not implementation |
 
 The intended shape is a modular monolith for control-plane APIs, a durable
@@ -254,3 +254,15 @@ Primary evidence is ADR-018, CCR-006, `KNOWLEDGE_UPLOAD_CONSISTENCY_RUNBOOK.md`,
 
 The exact implementation head `22ad508fc148f68759b4b0466323e9ce6e452c1c` passed CI and Security before PR #180 merged it into `main` as `ae9c2d67b8e09b3db62e824b7868fa3e163324b0` on 2026-08-26.
 
+
+## V1.3.04B current state — knowledge upload quota and abuse controls
+
+Knowledge upload admission now has four frozen V1 controls: six multipart upload attempts per 60 seconds per trusted tenant + workforce user, three active file-upload leases per tenant, 1 GiB of committed-plus-held raw file bytes per tenant, and 100 total committed-plus-held knowledge sources per tenant. Valkey owns only the short-window user request counter and fails closed. PostgreSQL is authoritative for durable source, byte, and reservation accounting.
+
+Alembic revision `20260828_0011` adds nullable `knowledge_sources.object_size_bytes` and tenant-owned `knowledge_upload_reservations`. Quota decisions briefly lock the tenant row so concurrent API processes cannot oversubscribe source, byte, or concurrency limits. Existing file rows with unknown size are reconciled through the typed object-storage `HEAD` boundary before new file capacity is admitted. Storage I/O is never performed while the quota database transaction is open.
+
+The V1.3.04A pre-PUT cleanup invariant remains intact. A validated file reserves capacity before the cleanup intent and raw PUT. The reservation is bound to the durable cleanup intent before PUT, released atomically when source ownership commits or confirmed cleanup succeeds, and retained against source/byte quota while cleanup remains ambiguous, pending, or exhausted. Handled failures stop consuming active concurrency immediately when possible, while crash-only concurrency over-blocking is bounded by the ten-minute lease.
+
+Stable failures are `KNOWLEDGE_UPLOAD_RATE_LIMITED`, `KNOWLEDGE_UPLOAD_CONCURRENCY_LIMITED`, `KNOWLEDGE_STORAGE_QUOTA_EXCEEDED`, `KNOWLEDGE_SOURCE_QUOTA_EXCEEDED`, `KNOWLEDGE_UPLOAD_LIMITER_UNAVAILABLE`, and `KNOWLEDGE_QUOTA_UNAVAILABLE`. Rejected quota/rate requests perform no raw-object PUT and create no source row. Error and operational evidence is bounded and excludes object keys, credentials, raw filenames, file content, and foreign-tenant usage.
+
+Primary evidence is ADR-019, CCR-007, `KNOWLEDGE_UPLOAD_QUOTA_RUNBOOK.md`, `V1.3.04B_SECURITY_RELIABILITY_REVIEW.md`, migration 0011, the quota/rate-limit modules, and real PostgreSQL, Valkey, and S3-compatible integration coverage in `.github/workflows/knowledge-quota-integration.yml`. PR #185 merged the implementation to `main` as `e846e0a259f55c3a71535a5014360d7187e4d354`; the follow-up closeout corrects the post-merge Ruff-only test formatting regression and synchronizes completion evidence.

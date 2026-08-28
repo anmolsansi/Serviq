@@ -1534,3 +1534,41 @@ Resolved `referenced`/`succeeded` rows are eligible for a future purge after 14 
 
 This preserves the existing knowledge-upload HTTP envelope, supported file rules, RBAC behavior, tenant-visible source listing, and raw object-key layout. General outbox/broker integration remains future work.
 
+
+
+## V1.3.04B Implemented Knowledge Upload Quota Supplement
+
+This implemented supplement is governed by ADR-019 and CCR-007 and preserves the earlier knowledge-source and V1.3.04A cleanup contracts.
+
+### Frozen hard limits
+
+| Control | V1 hard limit | Authority |
+|---|---:|---|
+| Multipart upload attempts | 6 / 60 seconds / tenant + workforce user | Valkey |
+| Active file uploads | 3 / tenant | PostgreSQL reservation lease |
+| Stored raw file bytes | 1 GiB / tenant | PostgreSQL committed bytes + held reservations |
+| Total knowledge sources | 100 / tenant | PostgreSQL committed rows + held reservations |
+| Crash-safety concurrency lease | 10 minutes | PostgreSQL |
+
+### Persistence additions
+
+`knowledge_sources.object_size_bytes bigint NULL` stores the exact validated byte count for newly committed PDF/Markdown/text sources. URL/sitemap sources remain null. Legacy file rows with unknown size are reconciled through the typed object-storage `HEAD` boundary before new file admission.
+
+`knowledge_upload_reservations` contains server-owned UUID, tenant/source identity, reserved bytes, optional cleanup identity, lease expiry, and timestamps. `(tenant_id, source_id)` and non-null cleanup identity are unique. Reservations are tenant-owned and the tenant foreign key is `ON DELETE RESTRICT`.
+
+### Admission and cleanup ordering
+
+Multipart rate limiting happens before multipart parsing and fails closed if Valkey cannot enforce the counter. Existing file validation runs before durable byte reservation. Durable source/byte/concurrency admission serializes on a short tenant-row `FOR UPDATE` lock. No object-storage call runs inside that transaction.
+
+A file reservation is created before the V1.3.04A cleanup intent/raw PUT boundary, then bound to the cleanup intent in the pre-PUT transaction. Successful source ownership writes `object_size_bytes`, marks cleanup referenced, and releases the reservation atomically. Confirmed request-time or background cleanup releases the linked reservation in the same transaction that records cleanup success. Linked prepared/pending/exhausted cleanup remains charged against byte/source quota even after concurrency lease expiry.
+
+### Stable public failures
+
+- `429 KNOWLEDGE_UPLOAD_RATE_LIMITED` with `Retry-After`;
+- `429 KNOWLEDGE_UPLOAD_CONCURRENCY_LIMITED` with bounded `Retry-After`;
+- `413 KNOWLEDGE_STORAGE_QUOTA_EXCEEDED`;
+- `409 KNOWLEDGE_SOURCE_QUOTA_EXCEEDED`;
+- `503 KNOWLEDGE_UPLOAD_LIMITER_UNAVAILABLE`;
+- `503 KNOWLEDGE_QUOTA_UNAVAILABLE`.
+
+Rejected rate/quota requests perform no raw-object PUT and create no source row. Tenant/user identities come only from the existing trusted server context, and errors/logs do not expose object keys, credentials, raw filenames/content, or foreign-tenant usage.

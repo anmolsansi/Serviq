@@ -6326,3 +6326,37 @@ The reservation also connects directly to the V1.3.04A cleanup contract. Capacit
 Public failures are stable and safe: rate/concurrency limits use HTTP 429, storage quota uses 413, source quota uses 409, and unavailable authoritative limiter/accounting paths use 503. Rejected requests do not PUT a raw object or create a source row, and responses never reveal keys, credentials, raw filenames, content, or another tenant's usage.
 
 Engineering evidence includes ADR-019, CCR-007, migration `20260828_0011`, `KNOWLEDGE_UPLOAD_QUOTA_RUNBOOK.md`, `V1.3.04B_SECURITY_RELIABILITY_REVIEW.md`, unit tests, PostgreSQL race/quota tests, API rejection tests, real Valkey rate-limit tests, and real S3-compatible legacy-size reconciliation. The dedicated `Knowledge Quota Integration` workflow exercises PostgreSQL, Valkey, and object storage together.
+
+---
+
+## OPE-310 — Frontend component and browser test harnesses
+
+Before OPE-310, the root `pnpm test` command could finish successfully even though none of the three Next.js applications had a JavaScript test. That was a false-green result: the command was green, but it did not prove that any frontend page could render.
+
+OPE-310 establishes the first real frontend testing boundary without building future product screens. The repository now uses Vitest with React Testing Library and jsdom for component tests. One root smoke suite renders the Client Console, Customer Web, and Platform Console scaffold pages and finds each level-one heading by accessible role and name. DOM cleanup runs after every case so one page cannot leak state into the next test.
+
+The root testing workflow is intentionally explicit:
+
+```text
+pnpm test:frontend
+pnpm test:browser:config
+pnpm test
+```
+
+`pnpm test:frontend` runs Vitest once, not in watch mode, and zero discovered frontend tests is an error. Root `pnpm test` runs that component suite, proves the Playwright configuration can load, and then preserves the existing recursive workspace-test behavior for packages that add their own tests later. Because the normal CI quality job already runs `make test`, no duplicate CI test job is needed.
+
+The browser side is only a foundation in this ticket. `playwright.config.ts` gives the later E2E ticket one shared configuration, but it does not choose application ports, start web servers, own login/session state, require credentials, or activate `make e2e`. Traces, screenshots, video, HTML reports, and blob reports are not enabled. The line reporter is console-only, and the existing ignored `test-results/`, `playwright-report/`, and `blob-report/` paths remain the browser-output boundary. If a future E2E ticket wants richer artifacts, it must first define bounded retention and secret/PII-safe capture instead of assuming traces are safe.
+
+The implementation lives in:
+
+```text
+package.json
+pnpm-lock.yaml
+vitest.config.ts
+playwright.config.ts
+tests/frontend/app-smoke.test.tsx
+```
+
+The OPE-310 validation path regenerates the pnpm lock with pnpm 10.15.0, proves a frozen install accepts it, runs the three accessible smoke tests, verifies that an intentional assertion failure is non-zero, verifies that a zero-test invocation is non-zero, loads the Playwright config without a running product service, and runs the JavaScript lint, typecheck, and root test commands. The normal pull-request CI remains authoritative for the full `make test` path, including the Python suites.
+
+When adding frontend tests later, prefer user-visible roles, labels, and accessible names over implementation selectors. Keep `make e2e` unchanged until the dedicated E2E ticket owns app startup, URLs, authentication state, failure diagnostics, and safe artifact policy.

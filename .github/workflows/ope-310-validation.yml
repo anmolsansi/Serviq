@@ -1,0 +1,150 @@
+name: OPE-310 Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - package.json
+      - pnpm-lock.yaml
+      - vitest.config.ts
+      - playwright.config.ts
+      - tests/frontend/**
+      - docs/SERVIQ_BUILD_GUIDE.md
+      - .github/workflows/ope-310-validation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  frontend-harness:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out task branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Generate reviewed pnpm lock state
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+
+      - name: Prove frozen install accepts generated lock
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend smoke tests
+        run: pnpm test:frontend
+
+      - name: Prove zero discovered tests fail
+        shell: bash
+        run: |
+          if pnpm exec vitest run tests/frontend/__no_tests_should_match__.test.tsx; then
+            echo "Expected Vitest to fail when no tests are discovered."
+            exit 1
+          fi
+          echo "Zero-test failure guard behaved as required."
+
+      - name: Prove an intentional assertion regression fails
+        shell: bash
+        run: |
+          cat > tests/frontend/__intentional_failure.test.tsx <<'EOF'
+          import { expect, it } from "vitest";
+
+          it("fails intentionally for harness validation", () => {
+            expect("expected").toBe("intentional-regression");
+          });
+          EOF
+          if pnpm exec vitest run tests/frontend/__intentional_failure.test.tsx; then
+            rm -f tests/frontend/__intentional_failure.test.tsx
+            echo "Expected intentional assertion regression to fail."
+            exit 1
+          fi
+          rm -f tests/frontend/__intentional_failure.test.tsx
+          echo "Intentional assertion regression failed as required."
+
+      - name: Load Playwright foundation without product services
+        run: pnpm test:browser:config
+
+      - name: Run JavaScript lint, typecheck, and root tests
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Append cumulative Build Guide explanation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("docs/SERVIQ_BUILD_GUIDE.md")
+          marker = "## OPE-310 — Frontend component and browser test harnesses"
+          text = path.read_text(encoding="utf-8")
+          if marker not in text:
+              addition = r'''
+
+---
+
+## OPE-310 — Frontend component and browser test harnesses
+
+Before OPE-310, the root `pnpm test` command could finish successfully even though none of the three Next.js applications had a JavaScript test. That was a false-green result: the command was green, but it did not prove that any frontend page could render.
+
+OPE-310 establishes the first real frontend testing boundary without building future product screens. The repository now uses Vitest with React Testing Library and jsdom for component tests. One root smoke suite renders the Client Console, Customer Web, and Platform Console scaffold pages and finds each level-one heading by accessible role and name. DOM cleanup runs after every case so one page cannot leak state into the next test.
+
+The root testing workflow is intentionally explicit:
+
+```text
+pnpm test:frontend
+pnpm test:browser:config
+pnpm test
+```
+
+`pnpm test:frontend` runs Vitest once, not in watch mode, and zero discovered frontend tests is an error. Root `pnpm test` runs that component suite, proves the Playwright configuration can load, and then preserves the existing recursive workspace-test behavior for packages that add their own tests later. Because the normal CI quality job already runs `make test`, no duplicate CI test job is needed.
+
+The browser side is only a foundation in this ticket. `playwright.config.ts` gives the later E2E ticket one shared configuration, but it does not choose application ports, start web servers, own login/session state, require credentials, or activate `make e2e`. Traces, screenshots, video, HTML reports, and blob reports are not enabled. The line reporter is console-only, and the existing ignored `test-results/`, `playwright-report/`, and `blob-report/` paths remain the browser-output boundary. If a future E2E ticket wants richer artifacts, it must first define bounded retention and secret/PII-safe capture instead of assuming traces are safe.
+
+The implementation lives in:
+
+```text
+package.json
+pnpm-lock.yaml
+vitest.config.ts
+playwright.config.ts
+tests/frontend/app-smoke.test.tsx
+```
+
+The OPE-310 validation path regenerates the pnpm lock with pnpm 10.15.0, proves a frozen install accepts it, runs the three accessible smoke tests, verifies that an intentional assertion failure is non-zero, verifies that a zero-test invocation is non-zero, loads the Playwright config without a running product service, and runs the JavaScript lint, typecheck, and root test commands. The normal pull-request CI remains authoritative for the full `make test` path, including the Python suites.
+
+When adding frontend tests later, prefer user-visible roles, labels, and accessible names over implementation selectors. Keep `make e2e` unchanged until the dedicated E2E ticket owns app startup, URLs, authentication state, failure diagnostics, and safe artifact policy.
+'''
+              path.write_text(text.rstrip() + addition + "\n", encoding="utf-8")
+
+      - name: Review generated changes
+        run: |
+          git diff --check
+          git status --short
+
+      - name: Commit generated lock and documentation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml docs/SERVIQ_BUILD_GUIDE.md
+          if git diff --cached --quiet; then
+            echo "Generated lock and Build Guide are already current."
+            exit 0
+          fi
+          git commit -m "build(test): finalize lock and docs [19/30] (#187)"
+          git push origin "HEAD:${{ github.head_ref }}"

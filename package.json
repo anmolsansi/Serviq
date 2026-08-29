@@ -5,6 +5,18 @@
   "scripts": {
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm test:frontend && pnpm test:browser:config && pnpm -r --if-present test",
+    "test:frontend": "vitest run --passWithNoTests=false",
+    "test:browser:config": "playwright test --list --pass-with-no-tests"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
+    "@vitejs/plugin-react": "6.0.5",
+    "jsdom": "30.0.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "vitest": "4.1.11"
   }
 }

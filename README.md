@@ -147,7 +147,8 @@ Serviq is developed ticket by ticket. The expected flow is:
 3. Push small commits whose messages describe one logical change.
 4. Add tests and update the cumulative build/repository documentation.
 5. Open a pull request and require CI/security validation before merging.
-6. Merge only after the implemented behavior matches the ticket; then close/update GitHub and Linear tracking.
+6. Merge only after the implemented behavior matches the ticket, and is verified; then close/update GitHub and Linear tracking.
+
 
 Contract changes are not hidden inside feature work. Changes to frozen API, database, configuration, security, or other cross-ticket contracts require an explicit Contract Change Record (CCR) before dependent code is changed.
 

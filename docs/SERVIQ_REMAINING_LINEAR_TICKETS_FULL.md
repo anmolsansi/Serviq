@@ -4,6 +4,7 @@
 > **Repository:** https://github.com/anmolsansi/Serviq
 > **Linear project:** Serviq
 > **Canonical source:** This file contains every remaining ticket in full Linear-style format.
+> **Status reconciliation:** V1.3.05 / OPE-311 completed on 2026-09-01 and is retained below as a completion record for traceability; it is excluded from current remaining-ticket counts.
 > **Reference format:** [OPE-286](https://linear.app/openclaw-neutron/issue/OPE-286/v1112-implement-invitation-acceptance-api).
 
 ## Inventory
@@ -12,7 +13,8 @@
 |---|---:|---:|---:|---:|---:|
 | Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |
 | Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |
-| **All remaining tickets below** | **83** | **38** | **41** | **42** | **204** |
+| Completed since consolidation | 1 | 0 | 0 | 0 | 1 |
+| **Current remaining tickets** | **82** | **38** | **41** | **42** | **203** |
 
 ## Intake rules
 
@@ -35,9 +37,9 @@
 - [V1.3.04B — Add Knowledge Upload Quota and Abuse Controls](#v1304b-add-knowledge-upload-quota-and-abuse-controls)
 - [V1.9.00 — Establish Frontend Component and Browser Test Harnesses](#v1900-establish-frontend-component-and-browser-test-harnesses)
 
-### Phase 1 — V1 Production Foundation (77)
+### Phase 1 — V1 Production Foundation (76 remaining + 1 completed record)
 
-- [V1.3.05 — Implement SSRF-safe public knowledge fetch helper](#v1305-implement-ssrf-safe-public-knowledge-fetch-helper)
+- [V1.3.05 — Implement SSRF-safe public knowledge fetch helper — COMPLETED 2026-09-01](#v1305-implement-ssrf-safe-public-knowledge-fetch-helper)
 - [V1.3.06 — Implement source sync command and durable outbox event](#v1306-implement-source-sync-command-and-durable-outbox-event)
 - [V1.3.07 — Implement knowledge sync fetch worker](#v1307-implement-knowledge-sync-fetch-worker)
 - [V1.3.08 — Implement PDF/Markdown/text normalization parser](#v1308-implement-pdfmarkdowntext-normalization-parser)

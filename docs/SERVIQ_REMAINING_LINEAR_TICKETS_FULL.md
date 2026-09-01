@@ -4,6 +4,7 @@
 > **Repository:** https://github.com/anmolsansi/Serviq
 > **Linear project:** Serviq
 > **Canonical source:** This file contains every remaining ticket in full Linear-style format.
+> **Status reconciliation:** V1.3.05 / OPE-311 completed on 2026-09-01 and is retained below as a completion record for traceability; it is excluded from current remaining-ticket counts.
 > **Reference format:** [OPE-286](https://linear.app/openclaw-neutron/issue/OPE-286/v1112-implement-invitation-acceptance-api).
 
 ## Inventory
@@ -12,7 +13,8 @@
 |---|---:|---:|---:|---:|---:|
 | Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |
 | Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |
-| **All remaining tickets below** | **83** | **38** | **41** | **42** | **204** |
+| Completed since consolidation | 1 | 0 | 0 | 0 | 1 |
+| **Current remaining tickets** | **82** | **38** | **41** | **42** | **203** |
 
 ## Intake rules
 
@@ -35,9 +37,9 @@
 - [V1.3.04B — Add Knowledge Upload Quota and Abuse Controls](#v1304b-add-knowledge-upload-quota-and-abuse-controls)
 - [V1.9.00 — Establish Frontend Component and Browser Test Harnesses](#v1900-establish-frontend-component-and-browser-test-harnesses)
 
-### Phase 1 — V1 Production Foundation (77)
+### Phase 1 — V1 Production Foundation (76 remaining + 1 completed record)
 
-- [V1.3.05 — Implement SSRF-safe public knowledge fetch helper](#v1305-implement-ssrf-safe-public-knowledge-fetch-helper)
+- [V1.3.05 — Implement SSRF-safe public knowledge fetch helper — COMPLETED 2026-09-01](#v1305-implement-ssrf-safe-public-knowledge-fetch-helper)
 - [V1.3.06 — Implement source sync command and durable outbox event](#v1306-implement-source-sync-command-and-durable-outbox-event)
 - [V1.3.07 — Implement knowledge sync fetch worker](#v1307-implement-knowledge-sync-fetch-worker)
 - [V1.3.08 — Implement PDF/Markdown/text normalization parser](#v1308-implement-pdfmarkdowntext-normalization-parser)
@@ -1111,204 +1113,175 @@ Product UI behavior or future V1.9 feature contracts.
 ### V1.3.05 — Implement SSRF-safe public knowledge fetch helper
 
 > **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Linear status:** Completed — OPE-311
+> **Ticket intake:** PASS — architect intake resolved the draft blockers before implementation.
+> **GitHub issue:** #191 — closed as completed.
+> **Implementation PR:** #192 — merged to `main` on 2026-09-01.
+> **Architecture decision:** `docs/architecture-decisions/ADR-020-public-knowledge-fetch-safety.md`.
+> **Source:** Original staged requirement captured 2026-08-13, reconciled against merged repository evidence on 2026-09-01.
 
 #### Goal
 
-worker can fetch public docs without reaching private/internal networks.
+Provide a worker-owned HTTPS fetch boundary for approved public knowledge sources without allowing requests to reach private, loopback, link-local, metadata, CGNAT, multicast, reserved, unspecified, documentation/benchmark, or other non-global IPv4/IPv6 destinations.
+
+#### Completion evidence
+
+- Architect intake was completed in GitHub issue #191 and Linear OPE-311. The exact file allowlist, numeric bounds, redirect behavior, error contract, and security boundary were frozen before implementation.
+- PR #192, `feat(worker): add SSRF-safe public knowledge fetch helper`, merged the implementation to `main` at merge commit `a9269dc82c8e7d31e2250fb06c1e46b9f09a80a2`.
+- The merged helper lives in `services/worker/app/core/public_knowledge_fetch.py` and its focused regression suite lives in `services/worker/tests/test_public_knowledge_fetch.py`.
+- ADR-020 records the selected resolve, validate, pin, and revalidate design and its rollback/compatibility consequences.
+- PR-head CI run 445 completed successfully. Lint, type check, tests, Compose validation, PostgreSQL integration, Keycloak OIDC integration, and object-storage integration all passed.
+- PR-head Security run 429 completed successfully. Dependency audits, Gitleaks, Python CodeQL, JavaScript/TypeScript CodeQL, and Trivy all passed.
+- Post-merge Staff Engineer review found no Critical or High issue within the V1.3.05 scope. This is an engineering review of the merged change, not a claim of an independent human penetration test.
+- No database migration, public API, permission surface, broker contract, UI, new service, or third-party runtime dependency was introduced.
 
 #### Why this exists
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+Registering a public URL is not enough to make arbitrary outbound fetching safe. An unrestricted HTTP client can be redirected to localhost, private services, cloud metadata endpoints, or another non-public destination. DNS can also change between validation and connection. Large or compressed responses create a separate resource-exhaustion risk.
 
-#### Estimated effort
+V1.3.05 establishes the reusable security primitive that later crawl and ingestion jobs must use. It does not authorize a source for crawling and does not implement the crawler itself.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
+#### Frozen implementation contract
 
-#### Read before coding
+- HTTPS only.
+- Port 443 only, whether implicit or explicit.
+- GET only.
+- Reject malformed or relative URLs, credentials, fragments, whitespace/control characters, and unsupported ports.
+- Normalize hostnames through IDNA, lowercase conversion, and trailing-dot removal.
+- Require an explicit exact-host allowlist. Wildcards and suffix matching are not supported.
+- Resolve DNS before the first request and again before every redirect request.
+- Fail closed if resolution is empty, fails, or returns any non-global address.
+- Block loopback, RFC1918/private, link-local, CGNAT, metadata, multicast, reserved, unspecified, documentation/benchmark, and other non-global IPv4/IPv6 space.
+- Connect directly to one validated resolved IP, preserving TLS SNI and certificate hostname verification for the original hostname.
+- Verify that the connected peer exactly matches the selected validated address before transmitting the GET.
+- Handle redirects manually for 301, 302, 303, 307, and 308 only.
+- Allow at most five redirects.
+- Re-run URL, host allowlist, DNS, address classification, TLS, and peer validation for every redirect target.
+- Send `Accept-Encoding: identity` and reject non-identity content encoding.
+- Allow `text/html`, `application/xhtml+xml`, `text/plain`, `text/markdown`, `application/xml`, `text/xml`, `application/rss+xml`, and `application/atom+xml` only.
+- Default response body limit: 5 MiB. Hard configurable ceiling: 50 MiB.
+- Default socket/request timeout: 10 seconds. Hard configurable ceiling: 30 seconds.
+- Reject an over-limit `Content-Length` before body reads and enforce the same limit while streaming.
+- Return final URL, status code, normalized MIME type, and raw body bytes on success.
+- Expose failures as a stable error code plus a `retryable` boolean without raw remote/network detail.
+- Do not automatically retry. HTTP 408, 425, 429, 5xx, DNS, timeout, TLS, and transport failures are retryable classifications for a later bounded job policy. Other non-2xx final statuses are terminal.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
+#### Exact file allowlist
 
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
+The implementation ticket was frozen to these files:
 
-#### User-facing behavior
+1. `services/worker/app/core/public_knowledge_fetch.py`
+2. `services/worker/tests/test_public_knowledge_fetch.py`
+3. `docs/architecture-decisions/ADR-020-public-knowledge-fetch-safety.md`
+4. `docs/SERVIQ_BUILD_GUIDE.md`
 
-None directly (internal capability or delivery evidence).
-
-#### Frozen source requirements
-
-**Goal:** worker can fetch public docs without reaching private/internal networks.
-**Scope:** HTTPS, DNS resolution, block loopback/private/link-local/CGNAT/metadata/multicast/reserved IPv4+IPv6, recheck redirects, timeout/size/MIME/domain controls.
-**Tests:** public success; 127.0.0.1; 169.254.169.254; private IPv6; redirect-to-private; oversized response.
-**Acceptance:** every redirect target revalidated.
-**Review:** premium security review.
-
-#### Exact scope
-
-HTTPS, DNS resolution, block loopback/private/link-local/CGNAT/metadata/multicast/reserved IPv4+IPv6, recheck redirects, timeout/size/MIME/domain controls.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-- `services/api/app/main.py` — active API composition root; use it to locate the owning module through the code graph.
-- `services/worker/app/main.py` — active worker composition root; trace the relevant handler before freezing edit paths.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
+The post-merge reconciliation additionally updates this canonical remaining-ticket file to remove the obsolete draft/FAIL state.
 
 #### Data model
 
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
+None. V1.3.05 owns no database schema, migration, cache key, or durable state.
 
 #### API contract
 
-None directly, unless the accepted architecture delta assigns this ticket an API surface. If it does, paste the complete contract here before builder handoff.
+None. The helper is an internal worker boundary and exposes no public HTTP route.
 
 #### Event, job, cache, and integration contracts
 
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
+None are created by this ticket. A later crawler/job layer owns scheduling, rate controls, retries, persistence, and source-status transitions. Such callers may narrow this security policy but must not bypass it.
 
 #### UI states
 
-None (internal/non-UI ticket).
+None.
 
-#### Validation rules
+#### Authorization and trust boundary
 
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
+This helper does not create a new user-facing authorization surface. The caller must supply only explicitly approved exact hostnames from the accepted source policy/manifest. Untrusted URL input never grants broad crawl permission, and the helper never forwards caller credentials, cookies, or authorization headers.
 
-#### Error handling
+#### Error behavior
 
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
+- Fail closed on invalid URL, disallowed host, unsafe DNS result, peer mismatch, excessive/malformed redirects, unsupported MIME or encoding, oversized responses, and malformed response metadata.
+- Keep retryable and terminal failures distinguishable through bounded typed codes.
+- Do not include response bodies, credentials, tokens, DNS internals, socket details, or raw remote error strings in the exposed error text.
 
-#### Auth and permissions
+#### Out of scope
 
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
+- Crawl scheduling or per-source crawl-rate policy.
+- Robots/terms evaluation.
+- Sitemap traversal.
+- Parsing, normalization, chunking, embedding, indexing, or retrieval.
+- Knowledge-source persistence or status transitions.
+- Broker consumers or retry orchestration.
+- Public routes, tenant permission changes, schema/migrations, UI, provider integrations, or new services.
+- Broad DoorDash, Stripe, or other third-party crawling. A later caller must provide an explicitly approved exact-host policy.
 
-#### Dependencies
+#### Required automated coverage
 
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
+The focused suite covers:
 
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
+1. Public HTTPS success.
+2. Loopback rejection, including `127.0.0.1`.
+3. Metadata/link-local rejection, including `169.254.169.254`.
+4. RFC1918/private IPv4 rejection.
+5. CGNAT rejection.
+6. Private/unique-local IPv6 rejection.
+7. Multicast, reserved, unspecified, and other non-global address rejection.
+8. Mixed public/private DNS answers failing closed.
+9. HTTP, malformed URL, credentials, fragments, unsupported ports, and unallowlisted hosts.
+10. Allowed public redirect success with full revalidation.
+11. Redirect-to-private and redirect-to-unallowlisted-host rejection.
+12. Five-hop redirect ceiling and missing `Location` handling.
+13. MIME and content-encoding rejection.
+14. Declared and streamed oversized-response rejection.
+15. Connected-peer mismatch rejection before request transmission.
+16. Safe DNS/network/TLS/timeout failure mapping.
+17. HTTP retryability classification.
+18. Error-text redaction behavior.
+19. Policy-constructor bounds.
 
-#### Do not change
+#### Security and privacy review
 
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
+- DNS rebinding is addressed by resolving and validating the destination, connecting to the selected validated IP, preserving TLS hostname verification, and verifying the connected peer.
+- Every redirect repeats the complete destination-validation sequence.
+- The full request fails closed when any DNS answer is non-global.
+- Response memory is bounded and compressed payload expansion is rejected through identity-only encoding.
+- Safe typed failures avoid leaking raw remote content or transport details.
+- The ticket owns no credential storage, durable customer data, public API, or tenant-query path.
+- Repository Security run 429 passed dependency audits, secret scanning, CodeQL for Python and JavaScript/TypeScript, and Trivy.
+- Post-merge Staff Engineer review has no open Critical or High finding for this scope.
 
-#### Step-by-step implementation
+#### Operational behavior and rollback
 
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
+V1.3.05 is additive and owns no durable state. Before any caller integrates it, rollback is removal of the helper. After a later crawler depends on it, rollback must disable the caller or revert that integration. It must never replace this boundary with an unrestricted HTTP client.
 
-#### Required automated tests
-
-public success; 127.0.0.1; 169.254.169.254; private IPv6; redirect-to-private; oversized response.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-- Re-resolve and revalidate every outbound destination and redirect; block private, loopback, link-local, metadata, multicast, reserved, and disallowed targets.
-
-- Required review from source: premium security review.
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
+The helper itself does not perform retries or emit high-cardinality/raw remote telemetry. Later job-layer observability must use bounded identifiers, outcome codes, timings, and retry counts without logging secrets or raw knowledge payloads.
 
 #### Acceptance criteria
 
-- [ ] every redirect target revalidated.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
+- [x] Every redirect target is fully revalidated.
+- [x] DNS rebinding is addressed through validated-IP connection pinning plus peer verification.
+- [x] Required SSRF, redirect, DNS, response-bound, MIME, and safe-failure automated coverage exists.
+- [x] Worker lint, strict type checking, and tests passed in PR CI.
+- [x] ADR-020 documents the security decision, tradeoffs, compatibility, and rollback behavior.
+- [x] `docs/SERVIQ_BUILD_GUIDE.md` documents usage, limits, failure behavior, verification, rollback, and non-goals.
+- [x] Repository security gates passed.
+- [x] No Critical or High Staff Engineer review finding remains open.
+- [x] PR #192 contains the scoped implementation and is merged.
 
 #### Definition of done
 
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
+- [x] Architect intake has zero unresolved V1.3.05 decisions.
+- [x] Exact scope, file allowlist, limits, redirects, error behavior, and non-goals were frozen before coding.
+- [x] Code, focused tests, ADR, and build-guide documentation are merged.
+- [x] CI and Security workflows are green for the implementation PR head.
+- [x] Rollback is documented and proportionate to the additive, stateless change.
+- [x] GitHub issue #191 is closed as completed.
+- [x] Linear OPE-311 is the canonical tracking issue and is reconciled to the completed state during this closeout.
+- [x] This canonical remaining-ticket entry has been reconciled with the merged repository state.
 
-#### Suggested Linear metadata
+#### Final ticket intake result
 
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: Backend, Serviq: Security, Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
+**PASS — COMPLETED.** The earlier draft/FAIL text represented pre-intake uncertainty and is obsolete. GitHub issue #191 and Linear OPE-311 froze the missing contracts before implementation. PR #192 is merged, required CI and repository security checks are green, documentation is present, rollback is defined, and no Critical or High Staff Engineer finding remains open. V1.3.05 must not be handed to a builder again as new work.
 
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
-
----
 ### V1.3.06 — Implement source sync command and durable outbox event
 
 > **Milestone:** Phase 1 — V1 Production Foundation

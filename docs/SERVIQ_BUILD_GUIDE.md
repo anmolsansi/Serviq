@@ -6435,6 +6435,16 @@ The focused suite covers public success; loopback, RFC1918/private, metadata/lin
 
 The implementation adds no database migration, public API, permission, event contract, broker consumer, new service, or third-party runtime dependency. Worker Ruff, strict mypy, pytest, and the repository CI/Security workflows remain the final merge gate.
 
+## Completion evidence — 2026-09-01
+
+V1.3.05 is merged and acceptance-complete at the repository level. GitHub issue #191 is closed as completed and PR #192 merged the helper, focused regression suite, ADR-020, and this build-guide section to `main` at merge commit `a9269dc82c8e7d31e2250fb06c1e46b9f09a80a2`.
+
+The implementation PR head passed CI run 445 and Security run 429. CI passed lint, type checking, tests, Compose validation, PostgreSQL integration, Keycloak OIDC integration, and object-storage integration. Security passed dependency audits, Gitleaks, Python CodeQL, JavaScript/TypeScript CodeQL, and Trivy.
+
+A post-merge Staff Engineer review found no Critical or High issue within the V1.3.05 scope. This records an engineering review of the merged change, not an independent human penetration test. The helper remains intentionally unintegrated with crawl scheduling, parsing, persistence, or source-status workflows because those belong to later roadmap tickets.
+
+Linear OPE-311 is the canonical task record and is reconciled to the completed state as part of the V1.3.05 closeout.
+
 ## Rollback and future use
 
 V1.3.05 is additive and owns no durable state. The helper can be removed before any caller integrates it without a migration. Once a crawler depends on it, rollback must disable that caller rather than substitute an unrestricted HTTP client.

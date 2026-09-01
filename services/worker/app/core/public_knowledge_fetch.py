@@ -167,9 +167,10 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host: str, connect_ip: str, timeout: float) -> None:
         super().__init__(host, 443, timeout=timeout, context=ssl.create_default_context())
         self._connect_ip = connect_ip
+        self._connect_timeout = timeout
 
     def connect(self) -> None:
-        raw_socket = socket.create_connection((self._connect_ip, 443), self.timeout)
+        raw_socket = socket.create_connection((self._connect_ip, 443), self._connect_timeout)
         try:
             self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
         except Exception:

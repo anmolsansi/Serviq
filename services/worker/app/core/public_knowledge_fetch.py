@@ -165,14 +165,16 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     """Dial one validated IP while preserving hostname TLS verification."""
 
     def __init__(self, host: str, connect_ip: str, timeout: float) -> None:
-        super().__init__(host, 443, timeout=timeout, context=ssl.create_default_context())
+        tls_context = ssl.create_default_context()
+        super().__init__(host, 443, timeout=timeout, context=tls_context)
         self._connect_ip = connect_ip
         self._connect_timeout = timeout
+        self._tls_context = tls_context
 
     def connect(self) -> None:
         raw_socket = socket.create_connection((self._connect_ip, 443), self._connect_timeout)
         try:
-            self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+            self.sock = self._tls_context.wrap_socket(raw_socket, server_hostname=self.host)
         except Exception:
             raw_socket.close()
             raise

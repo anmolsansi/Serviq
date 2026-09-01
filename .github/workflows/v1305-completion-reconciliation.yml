@@ -1,0 +1,247 @@
+name: V1.3.05 completion reconciliation
+
+on:
+  push:
+    branches:
+      - openclawneutron/ope-311-v1305-completion-reconciliation
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.event.head_commit.message == 'chore(v1.3.05): stage completion reconciliation'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out reconciliation branch
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: Patch V1.3.05 source-of-truth documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          remaining_path = Path('docs/SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md')
+          guide_path = Path('docs/SERVIQ_BUILD_GUIDE.md')
+
+          remaining = remaining_path.read_text(encoding='utf-8')
+          start = '### V1.3.05 — Implement SSRF-safe public knowledge fetch helper'
+          end = '### V1.3.06 — Implement source sync command and durable outbox event'
+          start_index = remaining.index(start)
+          end_index = remaining.index(end, start_index)
+
+          replacement = r'''### V1.3.05 — Implement SSRF-safe public knowledge fetch helper
+
+> **Milestone:** Phase 1 — V1 Production Foundation
+> **Linear status:** Completed — OPE-311
+> **Ticket intake:** PASS — architect intake resolved the draft blockers before implementation.
+> **GitHub issue:** #191 — closed as completed.
+> **Implementation PR:** #192 — merged to `main` on 2026-09-01.
+> **Architecture decision:** `docs/architecture-decisions/ADR-020-public-knowledge-fetch-safety.md`.
+> **Source:** Original staged requirement captured 2026-08-13, reconciled against merged repository evidence on 2026-09-01.
+
+#### Goal
+
+Provide a worker-owned HTTPS fetch boundary for approved public knowledge sources without allowing requests to reach private, loopback, link-local, metadata, CGNAT, multicast, reserved, unspecified, documentation/benchmark, or other non-global IPv4/IPv6 destinations.
+
+#### Completion evidence
+
+- Architect intake was completed in GitHub issue #191 and Linear OPE-311. The exact file allowlist, numeric bounds, redirect behavior, error contract, and security boundary were frozen before implementation.
+- PR #192, `feat(worker): add SSRF-safe public knowledge fetch helper`, merged the implementation to `main` at merge commit `a9269dc82c8e7d31e2250fb06c1e46b9f09a80a2`.
+- The merged helper lives in `services/worker/app/core/public_knowledge_fetch.py` and its focused regression suite lives in `services/worker/tests/test_public_knowledge_fetch.py`.
+- ADR-020 records the selected resolve, validate, pin, and revalidate design and its rollback/compatibility consequences.
+- PR-head CI run 445 completed successfully. Lint, type check, tests, Compose validation, PostgreSQL integration, Keycloak OIDC integration, and object-storage integration all passed.
+- PR-head Security run 429 completed successfully. Dependency audits, Gitleaks, Python CodeQL, JavaScript/TypeScript CodeQL, and Trivy all passed.
+- Post-merge Staff Engineer review found no Critical or High issue within the V1.3.05 scope. This is an engineering review of the merged change, not a claim of an independent human penetration test.
+- No database migration, public API, permission surface, broker contract, UI, new service, or third-party runtime dependency was introduced.
+
+#### Why this exists
+
+Registering a public URL is not enough to make arbitrary outbound fetching safe. An unrestricted HTTP client can be redirected to localhost, private services, cloud metadata endpoints, or another non-public destination. DNS can also change between validation and connection. Large or compressed responses create a separate resource-exhaustion risk.
+
+V1.3.05 establishes the reusable security primitive that later crawl and ingestion jobs must use. It does not authorize a source for crawling and does not implement the crawler itself.
+
+#### Frozen implementation contract
+
+- HTTPS only.
+- Port 443 only, whether implicit or explicit.
+- GET only.
+- Reject malformed or relative URLs, credentials, fragments, whitespace/control characters, and unsupported ports.
+- Normalize hostnames through IDNA, lowercase conversion, and trailing-dot removal.
+- Require an explicit exact-host allowlist. Wildcards and suffix matching are not supported.
+- Resolve DNS before the first request and again before every redirect request.
+- Fail closed if resolution is empty, fails, or returns any non-global address.
+- Block loopback, RFC1918/private, link-local, CGNAT, metadata, multicast, reserved, unspecified, documentation/benchmark, and other non-global IPv4/IPv6 space.
+- Connect directly to one validated resolved IP, preserving TLS SNI and certificate hostname verification for the original hostname.
+- Verify that the connected peer exactly matches the selected validated address before transmitting the GET.
+- Handle redirects manually for 301, 302, 303, 307, and 308 only.
+- Allow at most five redirects.
+- Re-run URL, host allowlist, DNS, address classification, TLS, and peer validation for every redirect target.
+- Send `Accept-Encoding: identity` and reject non-identity content encoding.
+- Allow `text/html`, `application/xhtml+xml`, `text/plain`, `text/markdown`, `application/xml`, `text/xml`, `application/rss+xml`, and `application/atom+xml` only.
+- Default response body limit: 5 MiB. Hard configurable ceiling: 50 MiB.
+- Default socket/request timeout: 10 seconds. Hard configurable ceiling: 30 seconds.
+- Reject an over-limit `Content-Length` before body reads and enforce the same limit while streaming.
+- Return final URL, status code, normalized MIME type, and raw body bytes on success.
+- Expose failures as a stable error code plus a `retryable` boolean without raw remote/network detail.
+- Do not automatically retry. HTTP 408, 425, 429, 5xx, DNS, timeout, TLS, and transport failures are retryable classifications for a later bounded job policy. Other non-2xx final statuses are terminal.
+
+#### Exact file allowlist
+
+The implementation ticket was frozen to these files:
+
+1. `services/worker/app/core/public_knowledge_fetch.py`
+2. `services/worker/tests/test_public_knowledge_fetch.py`
+3. `docs/architecture-decisions/ADR-020-public-knowledge-fetch-safety.md`
+4. `docs/SERVIQ_BUILD_GUIDE.md`
+
+The post-merge reconciliation additionally updates this canonical remaining-ticket file to remove the obsolete draft/FAIL state.
+
+#### Data model
+
+None. V1.3.05 owns no database schema, migration, cache key, or durable state.
+
+#### API contract
+
+None. The helper is an internal worker boundary and exposes no public HTTP route.
+
+#### Event, job, cache, and integration contracts
+
+None are created by this ticket. A later crawler/job layer owns scheduling, rate controls, retries, persistence, and source-status transitions. Such callers may narrow this security policy but must not bypass it.
+
+#### UI states
+
+None.
+
+#### Authorization and trust boundary
+
+This helper does not create a new user-facing authorization surface. The caller must supply only explicitly approved exact hostnames from the accepted source policy/manifest. Untrusted URL input never grants broad crawl permission, and the helper never forwards caller credentials, cookies, or authorization headers.
+
+#### Error behavior
+
+- Fail closed on invalid URL, disallowed host, unsafe DNS result, peer mismatch, excessive/malformed redirects, unsupported MIME or encoding, oversized responses, and malformed response metadata.
+- Keep retryable and terminal failures distinguishable through bounded typed codes.
+- Do not include response bodies, credentials, tokens, DNS internals, socket details, or raw remote error strings in the exposed error text.
+
+#### Out of scope
+
+- Crawl scheduling or per-source crawl-rate policy.
+- Robots/terms evaluation.
+- Sitemap traversal.
+- Parsing, normalization, chunking, embedding, indexing, or retrieval.
+- Knowledge-source persistence or status transitions.
+- Broker consumers or retry orchestration.
+- Public routes, tenant permission changes, schema/migrations, UI, provider integrations, or new services.
+- Broad DoorDash, Stripe, or other third-party crawling. A later caller must provide an explicitly approved exact-host policy.
+
+#### Required automated coverage
+
+The focused suite covers:
+
+1. Public HTTPS success.
+2. Loopback rejection, including `127.0.0.1`.
+3. Metadata/link-local rejection, including `169.254.169.254`.
+4. RFC1918/private IPv4 rejection.
+5. CGNAT rejection.
+6. Private/unique-local IPv6 rejection.
+7. Multicast, reserved, unspecified, and other non-global address rejection.
+8. Mixed public/private DNS answers failing closed.
+9. HTTP, malformed URL, credentials, fragments, unsupported ports, and unallowlisted hosts.
+10. Allowed public redirect success with full revalidation.
+11. Redirect-to-private and redirect-to-unallowlisted-host rejection.
+12. Five-hop redirect ceiling and missing `Location` handling.
+13. MIME and content-encoding rejection.
+14. Declared and streamed oversized-response rejection.
+15. Connected-peer mismatch rejection before request transmission.
+16. Safe DNS/network/TLS/timeout failure mapping.
+17. HTTP retryability classification.
+18. Error-text redaction behavior.
+19. Policy-constructor bounds.
+
+#### Security and privacy review
+
+- DNS rebinding is addressed by resolving and validating the destination, connecting to the selected validated IP, preserving TLS hostname verification, and verifying the connected peer.
+- Every redirect repeats the complete destination-validation sequence.
+- The full request fails closed when any DNS answer is non-global.
+- Response memory is bounded and compressed payload expansion is rejected through identity-only encoding.
+- Safe typed failures avoid leaking raw remote content or transport details.
+- The ticket owns no credential storage, durable customer data, public API, or tenant-query path.
+- Repository Security run 429 passed dependency audits, secret scanning, CodeQL for Python and JavaScript/TypeScript, and Trivy.
+- Post-merge Staff Engineer review has no open Critical or High finding for this scope.
+
+#### Operational behavior and rollback
+
+V1.3.05 is additive and owns no durable state. Before any caller integrates it, rollback is removal of the helper. After a later crawler depends on it, rollback must disable the caller or revert that integration. It must never replace this boundary with an unrestricted HTTP client.
+
+The helper itself does not perform retries or emit high-cardinality/raw remote telemetry. Later job-layer observability must use bounded identifiers, outcome codes, timings, and retry counts without logging secrets or raw knowledge payloads.
+
+#### Acceptance criteria
+
+- [x] Every redirect target is fully revalidated.
+- [x] DNS rebinding is addressed through validated-IP connection pinning plus peer verification.
+- [x] Required SSRF, redirect, DNS, response-bound, MIME, and safe-failure automated coverage exists.
+- [x] Worker lint, strict type checking, and tests passed in PR CI.
+- [x] ADR-020 documents the security decision, tradeoffs, compatibility, and rollback behavior.
+- [x] `docs/SERVIQ_BUILD_GUIDE.md` documents usage, limits, failure behavior, verification, rollback, and non-goals.
+- [x] Repository security gates passed.
+- [x] No Critical or High Staff Engineer review finding remains open.
+- [x] PR #192 contains the scoped implementation and is merged.
+
+#### Definition of done
+
+- [x] Architect intake has zero unresolved V1.3.05 decisions.
+- [x] Exact scope, file allowlist, limits, redirects, error behavior, and non-goals were frozen before coding.
+- [x] Code, focused tests, ADR, and build-guide documentation are merged.
+- [x] CI and Security workflows are green for the implementation PR head.
+- [x] Rollback is documented and proportionate to the additive, stateless change.
+- [x] GitHub issue #191 is closed as completed.
+- [x] Linear OPE-311 is the canonical tracking issue and is reconciled to the completed state during this closeout.
+- [x] This canonical remaining-ticket entry has been reconciled with the merged repository state.
+
+#### Final ticket intake result
+
+**PASS — COMPLETED.** The earlier draft/FAIL text represented pre-intake uncertainty and is obsolete. GitHub issue #191 and Linear OPE-311 froze the missing contracts before implementation. PR #192 is merged, required CI and repository security checks are green, documentation is present, rollback is defined, and no Critical or High Staff Engineer finding remains open. V1.3.05 must not be handed to a builder again as new work.
+
+'''
+
+          remaining = remaining[:start_index] + replacement + remaining[end_index:]
+          remaining_path.write_text(remaining, encoding='utf-8')
+
+          guide = guide_path.read_text(encoding='utf-8')
+          completion_heading = '## Completion evidence — 2026-09-01'
+          if completion_heading not in guide:
+              anchor = '## Rollback and future use\n\nV1.3.05 is additive and owns no durable state.'
+              completion = '''## Completion evidence — 2026-09-01
+
+V1.3.05 is merged and acceptance-complete at the repository level. GitHub issue #191 is closed as completed and PR #192 merged the helper, focused regression suite, ADR-020, and this build-guide section to `main` at merge commit `a9269dc82c8e7d31e2250fb06c1e46b9f09a80a2`.
+
+The implementation PR head passed CI run 445 and Security run 429. CI passed lint, type checking, tests, Compose validation, PostgreSQL integration, Keycloak OIDC integration, and object-storage integration. Security passed dependency audits, Gitleaks, Python CodeQL, JavaScript/TypeScript CodeQL, and Trivy.
+
+A post-merge Staff Engineer review found no Critical or High issue within the V1.3.05 scope. This records an engineering review of the merged change, not an independent human penetration test. The helper remains intentionally unintegrated with crawl scheduling, parsing, persistence, or source-status workflows because those belong to later roadmap tickets.
+
+Linear OPE-311 is the canonical task record and is reconciled to the completed state as part of the V1.3.05 closeout.
+
+'''
+              if anchor not in guide:
+                  raise RuntimeError('Build-guide rollback anchor not found')
+              guide = guide.replace(anchor, completion + anchor, 1)
+              guide_path.write_text(guide, encoding='utf-8')
+
+          workflow = Path('.github/workflows/v1305-completion-reconciliation.yml')
+          if workflow.exists():
+              workflow.unlink()
+          PY
+
+      - name: Commit reconciled documentation and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'serviq-reconciliation-bot'
+          git config user.email 'serviq-reconciliation-bot@users.noreply.github.com'
+          git add docs/SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md docs/SERVIQ_BUILD_GUIDE.md .github/workflows/v1305-completion-reconciliation.yml
+          git diff --cached --check
+          git diff --cached --quiet && exit 0
+          git commit -m 'docs(v1.3.05): reconcile completion state'
+          git push origin HEAD

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import ipaddress
+import socket
+import ssl
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -31,7 +34,7 @@ class FakeResponse:
     def read(self, size: int = -1) -> bytes:
         if size < 0:
             size = len(self.body) - self.offset
-        chunk = self.body[self.offset:self.offset + size]
+        chunk = self.body[self.offset : self.offset + size]
         self.offset += len(chunk)
         return chunk
 
@@ -71,8 +74,10 @@ def policy(
 def patch_network(
     monkeypatch: pytest.MonkeyPatch,
     dns: dict[str, tuple[str, ...]],
-    responses: list[tuple[str, FakeResponse | BaseException]],
+    responses: Sequence[tuple[str, FakeResponse | BaseException]],
 ) -> list[FakeConnection]:
+    response_queue = list(responses)
+
     def resolve(host: str) -> tuple[m.IPAddress, ...]:
         values = dns.get(host)
         if values is None:
@@ -85,8 +90,8 @@ def patch_network(
 
     def connect(host: str, connect_ip: str, timeout: float) -> FakeConnection:
         del host, timeout
-        peer, response_or_error = responses.pop(0)
-        assert connect_ip in dns.get('example.com', ()) + dns.get('redirect.example.com', ())
+        peer, response_or_error = response_queue.pop(0)
+        assert connect_ip in dns.get("example.com", ()) + dns.get("redirect.example.com", ())
         response = (
             response_or_error if isinstance(response_or_error, FakeResponse) else FakeResponse()
         )
@@ -95,8 +100,8 @@ def patch_network(
         made.append(conn)
         return conn
 
-    monkeypatch.setattr(m, '_resolve_host', resolve)
-    monkeypatch.setattr(m, '_new_connection', connect)
+    monkeypatch.setattr(m, "_resolve_host", resolve)
+    monkeypatch.setattr(m, "_new_connection", connect)
     return made
 
 
@@ -111,89 +116,130 @@ def assert_code(
 
 
 def test_public_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    response = FakeResponse(headers={'Content-Type': 'text/plain; charset=utf-8'}, body=b'hello')
+    response = FakeResponse(headers={"Content-Type": "text/plain; charset=utf-8"}, body=b"hello")
     connections = patch_network(
         monkeypatch, {"example.com": ("93.184.216.34",)}, [("93.184.216.34", response)]
     )
-    result = m.fetch_public_knowledge('https://example.com/a%20b?q=x%20y', policy('example.com'))
-    assert result.final_url == 'https://example.com/a%20b?q=x%20y'
+    result = m.fetch_public_knowledge("https://example.com/a%20b?q=x%20y", policy("example.com"))
+    assert result.final_url == "https://example.com/a%20b?q=x%20y"
     assert result.status_code == 200
-    assert result.content_type == 'text/plain'
-    assert result.body == b'hello'
+    assert result.content_type == "text/plain"
+    assert result.body == b"hello"
     method, target, headers = connections[0].requests[0]
-    assert method == 'GET'
-    assert target == '/a%20b?q=x%20y'
-    assert headers['Accept-Encoding'] == 'identity'
+    assert method == "GET"
+    assert target == "/a%20b?q=x%20y"
+    assert headers["Accept-Encoding"] == "identity"
 
 
-@pytest.mark.parametrize('address', [
-    '127.0.0.1', '10.0.0.1', '172.16.0.1', '192.168.1.1', '100.64.0.1',
-    '169.254.169.254', '::1', 'fc00::1', 'fe80::1', 'ff02::1', '2001:db8::1', '0.0.0.0',
-])
+@pytest.mark.parametrize(
+    "address",
+    [
+        "127.0.0.1",
+        "10.0.0.1",
+        "172.16.0.1",
+        "192.168.1.1",
+        "100.64.0.1",
+        "169.254.169.254",
+        "::1",
+        "fc00::1",
+        "fe80::1",
+        "ff02::1",
+        "2001:db8::1",
+        "0.0.0.0",
+    ],
+)
 def test_non_global_addresses_are_blocked(address: str, monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_getaddrinfo(
         *args: Any, **kwargs: Any
     ) -> list[tuple[int, int, int, str, tuple[Any, ...]]]:
         del args, kwargs
-        family = 10 if ':' in address else 2
-        return [(family, 1, 6, '', (address, 443, 0, 0) if family == 10 else (address, 443))]
-    monkeypatch.setattr(m.socket, 'getaddrinfo', fake_getaddrinfo)
+        family = 10 if ":" in address else 2
+        return [
+            (
+                family,
+                1,
+                6,
+                "",
+                (address, 443, 0, 0) if family == 10 else (address, 443),
+            )
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m._resolve_host('example.com')
+        m._resolve_host("example.com")
     assert_code(error, m.PublicKnowledgeFetchErrorCode.BLOCKED_ADDRESS)
 
 
 def test_mixed_public_private_dns_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(m.socket, 'getaddrinfo', lambda *a, **k: [
-        (2, 1, 6, '', ('93.184.216.34', 443)),
-        (2, 1, 6, '', ('127.0.0.1', 443)),
-    ])
+    def fake_getaddrinfo(
+        *args: Any, **kwargs: Any
+    ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
+        del args, kwargs
+        return [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+            (2, 1, 6, "", ("127.0.0.1", 443)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m._resolve_host('example.com')
+        m._resolve_host("example.com")
     assert_code(error, m.PublicKnowledgeFetchErrorCode.BLOCKED_ADDRESS)
 
 
-@pytest.mark.parametrize('url,code', [
-    ('http://example.com', m.PublicKnowledgeFetchErrorCode.INVALID_URL),
-    ('https://user:pass@example.com', m.PublicKnowledgeFetchErrorCode.INVALID_URL),
-    ('https://example.com/#x', m.PublicKnowledgeFetchErrorCode.INVALID_URL),
-    ('https://example.com:8443/', m.PublicKnowledgeFetchErrorCode.INVALID_URL),
-    (' example.com', m.PublicKnowledgeFetchErrorCode.INVALID_URL),
-    ('https://other.example.com/', m.PublicKnowledgeFetchErrorCode.DOMAIN_NOT_ALLOWED),
-])
+@pytest.mark.parametrize(
+    "url,code",
+    [
+        ("http://example.com", m.PublicKnowledgeFetchErrorCode.INVALID_URL),
+        ("https://user:pass@example.com", m.PublicKnowledgeFetchErrorCode.INVALID_URL),
+        ("https://example.com/#x", m.PublicKnowledgeFetchErrorCode.INVALID_URL),
+        ("https://example.com:8443/", m.PublicKnowledgeFetchErrorCode.INVALID_URL),
+        (" example.com", m.PublicKnowledgeFetchErrorCode.INVALID_URL),
+        ("https://other.example.com/", m.PublicKnowledgeFetchErrorCode.DOMAIN_NOT_ALLOWED),
+    ],
+)
 def test_url_rejections(url: str, code: m.PublicKnowledgeFetchErrorCode) -> None:
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge(url, policy('example.com'))
+        m.fetch_public_knowledge(url, policy("example.com"))
     assert_code(error, code)
 
 
 def test_allowed_public_redirect_is_revalidated(monkeypatch: pytest.MonkeyPatch) -> None:
-    first = FakeResponse(status=302, headers={'Location': 'https://redirect.example.com/final'})
-    second = FakeResponse(headers={'Content-Type': 'text/html'}, body=b'<p>ok</p>')
-    patch_network(monkeypatch, {
-        'example.com': ('93.184.216.34',),
-        'redirect.example.com': ('142.250.72.14',),
-    }, [('93.184.216.34', first), ('142.250.72.14', second)])
+    first = FakeResponse(status=302, headers={"Location": "https://redirect.example.com/final"})
+    second = FakeResponse(headers={"Content-Type": "text/html"}, body=b"<p>ok</p>")
+    patch_network(
+        monkeypatch,
+        {
+            "example.com": ("93.184.216.34",),
+            "redirect.example.com": ("142.250.72.14",),
+        },
+        [("93.184.216.34", first), ("142.250.72.14", second)],
+    )
     result = m.fetch_public_knowledge(
         "https://example.com/start", policy("example.com", "redirect.example.com")
     )
-    assert result.final_url == 'https://redirect.example.com/final'
-    assert result.body == b'<p>ok</p>'
+    assert result.final_url == "https://redirect.example.com/final"
+    assert result.body == b"<p>ok</p>"
 
 
 def test_redirect_to_private_fails_before_connection(monkeypatch: pytest.MonkeyPatch) -> None:
-    first = FakeResponse(status=302, headers={'Location': 'https://redirect.example.com/final'})
-    connections = patch_network(monkeypatch, {
-        'example.com': ('93.184.216.34',),
-        'redirect.example.com': ('127.0.0.1',),
-    }, [('93.184.216.34', first)])
+    first = FakeResponse(status=302, headers={"Location": "https://redirect.example.com/final"})
+    connections = patch_network(
+        monkeypatch,
+        {
+            "example.com": ("93.184.216.34",),
+            "redirect.example.com": ("127.0.0.1",),
+        },
+        [("93.184.216.34", first)],
+    )
     original = m._resolve_host
+
     def resolve(host: str) -> tuple[m.IPAddress, ...]:
         addrs = original(host)
-        if any(not m._is_allowed_address(a) for a in addrs):
+        if any(not m._is_allowed_address(address) for address in addrs):
             raise m.PublicKnowledgeFetchError(m.PublicKnowledgeFetchErrorCode.BLOCKED_ADDRESS)
         return addrs
-    monkeypatch.setattr(m, '_resolve_host', resolve)
+
+    monkeypatch.setattr(m, "_resolve_host", resolve)
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
         m.fetch_public_knowledge(
             "https://example.com/start", policy("example.com", "redirect.example.com")
@@ -203,10 +249,12 @@ def test_redirect_to_private_fails_before_connection(monkeypatch: pytest.MonkeyP
 
 
 def test_redirect_to_unallowlisted_host_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    first = FakeResponse(status=302, headers={'Location': 'https://evil.example.net/final'})
-    patch_network(monkeypatch, {'example.com': ('93.184.216.34',)}, [('93.184.216.34', first)])
+    first = FakeResponse(status=302, headers={"Location": "https://evil.example.net/final"})
+    patch_network(
+        monkeypatch, {"example.com": ("93.184.216.34",)}, [("93.184.216.34", first)]
+    )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/start', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/start", policy("example.com"))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.DOMAIN_NOT_ALLOWED)
 
 
@@ -215,9 +263,9 @@ def test_redirect_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
         ("93.184.216.34", FakeResponse(status=302, headers={"Location": "/again"}))
         for _ in range(6)
     ]
-    patch_network(monkeypatch, {'example.com': ('93.184.216.34',)}, redirects)
+    patch_network(monkeypatch, {"example.com": ("93.184.216.34",)}, redirects)
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/start', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/start", policy("example.com"))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.TOO_MANY_REDIRECTS)
 
 
@@ -228,7 +276,7 @@ def test_redirect_without_location(monkeypatch: pytest.MonkeyPatch) -> None:
         [("93.184.216.34", FakeResponse(status=302))],
     )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/start', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/start", policy("example.com"))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.REDIRECT_MISSING_LOCATION)
 
 
@@ -260,7 +308,7 @@ def test_response_metadata_rejections(
         [("93.184.216.34", FakeResponse(headers=headers))],
     )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com"))
     assert_code(error, code)
 
 
@@ -268,28 +316,32 @@ def test_declared_oversize_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     response = FakeResponse(
         headers={"Content-Type": "text/plain", "Content-Length": "11"}, body=b"x"
     )
-    patch_network(monkeypatch, {'example.com': ('93.184.216.34',)}, [('93.184.216.34', response)])
+    patch_network(
+        monkeypatch, {"example.com": ("93.184.216.34",)}, [("93.184.216.34", response)]
+    )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com', max_bytes=10))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com", max_bytes=10))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.RESPONSE_TOO_LARGE)
     assert response.offset == 0
 
 
 def test_streamed_oversize_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    response = FakeResponse(headers={'Content-Type': 'text/plain'}, body=b'01234567890')
-    patch_network(monkeypatch, {'example.com': ('93.184.216.34',)}, [('93.184.216.34', response)])
+    response = FakeResponse(headers={"Content-Type": "text/plain"}, body=b"01234567890")
+    patch_network(
+        monkeypatch, {"example.com": ("93.184.216.34",)}, [("93.184.216.34", response)]
+    )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com', max_bytes=10))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com", max_bytes=10))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.RESPONSE_TOO_LARGE)
 
 
 def test_peer_mismatch_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    response = FakeResponse(headers={'Content-Type': 'text/plain'})
+    response = FakeResponse(headers={"Content-Type": "text/plain"})
     connections = patch_network(
-        monkeypatch, {'example.com': ('93.184.216.34',)}, [('1.1.1.1', response)]
+        monkeypatch, {"example.com": ("93.184.216.34",)}, [("1.1.1.1", response)]
     )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com"))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.PEER_MISMATCH)
     assert connections[0].requests == []
 
@@ -307,57 +359,67 @@ def test_http_status_retryability(
         [("93.184.216.34", FakeResponse(status=status, body=b"SECRET BODY"))],
     )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com"))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.HTTP_STATUS, retryable)
-    assert 'SECRET' not in str(error.value)
+    assert "SECRET" not in str(error.value)
 
 
-@pytest.mark.parametrize('raised,code', [
-    (TimeoutError(), m.PublicKnowledgeFetchErrorCode.TIMEOUT),
-    (OSError('secret target detail'), m.PublicKnowledgeFetchErrorCode.NETWORK_FAILURE),
-])
+@pytest.mark.parametrize(
+    "raised,code",
+    [
+        (TimeoutError(), m.PublicKnowledgeFetchErrorCode.TIMEOUT),
+        (ssl.SSLError("secret tls detail"), m.PublicKnowledgeFetchErrorCode.TLS_FAILURE),
+        (OSError("secret target detail"), m.PublicKnowledgeFetchErrorCode.NETWORK_FAILURE),
+    ],
+)
 def test_transport_errors_are_safe(
     raised: BaseException,
     code: m.PublicKnowledgeFetchErrorCode,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    patch_network(monkeypatch, {'example.com': ('93.184.216.34',)}, [('93.184.216.34', raised)])
+    patch_network(
+        monkeypatch, {"example.com": ("93.184.216.34",)}, [("93.184.216.34", raised)]
+    )
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com"))
     assert_code(error, code, True)
-    assert 'secret' not in str(error.value).lower()
+    assert "secret" not in str(error.value).lower()
 
 
 def test_dns_failure_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
-        raise m.socket.gaierror('secret dns detail')
-    monkeypatch.setattr(m.socket, 'getaddrinfo', boom)
+        raise socket.gaierror("secret dns detail")
+
+    monkeypatch.setattr(socket, "getaddrinfo", boom)
     with pytest.raises(m.PublicKnowledgeFetchError) as error:
-        m.fetch_public_knowledge('https://example.com/', policy('example.com'))
+        m.fetch_public_knowledge("https://example.com/", policy("example.com"))
     assert_code(error, m.PublicKnowledgeFetchErrorCode.DNS_FAILURE, True)
-    assert 'secret' not in str(error.value).lower()
+    assert "secret" not in str(error.value).lower()
 
 
-@pytest.mark.parametrize('args', [
-    {'allowed_hosts': frozenset()},
-    {'allowed_hosts': frozenset({'*.example.com'})},
-    {'allowed_hosts': frozenset({'example.com'}), 'max_response_bytes': 0},
-    {
-        "allowed_hosts": frozenset({"example.com"}),
-        "max_response_bytes": m.HARD_MAX_RESPONSE_BYTES + 1,
-    },
-    {'allowed_hosts': frozenset({'example.com'}), 'timeout_seconds': 0},
-    {
-        "allowed_hosts": frozenset({"example.com"}),
-        "timeout_seconds": m.HARD_MAX_TIMEOUT_SECONDS + 0.1,
-    },
-])
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"allowed_hosts": frozenset()},
+        {"allowed_hosts": frozenset({"*.example.com"})},
+        {"allowed_hosts": frozenset({"example.com"}), "max_response_bytes": 0},
+        {
+            "allowed_hosts": frozenset({"example.com"}),
+            "max_response_bytes": m.HARD_MAX_RESPONSE_BYTES + 1,
+        },
+        {"allowed_hosts": frozenset({"example.com"}), "timeout_seconds": 0},
+        {
+            "allowed_hosts": frozenset({"example.com"}),
+            "timeout_seconds": m.HARD_MAX_TIMEOUT_SECONDS + 0.1,
+        },
+    ],
+)
 def test_policy_bounds(args: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         m.PublicKnowledgeFetchPolicy(**args)
 
 
 def test_hostname_normalization() -> None:
-    p = policy('EXAMPLE.COM.')
-    assert p.allowed_hosts == frozenset({'example.com'})
+    p = policy("EXAMPLE.COM.")
+    assert p.allowed_hosts == frozenset({"example.com"})

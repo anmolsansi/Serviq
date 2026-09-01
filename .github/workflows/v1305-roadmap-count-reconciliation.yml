@@ -26,13 +26,8 @@ jobs:
           path = Path('docs/SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md')
           text = path.read_text(encoding='utf-8')
 
-          source_block = """| Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |
-| Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |
-| **All remaining tickets below** | **83** | **38** | **41** | **42** | **204** |"""
-          reconciled_block = """| Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |
-| Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |
-| Completed since consolidation | 1 | 0 | 0 | 0 | 1 |
-| **Current remaining tickets** | **82** | **38** | **41** | **42** | **203** |"""
+          source_block = '| Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |\n| Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |\n| **All remaining tickets below** | **83** | **38** | **41** | **42** | **204** |'
+          reconciled_block = '| Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |\n| Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |\n| Completed since consolidation | 1 | 0 | 0 | 0 | 1 |\n| **Current remaining tickets** | **82** | **38** | **41** | **42** | **203** |'
           if source_block not in text:
               raise RuntimeError('Inventory block not found')
           text = text.replace(source_block, reconciled_block, 1)

@@ -172,7 +172,7 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
         raw_socket = socket.create_connection((self._connect_ip, 443), self.timeout)
         try:
             self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
-        except BaseException:
+        except Exception:
             raw_socket.close()
             raise
 
@@ -239,6 +239,10 @@ def _perform_request(
 ) -> tuple[int, str | None, str | None, bytes | None]:
     connection = _new_connection(host, str(address), policy.timeout_seconds)
     try:
+        connection.connect()
+        peer = _peer_address(connection)
+        if peer != address or not _is_allowed_address(peer):
+            raise PublicKnowledgeFetchError(PublicKnowledgeFetchErrorCode.PEER_MISMATCH)
         connection.request(
             "GET",
             _request_target(parsed),
@@ -249,9 +253,6 @@ def _perform_request(
                 "User-Agent": USER_AGENT,
             },
         )
-        peer = _peer_address(connection)
-        if peer != address or not _is_allowed_address(peer):
-            raise PublicKnowledgeFetchError(PublicKnowledgeFetchErrorCode.PEER_MISMATCH)
         response = connection.getresponse()
         if response.status in REDIRECT_STATUSES:
             return response.status, response.getheader("Location"), None, None
@@ -264,7 +265,7 @@ def _perform_request(
         return response.status, None, content_type, body
     except PublicKnowledgeFetchError:
         raise
-    except (TimeoutError, socket.timeout):
+    except TimeoutError:
         raise PublicKnowledgeFetchError(
             PublicKnowledgeFetchErrorCode.TIMEOUT, retryable=True
         ) from None

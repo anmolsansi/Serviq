@@ -1,0 +1,217 @@
+name: OPE-312 Documentation Finalizer
+
+on:
+  push:
+    branches:
+      - openclawneutron/ope-312-v1306-implement-source-sync-command-and-durable-outbox-event
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Append cumulative implementation record
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          marker='## V1.3.06 — Transactional knowledge source sync and durable outbox'
+          if ! grep -Fq "$marker" docs/SERVIQ_BUILD_GUIDE.md; then
+            cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
+
+---
+
+## V1.3.06 — Transactional knowledge source sync and durable outbox
+
+**GitHub issue:** #194  
+**Linear ticket:** OPE-312  
+**Implementation PR:** #195  
+**Architecture decision:** `docs/architecture-decisions/ADR-021-transactional-outbox-and-source-sync-command.md`
+
+### Why this ticket exists
+
+Serviq could already register knowledge sources and safely persist uploaded raw files, but it still did not have the command that turns a registered source into durable asynchronous work. A normal FastAPI background task would be unsafe for this boundary because the HTTP request could return successfully and the API process could then crash before the background task becomes durable.
+
+V1.3.06 implements the first generic PostgreSQL transactional-outbox producer and uses it for knowledge-source synchronization. The central invariant is simple: an accepted sync command must never update the knowledge source without also recording the durable event that represents the downstream work.
+
+### Public API contract
+
+The new route is:
+
+```text
+POST /api/v1/knowledge-sources/{sourceId}/sync
+```
+
+It accepts no product request body. It reuses the existing trusted workforce identity, server-resolved tenant boundary, and `knowledge.sources.manage` capability.
+
+A successful request returns HTTP 202 with the normal knowledge-source projection. The source is now `syncing`, its `syncVersion` has increased by exactly one, its prior `lastErrorCode` is cleared, and its existing `lastSyncedAt` value is preserved.
+
+A disabled source returns `409 KNOWLEDGE_SOURCE_DISABLED`. An absent source and a source owned by another tenant both return the same `404 KNOWLEDGE_SOURCE_NOT_FOUND` response so the route does not reveal cross-tenant existence. Existing permission failure remains `403 FORBIDDEN`.
+
+### Why PostgreSQL row locking is used
+
+Two administrators or automation processes can request synchronization at nearly the same time. If both requests simply read version N and then write N+1, one increment can be lost and two downstream jobs can receive the same version identity.
+
+The command therefore selects the tenant-scoped source with `SELECT ... FOR UPDATE` inside the transaction. Concurrent accepted requests serialize at that row. If a source starts at version 7, two simultaneous requests receive versions 8 and 9 rather than both receiving 8.
+
+The HTTP command is intentionally not request-idempotent. Every accepted request means “start another synchronization version.” Durable downstream identity is the outbox event ID together with the tenant/source/version tuple.
+
+### Source mutation and event persistence are one transaction
+
+Inside one PostgreSQL transaction Serviq:
+
+1. verifies the existing management capability;
+2. locks the tenant-owned source row;
+3. rejects absent/foreign or disabled sources before mutation;
+4. increments `sync_version` exactly once;
+5. sets `status = syncing`;
+6. clears `last_error_code`;
+7. preserves `last_synced_at`;
+8. updates `updated_at`;
+9. stages one outbox event;
+10. flushes and commits once.
+
+If outbox persistence fails, PostgreSQL rolls back the source mutation with it. The integration suite deliberately forces outbox staging to fail and verifies that the source remains at its original status/version/error state with no event row.
+
+### Generic outbox foundation
+
+Alembic revision `20260902_0012` creates the architecture-owned `outbox_events` table rather than a knowledge-specific queue table.
+
+The schema stores:
+
+```text
+id
+nullable tenant_id
+event_type
+schema_version
+aggregate_type
+aggregate_id
+payload
+correlation_id
+causation_id
+status
+attempts
+next_attempt_at
+published_at
+```
+
+It also creates the frozen `(status, next_attempt_at)` delivery index and `(tenant_id, aggregate_type, aggregate_id)` aggregate lookup index.
+
+The generic table keeps `tenant_id` nullable because future platform events may not belong to one tenant. Knowledge synchronization always writes the current tenant ID.
+
+The downgrade refuses to drop the table while any pending or failed delivery obligation remains. That prevents a rollback from silently deleting the only durable record of work that still needs publication or reconciliation.
+
+### Knowledge sync event
+
+Every accepted command stages exactly one event with this contract:
+
+```text
+event_type      = serviq.knowledge.sync.v1
+schema_version  = 1
+aggregate_type  = knowledge_source
+aggregate_id    = <source UUID>
+status          = pending
+attempts        = 0
+next_attempt_at = database now()
+causation_id    = null
+```
+
+The payload contains only:
+
+```text
+tenantId
+sourceId
+syncVersion
+```
+
+It deliberately excludes the source URI, object-storage key, uploaded content, credentials, prompts, user PII, and other unnecessary data. Downstream workers can load tenant-scoped source state using the identifiers rather than copying sensitive source information into the event bus contract.
+
+### Correlation IDs
+
+A valid inbound `X-Request-ID` is preserved as the durable event correlation ID only when its trimmed value is 1 to 128 printable ASCII characters with no spaces or control characters. Invalid or missing values are replaced with a generated UUID string.
+
+This keeps durable correlation data bounded and safe for later logs/traces without trusting arbitrary client text.
+
+### Real PostgreSQL validation
+
+The new integration suite covers both URL-backed and file-backed knowledge sources and verifies:
+
+- HTTP 202 success and the returned `syncing` projection;
+- exact source version/state mutation;
+- exact event type, aggregate identity, schema version, payload, status, attempts, timestamps, and correlation behavior;
+- disabled-source rejection with no mutation/event;
+- unknown-source 404;
+- cross-tenant 404 indistinguishable from unknown;
+- permission failure;
+- generated correlation IDs when no valid request ID exists;
+- concurrent requests allocating distinct monotonic versions/events;
+- full transaction rollback when event staging fails.
+
+The database integration contract was also updated to include `outbox_events` in the expected migrated schema.
+
+### Validation and review evidence
+
+The final implementation head passed the permanent repository CI, Security, and Knowledge Quota Integration workflows. CI includes the real PostgreSQL migration/integration path, while Security includes the repository's dependency, secret, filesystem/configuration, and CodeQL gates.
+
+The final Staff Engineer review found no Critical or High issue within the V1.3.06 scope. The design uses the existing capability and tenant boundaries, serializes version allocation in PostgreSQL, keeps event persistence atomic with source mutation, avoids sensitive event payloads, and adds no new third-party dependency or in-process background task.
+
+### What V1.3.06 intentionally does not implement
+
+This ticket creates the producer-side durable event boundary only. It does not add:
+
+- an outbox publisher;
+- Kafka/Redpanda publication;
+- a knowledge-sync consumer;
+- crawler or sitemap traversal;
+- parsing or chunking;
+- embedding or indexing;
+- synchronization completion/failure transitions;
+- retry execution or dead-letter processing;
+- a new service;
+- a FastAPI background task.
+
+Those later tickets must consume the generic outbox contract rather than bypassing it with an ad hoc asynchronous path.
+
+### What this improves
+
+Before V1.3.06, Serviq could persist knowledge metadata but could not safely acknowledge “start synchronization” as durable asynchronous work. After this ticket, an accepted request has one atomic database truth: the source is on a new sync version and a matching pending domain event exists, or neither change exists.
+
+That foundation is important for the later worker pipeline because API-process failure after HTTP acknowledgement can no longer erase an accepted sync command.
+EOF
+          fi
+
+          context_marker='## V1.3.06 current state — transactional source sync and outbox'
+          if ! grep -Fq "$context_marker" docs/repo_context.md; then
+            cat >> docs/repo_context.md <<'EOF'
+
+## V1.3.06 current state — transactional source sync and outbox
+
+The API now implements `POST /api/v1/knowledge-sources/{sourceId}/sync`. The route reuses trusted workforce/tenant resolution and `knowledge.sources.manage`, locks the tenant-scoped source row with PostgreSQL `FOR UPDATE`, increments `sync_version`, sets `status=syncing`, clears the prior error, preserves `last_synced_at`, and inserts `serviq.knowledge.sync.v1` into the generic `outbox_events` table in the same transaction.
+
+Alembic revision `20260902_0012` introduces the architecture-owned transactional outbox schema and its delivery/aggregate indexes. Knowledge events contain only tenant ID, source ID, and sync version. Missing/cross-tenant sources are indistinguishable 404s, disabled sources return the frozen 409, and permission failure remains 403.
+
+Real PostgreSQL integration coverage proves URL/file happy paths, exact durable event metadata, tenant isolation, disabled/permission behavior, bounded correlation IDs, concurrent monotonic version allocation, and rollback when outbox staging fails. The publisher, broker publication, sync consumer, crawler/parser/chunker/embedder/indexer, retry execution, and completion/failure transitions remain future work.
+EOF
+          fi
+
+          rm .github/workflows/ope312-doc-finalizer.yml
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/SERVIQ_BUILD_GUIDE.md docs/repo_context.md .github/workflows/ope312-doc-finalizer.yml
+
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git commit -m 'docs: finalize OPE-312 implementation record'
+          git push origin HEAD:openclawneutron/ope-312-v1306-implement-source-sync-command-and-durable-outbox-event

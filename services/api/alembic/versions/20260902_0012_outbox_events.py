@@ -80,6 +80,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    unresolved = op.get_bind().execute(
+        sa.text("SELECT count(*) FROM outbox_events WHERE status <> 'published'")
+    ).scalar_one()
+    if int(unresolved) != 0:
+        raise RuntimeError(
+            "Cannot downgrade 20260902_0012 while unpublished outbox obligations exist. "
+            "Publish or explicitly reconcile pending and failed rows before rollback."
+        )
+
     op.drop_index("ix_outbox_events_tenant_aggregate", table_name="outbox_events")
     op.drop_index("ix_outbox_events_status_next_attempt", table_name="outbox_events")
     op.drop_table("outbox_events")

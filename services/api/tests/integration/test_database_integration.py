@@ -33,6 +33,7 @@ EXPECTED_TABLES = {
     "knowledge_chunks",
     "knowledge_upload_cleanups",
     "knowledge_upload_reservations",
+    "outbox_events",
 }
 
 

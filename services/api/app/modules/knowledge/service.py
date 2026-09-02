@@ -367,7 +367,10 @@ async def _require_permission(
 def _normalize_correlation_id(request_id: str | None) -> str:
     if request_id is not None:
         candidate = request_id.strip()
-        if 1 <= len(candidate) <= 128 and all(33 <= ord(character) <= 126 for character in candidate):
+        is_printable_ascii = all(
+            33 <= ord(character) <= 126 for character in candidate
+        )
+        if 1 <= len(candidate) <= 128 and is_printable_ascii:
             return candidate
     return str(uuid4())
 

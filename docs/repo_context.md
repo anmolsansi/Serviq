@@ -266,3 +266,12 @@ The V1.3.04A pre-PUT cleanup invariant remains intact. A validated file reserves
 Stable failures are `KNOWLEDGE_UPLOAD_RATE_LIMITED`, `KNOWLEDGE_UPLOAD_CONCURRENCY_LIMITED`, `KNOWLEDGE_STORAGE_QUOTA_EXCEEDED`, `KNOWLEDGE_SOURCE_QUOTA_EXCEEDED`, `KNOWLEDGE_UPLOAD_LIMITER_UNAVAILABLE`, and `KNOWLEDGE_QUOTA_UNAVAILABLE`. Rejected quota/rate requests perform no raw-object PUT and create no source row. Error and operational evidence is bounded and excludes object keys, credentials, raw filenames, file content, and foreign-tenant usage.
 
 Primary evidence is ADR-019, CCR-007, `KNOWLEDGE_UPLOAD_QUOTA_RUNBOOK.md`, `V1.3.04B_SECURITY_RELIABILITY_REVIEW.md`, migration 0011, the quota/rate-limit modules, and real PostgreSQL, Valkey, and S3-compatible integration coverage in `.github/workflows/knowledge-quota-integration.yml`. PR #185 merged the implementation to `main` as `e846e0a259f55c3a71535a5014360d7187e4d354`; the follow-up closeout corrects the post-merge Ruff-only test formatting regression and synchronizes completion evidence.
+
+
+## V1.3.06 current state — transactional source sync and outbox
+
+The API now implements `POST /api/v1/knowledge-sources/{sourceId}/sync`. It reuses trusted workforce/tenant resolution and `knowledge.sources.manage`, locks the tenant-scoped source row with PostgreSQL `FOR UPDATE`, increments `sync_version`, sets `status=syncing`, clears the prior error, preserves `last_synced_at`, and inserts `serviq.knowledge.sync.v1` into `outbox_events` in the same transaction.
+
+Alembic revision `20260902_0012` introduces the generic outbox schema and its delivery/aggregate indexes. Knowledge events contain only tenant ID, source ID, sync version, and bounded correlation metadata. Missing/cross-tenant sources are indistinguishable 404s, disabled sources return the frozen 409, and permission failure remains 403.
+
+Real PostgreSQL integration coverage proves URL/file happy paths, exact durable event metadata, tenant isolation, concurrent monotonic version allocation, and rollback when outbox staging fails. The publisher, broker publication, sync consumer, crawler/parser/chunker/embedder/indexer, retry execution, and completion/failure transitions remain future work.

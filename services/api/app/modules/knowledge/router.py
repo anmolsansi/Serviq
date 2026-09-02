@@ -20,13 +20,20 @@ from app.core.rate_limits import (
 )
 from app.modules.knowledge.errors import (
     KnowledgeQuotaUnavailableError,
+    KnowledgeSourceDisabledError,
     KnowledgeSourceForbiddenError,
+    KnowledgeSourceNotFoundError,
     KnowledgeSourceQuotaExceededError,
     KnowledgeStorageQuotaExceededError,
     KnowledgeUploadConcurrencyLimitedError,
 )
 from app.modules.knowledge.schemas import KnowledgeSourceCreateRequest, KnowledgeSourceView
-from app.modules.knowledge.service import create_file_source, create_source, list_sources
+from app.modules.knowledge.service import (
+    create_file_source,
+    create_source,
+    list_sources,
+    start_source_sync,
+)
 from app.modules.knowledge.storage import get_knowledge_object_storage
 from app.modules.knowledge.uploads import (
     KnowledgeUploadTooLargeError,
@@ -110,6 +117,35 @@ async def create_knowledge_source(
         return _forbidden()
     except KnowledgeSourceQuotaExceededError:
         return _error(409, "KNOWLEDGE_SOURCE_QUOTA_EXCEEDED", "Knowledge source quota exceeded.")
+    return SuccessEnvelope(data=source)
+
+
+@router.post(
+    "/{source_id}/sync",
+    response_model=SuccessEnvelope[KnowledgeSourceView],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def sync_knowledge_source(
+    source_id: UUID,
+    http_request: Request,
+    session: DatabaseSession,
+    user_id: WorkforceUserId,
+    tenant_id: TenantId,
+) -> SuccessEnvelope[KnowledgeSourceView] | JSONResponse:
+    try:
+        source = await start_source_sync(
+            session,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            source_id=source_id,
+            request_id=http_request.headers.get("x-request-id"),
+        )
+    except KnowledgeSourceForbiddenError:
+        return _forbidden()
+    except KnowledgeSourceNotFoundError:
+        return _error(404, "KNOWLEDGE_SOURCE_NOT_FOUND", "Knowledge source not found.")
+    except KnowledgeSourceDisabledError:
+        return _error(409, "KNOWLEDGE_SOURCE_DISABLED", "Knowledge source is disabled.")
     return SuccessEnvelope(data=source)
 
 

@@ -6451,3 +6451,25 @@ V1.3.05 is additive and owns no durable state. The helper can be removed before 
 
 Future crawl scheduling, per-source rate policy, robots/terms evaluation, sitemap traversal, parsing, indexing, persistence, and observability belong to later tickets. Those layers may narrow this security policy but must not bypass or weaken the destination and redirect validation defined here.
 
+
+
+---
+
+## V1.3.06 — Transactional knowledge source sync and durable outbox
+
+**GitHub issue:** #194  
+**Linear ticket:** OPE-312  
+**Implementation PR:** #195  
+**Architecture decision:** `docs/architecture-decisions/ADR-021-transactional-outbox-and-source-sync-command.md`
+
+V1.3.06 adds the durable producer-side boundary for knowledge synchronization. `POST /api/v1/knowledge-sources/{sourceId}/sync` reuses trusted workforce/tenant resolution and `knowledge.sources.manage`, accepts no product body, and returns HTTP 202 after the command commits. Missing and cross-tenant sources return the same 404, disabled sources return `409 KNOWLEDGE_SOURCE_DISABLED`, and existing permission failure remains 403.
+
+The command locks the tenant-scoped source with PostgreSQL `SELECT ... FOR UPDATE`. Under that row lock it increments `sync_version` exactly once, sets `status=syncing`, clears `last_error_code`, preserves `last_synced_at`, updates `updated_at`, and inserts one `serviq.knowledge.sync.v1` event in the same transaction. Concurrent accepted requests therefore serialize into distinct versions such as N+1 and N+2. If event persistence fails, the source mutation rolls back with it.
+
+Alembic revision `20260902_0012` introduces the architecture-owned generic `outbox_events` table with the frozen delivery and tenant/aggregate indexes. Knowledge events contain only `tenantId`, `sourceId`, and `syncVersion`, plus bounded correlation metadata. They do not copy source URIs, object keys, raw knowledge content, credentials, prompts, or user PII. A valid trimmed printable-ASCII `X-Request-ID` of 1–128 characters is preserved; otherwise Serviq generates a UUID correlation ID.
+
+The downgrade refuses to remove the outbox table while pending or failed delivery obligations remain. This prevents rollback from deleting the only durable record of unpublished work.
+
+Real PostgreSQL integration coverage proves URL/file happy paths, exact event metadata, disabled and permission behavior, cross-tenant non-disclosure, correlation IDs, concurrent monotonic version allocation, and atomic rollback when event staging fails. The final implementation head passed CI, Security, and the Knowledge Quota Integration workflow. Final Staff Engineer review found no Critical or High issue in the V1.3.06 scope.
+
+This ticket does not implement the outbox publisher, Kafka/Redpanda publication, knowledge-sync consumer, crawler, parser, chunker, embedder, indexer, retry execution, or completion/failure transitions. Those later tickets must consume this durable outbox boundary rather than use an in-process background task or a second ad hoc queue.

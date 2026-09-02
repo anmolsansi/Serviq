@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.outbox import OutboxEvent
 from app.modules.knowledge.models import (
     KnowledgeSource,
     KnowledgeUploadCleanup,
@@ -26,6 +27,54 @@ async def list_knowledge_sources(
         .order_by(KnowledgeSource.created_at, KnowledgeSource.id)
     )
     return tuple(result.scalars().all())
+
+
+async def get_knowledge_source_for_update(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    source_id: UUID,
+) -> KnowledgeSource | None:
+    """Lock one tenant-owned source so sync-version allocation is serialized."""
+
+    result = await session.execute(
+        select(KnowledgeSource)
+        .where(
+            KnowledgeSource.tenant_id == tenant_id,
+            KnowledgeSource.id == source_id,
+        )
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+def add_outbox_event(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: str,
+    payload: dict[str, object],
+    correlation_id: str,
+) -> OutboxEvent:
+    """Stage one pending domain event in the caller's current transaction."""
+
+    event = OutboxEvent(
+        tenant_id=tenant_id,
+        event_type=event_type,
+        schema_version=1,
+        aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id,
+        payload=payload,
+        correlation_id=correlation_id,
+        causation_id=None,
+        status="pending",
+        attempts=0,
+        published_at=None,
+    )
+    session.add(event)
+    return event
 
 
 def add_knowledge_source(

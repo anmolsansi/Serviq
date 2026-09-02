@@ -1,4 +1,4 @@
-"""Knowledge source registration, upload durability, quota, and capability checks."""
+"""Knowledge source registration, sync, upload durability, quota, and capability checks."""
 
 from datetime import UTC, datetime
 from typing import Literal, cast
@@ -20,7 +20,11 @@ from app.modules.knowledge.cleanup import (
     mark_inline_cleanup_succeeded,
     prepared_cleanup_due_at,
 )
-from app.modules.knowledge.errors import KnowledgeSourceForbiddenError
+from app.modules.knowledge.errors import (
+    KnowledgeSourceDisabledError,
+    KnowledgeSourceForbiddenError,
+    KnowledgeSourceNotFoundError,
+)
 from app.modules.knowledge.models import KnowledgeSource
 from app.modules.knowledge.quota import (
     assert_source_capacity,
@@ -31,9 +35,11 @@ from app.modules.knowledge.quota import (
 from app.modules.knowledge.repository import (
     add_file_knowledge_source,
     add_knowledge_source,
+    add_outbox_event,
     add_upload_cleanup_intent,
     bind_upload_reservation_to_cleanup,
     expire_upload_concurrency_lease_for_cleanup,
+    get_knowledge_source_for_update,
     get_upload_cleanup_for_update,
     list_knowledge_sources,
     mark_upload_cleanup_referenced,
@@ -51,6 +57,8 @@ from app.modules.tenancy.errors import TenantMembershipAccessError
 from app.modules.tenancy.service import resolve_tenant_membership
 
 KNOWLEDGE_SOURCE_MANAGE_PERMISSION = "knowledge.sources.manage"
+KNOWLEDGE_SYNC_EVENT_TYPE = "serviq.knowledge.sync.v1"
+KNOWLEDGE_SYNC_AGGREGATE_TYPE = "knowledge_source"
 
 
 async def list_sources(
@@ -87,6 +95,52 @@ async def create_source(
             access_scope=request.access_scope,
             created_by=user_id,
             now=now,
+        )
+        await session.flush()
+        return _to_view(source)
+
+
+async def start_source_sync(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    tenant_id: UUID,
+    source_id: UUID,
+    request_id: str | None,
+) -> KnowledgeSourceView:
+    """Atomically allocate a sync version, set syncing, and persist its outbox event."""
+
+    correlation_id = _normalize_correlation_id(request_id)
+    async with session.begin():
+        await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+        source = await get_knowledge_source_for_update(
+            session,
+            tenant_id=tenant_id,
+            source_id=source_id,
+        )
+        if source is None:
+            raise KnowledgeSourceNotFoundError
+        if source.status == "disabled":
+            raise KnowledgeSourceDisabledError
+
+        now = datetime.now(UTC)
+        source.sync_version += 1
+        source.status = "syncing"
+        source.last_error_code = None
+        source.updated_at = now
+
+        add_outbox_event(
+            session,
+            tenant_id=tenant_id,
+            event_type=KNOWLEDGE_SYNC_EVENT_TYPE,
+            aggregate_type=KNOWLEDGE_SYNC_AGGREGATE_TYPE,
+            aggregate_id=str(source.id),
+            payload={
+                "tenantId": str(tenant_id),
+                "sourceId": str(source.id),
+                "syncVersion": source.sync_version,
+            },
+            correlation_id=correlation_id,
         )
         await session.flush()
         return _to_view(source)
@@ -308,6 +362,17 @@ async def _require_permission(
         raise KnowledgeSourceForbiddenError from None
     if KNOWLEDGE_SOURCE_MANAGE_PERMISSION not in membership.permissions:
         raise KnowledgeSourceForbiddenError
+
+
+def _normalize_correlation_id(request_id: str | None) -> str:
+    if request_id is not None:
+        candidate = request_id.strip()
+        is_printable_ascii = all(
+            33 <= ord(character) <= 126 for character in candidate
+        )
+        if 1 <= len(candidate) <= 128 and is_printable_ascii:
+            return candidate
+    return str(uuid4())
 
 
 def _to_view(source: KnowledgeSource) -> KnowledgeSourceView:

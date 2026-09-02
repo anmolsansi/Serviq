@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   finalize:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -23,6 +22,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          if [ "${GITHUB_ACTOR}" = "github-actions[bot]" ]; then
+            exit 0
+          fi
 
           marker='## V1.3.06 — Transactional knowledge source sync and durable outbox'
           if ! grep -Fq "$marker" docs/SERVIQ_BUILD_GUIDE.md; then

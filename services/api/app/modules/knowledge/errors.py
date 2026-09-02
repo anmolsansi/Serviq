@@ -5,6 +5,14 @@ class KnowledgeSourceForbiddenError(RuntimeError):
     """Caller lacks the tenant capability required to manage knowledge sources."""
 
 
+class KnowledgeSourceNotFoundError(RuntimeError):
+    """Knowledge source is absent from the caller's tenant scope."""
+
+
+class KnowledgeSourceDisabledError(RuntimeError):
+    """Disabled knowledge sources cannot start a new sync."""
+
+
 class KnowledgeSourceQuotaExceededError(RuntimeError):
     """Tenant has no remaining knowledge-source slots."""
 

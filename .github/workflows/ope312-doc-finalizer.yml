@@ -20,201 +20,26 @@ jobs:
 
       - name: Append cumulative implementation record
         shell: bash
+        env:
+          BUILD_GUIDE_APPEND_B64: CgotLS0KCiMjIFYxLjMuMDYg4oCUIFRyYW5zYWN0aW9uYWwga25vd2xlZGdlIHNvdXJjZSBzeW5jIGFuZCBkdXJhYmxlIG91dGJveAoKKipHaXRIdWIgaXNzdWU6KiogIzE5NCAgCioqTGluZWFyIHRpY2tldDoqKiBPUEUtMzEyICAKKipJbXBsZW1lbnRhdGlvbiBQUjoqKiAjMTk1ICAKKipBcmNoaXRlY3R1cmUgZGVjaXNpb246KiogYGRvY3MvYXJjaGl0ZWN0dXJlLWRlY2lzaW9ucy9BRFItMDIxLXRyYW5zYWN0aW9uYWwtb3V0Ym94LWFuZC1zb3VyY2Utc3luYy1jb21tYW5kLm1kYAoKVjEuMy4wNiBhZGRzIHRoZSBkdXJhYmxlIHByb2R1Y2VyLXNpZGUgYm91bmRhcnkgZm9yIGtub3dsZWRnZSBzeW5jaHJvbml6YXRpb24uIGBQT1NUIC9hcGkvdjEva25vd2xlZGdlLXNvdXJjZXMve3NvdXJjZUlkfS9zeW5jYCByZXVzZXMgdHJ1c3RlZCB3b3JrZm9yY2UvdGVuYW50IHJlc29sdXRpb24gYW5kIGBrbm93bGVkZ2Uuc291cmNlcy5tYW5hZ2VgLCBhY2NlcHRzIG5vIHByb2R1Y3QgYm9keSwgYW5kIHJldHVybnMgSFRUUCAyMDIgYWZ0ZXIgdGhlIGNvbW1hbmQgY29tbWl0cy4gTWlzc2luZyBhbmQgY3Jvc3MtdGVuYW50IHNvdXJjZXMgcmV0dXJuIHRoZSBzYW1lIDQwNCwgZGlzYWJsZWQgc291cmNlcyByZXR1cm4gYDQwOSBLTk9XTEVER0VfU09VUkNFX0RJU0FCTEVEYCwgYW5kIGV4aXN0aW5nIHBlcm1pc3Npb24gZmFpbHVyZSByZW1haW5zIDQwMy4KClRoZSBjb21tYW5kIGxvY2tzIHRoZSB0ZW5hbnQtc2NvcGVkIHNvdXJjZSB3aXRoIFBvc3RncmVTUUwgYFNFTEVDVCAuLi4gRk9SIFVQREFURWAuIFVuZGVyIHRoYXQgcm93IGxvY2sgaXQgaW5jcmVtZW50cyBgc3luY192ZXJzaW9uYCBleGFjdGx5IG9uY2UsIHNldHMgYHN0YXR1cz1zeW5jaW5nYCwgY2xlYXJzIGBsYXN0X2Vycm9yX2NvZGVgLCBwcmVzZXJ2ZXMgYGxhc3Rfc3luY2VkX2F0YCwgdXBkYXRlcyBgdXBkYXRlZF9hdGAsIGFuZCBpbnNlcnRzIG9uZSBgc2VydmlxLmtub3dsZWRnZS5zeW5jLnYxYCBldmVudCBpbiB0aGUgc2FtZSB0cmFuc2FjdGlvbi4gQ29uY3VycmVudCBhY2NlcHRlZCByZXF1ZXN0cyB0aGVyZWZvcmUgc2VyaWFsaXplIGludG8gZGlzdGluY3QgdmVyc2lvbnMgc3VjaCBhcyBOKzEgYW5kIE4rMi4gSWYgZXZlbnQgcGVyc2lzdGVuY2UgZmFpbHMsIHRoZSBzb3VyY2UgbXV0YXRpb24gcm9sbHMgYmFjayB3aXRoIGl0LgoKQWxlbWJpYyByZXZpc2lvbiBgMjAyNjA5MDJfMDAxMmAgaW50cm9kdWNlcyB0aGUgYXJjaGl0ZWN0dXJlLW93bmVkIGdlbmVyaWMgYG91dGJveF9ldmVudHNgIHRhYmxlIHdpdGggdGhlIGZyb3plbiBkZWxpdmVyeSBhbmQgdGVuYW50L2FnZ3JlZ2F0ZSBpbmRleGVzLiBLbm93bGVkZ2UgZXZlbnRzIGNvbnRhaW4gb25seSBgdGVuYW50SWRgLCBgc291cmNlSWRgLCBhbmQgYHN5bmNWZXJzaW9uYCwgcGx1cyBib3VuZGVkIGNvcnJlbGF0aW9uIG1ldGFkYXRhLiBUaGV5IGRvIG5vdCBjb3B5IHNvdXJjZSBVUklzLCBvYmplY3Qga2V5cywgcmF3IGtub3dsZWRnZSBjb250ZW50LCBjcmVkZW50aWFscywgcHJvbXB0cywgb3IgdXNlciBQSUkuIEEgdmFsaWQgdHJpbW1lZCBwcmludGFibGUtQVNDSUkgYFgtUmVxdWVzdC1JRGAgb2YgMeKAkzEyOCBjaGFyYWN0ZXJzIGlzIHByZXNlcnZlZDsgb3RoZXJ3aXNlIFNlcnZpcSBnZW5lcmF0ZXMgYSBVVUlEIGNvcnJlbGF0aW9uIElELgoKVGhlIGRvd25ncmFkZSByZWZ1c2VzIHRvIHJlbW92ZSB0aGUgb3V0Ym94IHRhYmxlIHdoaWxlIHBlbmRpbmcgb3IgZmFpbGVkIGRlbGl2ZXJ5IG9ibGlnYXRpb25zIHJlbWFpbi4gVGhpcyBwcmV2ZW50cyByb2xsYmFjayBmcm9tIGRlbGV0aW5nIHRoZSBvbmx5IGR1cmFibGUgcmVjb3JkIG9mIHVucHVibGlzaGVkIHdvcmsuCgpSZWFsIFBvc3RncmVTUUwgaW50ZWdyYXRpb24gY292ZXJhZ2UgcHJvdmVzIFVSTC9maWxlIGhhcHB5IHBhdGhzLCBleGFjdCBldmVudCBtZXRhZGF0YSwgZGlzYWJsZWQgYW5kIHBlcm1pc3Npb24gYmVoYXZpb3IsIGNyb3NzLXRlbmFudCBub24tZGlzY2xvc3VyZSwgY29ycmVsYXRpb24gSURzLCBjb25jdXJyZW50IG1vbm90b25pYyB2ZXJzaW9uIGFsbG9jYXRpb24sIGFuZCBhdG9taWMgcm9sbGJhY2sgd2hlbiBldmVudCBzdGFnaW5nIGZhaWxzLiBUaGUgZmluYWwgaW1wbGVtZW50YXRpb24gaGVhZCBwYXNzZWQgQ0ksIFNlY3VyaXR5LCBhbmQgdGhlIEtub3dsZWRnZSBRdW90YSBJbnRlZ3JhdGlvbiB3b3JrZmxvdy4gRmluYWwgU3RhZmYgRW5naW5lZXIgcmV2aWV3IGZvdW5kIG5vIENyaXRpY2FsIG9yIEhpZ2ggaXNzdWUgaW4gdGhlIFYxLjMuMDYgc2NvcGUuCgpUaGlzIHRpY2tldCBkb2VzIG5vdCBpbXBsZW1lbnQgdGhlIG91dGJveCBwdWJsaXNoZXIsIEthZmthL1JlZHBhbmRhIHB1YmxpY2F0aW9uLCBrbm93bGVkZ2Utc3luYyBjb25zdW1lciwgY3Jhd2xlciwgcGFyc2VyLCBjaHVua2VyLCBlbWJlZGRlciwgaW5kZXhlciwgcmV0cnkgZXhlY3V0aW9uLCBvciBjb21wbGV0aW9uL2ZhaWx1cmUgdHJhbnNpdGlvbnMuIFRob3NlIGxhdGVyIHRpY2tldHMgbXVzdCBjb25zdW1lIHRoaXMgZHVyYWJsZSBvdXRib3ggYm91bmRhcnkgcmF0aGVyIHRoYW4gdXNlIGFuIGluLXByb2Nlc3MgYmFja2dyb3VuZCB0YXNrIG9yIGEgc2Vjb25kIGFkIGhvYyBxdWV1ZS4K
+          REPO_CONTEXT_APPEND_B64: CgojIyBWMS4zLjA2IGN1cnJlbnQgc3RhdGUg4oCUIHRyYW5zYWN0aW9uYWwgc291cmNlIHN5bmMgYW5kIG91dGJveAoKVGhlIEFQSSBub3cgaW1wbGVtZW50cyBgUE9TVCAvYXBpL3YxL2tub3dsZWRnZS1zb3VyY2VzL3tzb3VyY2VJZH0vc3luY2AuIEl0IHJldXNlcyB0cnVzdGVkIHdvcmtmb3JjZS90ZW5hbnQgcmVzb2x1dGlvbiBhbmQgYGtub3dsZWRnZS5zb3VyY2VzLm1hbmFnZWAsIGxvY2tzIHRoZSB0ZW5hbnQtc2NvcGVkIHNvdXJjZSByb3cgd2l0aCBQb3N0Z3JlU1FMIGBGT1IgVVBEQVRFYCwgaW5jcmVtZW50cyBgc3luY192ZXJzaW9uYCwgc2V0cyBgc3RhdHVzPXN5bmNpbmdgLCBjbGVhcnMgdGhlIHByaW9yIGVycm9yLCBwcmVzZXJ2ZXMgYGxhc3Rfc3luY2VkX2F0YCwgYW5kIGluc2VydHMgYHNlcnZpcS5rbm93bGVkZ2Uuc3luYy52MWAgaW50byBgb3V0Ym94X2V2ZW50c2AgaW4gdGhlIHNhbWUgdHJhbnNhY3Rpb24uCgpBbGVtYmljIHJldmlzaW9uIGAyMDI2MDkwMl8wMDEyYCBpbnRyb2R1Y2VzIHRoZSBnZW5lcmljIG91dGJveCBzY2hlbWEgYW5kIGl0cyBkZWxpdmVyeS9hZ2dyZWdhdGUgaW5kZXhlcy4gS25vd2xlZGdlIGV2ZW50cyBjb250YWluIG9ubHkgdGVuYW50IElELCBzb3VyY2UgSUQsIHN5bmMgdmVyc2lvbiwgYW5kIGJvdW5kZWQgY29ycmVsYXRpb24gbWV0YWRhdGEuIE1pc3NpbmcvY3Jvc3MtdGVuYW50IHNvdXJjZXMgYXJlIGluZGlzdGluZ3Vpc2hhYmxlIDQwNHMsIGRpc2FibGVkIHNvdXJjZXMgcmV0dXJuIHRoZSBmcm96ZW4gNDA5LCBhbmQgcGVybWlzc2lvbiBmYWlsdXJlIHJlbWFpbnMgNDAzLgoKUmVhbCBQb3N0Z3JlU1FMIGludGVncmF0aW9uIGNvdmVyYWdlIHByb3ZlcyBVUkwvZmlsZSBoYXBweSBwYXRocywgZXhhY3QgZHVyYWJsZSBldmVudCBtZXRhZGF0YSwgdGVuYW50IGlzb2xhdGlvbiwgY29uY3VycmVudCBtb25vdG9uaWMgdmVyc2lvbiBhbGxvY2F0aW9uLCBhbmQgcm9sbGJhY2sgd2hlbiBvdXRib3ggc3RhZ2luZyBmYWlscy4gVGhlIHB1Ymxpc2hlciwgYnJva2VyIHB1YmxpY2F0aW9uLCBzeW5jIGNvbnN1bWVyLCBjcmF3bGVyL3BhcnNlci9jaHVua2VyL2VtYmVkZGVyL2luZGV4ZXIsIHJldHJ5IGV4ZWN1dGlvbiwgYW5kIGNvbXBsZXRpb24vZmFpbHVyZSB0cmFuc2l0aW9ucyByZW1haW4gZnV0dXJlIHdvcmsuCg==
         run: |
           set -euo pipefail
-
           if [ "${GITHUB_ACTOR}" = "github-actions[bot]" ]; then
             exit 0
           fi
-
-          marker='## V1.3.06 — Transactional knowledge source sync and durable outbox'
-          if ! grep -Fq "$marker" docs/SERVIQ_BUILD_GUIDE.md; then
-            cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
-
----
-
-## V1.3.06 — Transactional knowledge source sync and durable outbox
-
-**GitHub issue:** #194  
-**Linear ticket:** OPE-312  
-**Implementation PR:** #195  
-**Architecture decision:** `docs/architecture-decisions/ADR-021-transactional-outbox-and-source-sync-command.md`
-
-### Why this ticket exists
-
-Serviq could already register knowledge sources and safely persist uploaded raw files, but it still did not have the command that turns a registered source into durable asynchronous work. A normal FastAPI background task would be unsafe for this boundary because the HTTP request could return successfully and the API process could then crash before the background task becomes durable.
-
-V1.3.06 implements the first generic PostgreSQL transactional-outbox producer and uses it for knowledge-source synchronization. The central invariant is simple: an accepted sync command must never update the knowledge source without also recording the durable event that represents the downstream work.
-
-### Public API contract
-
-The new route is:
-
-```text
-POST /api/v1/knowledge-sources/{sourceId}/sync
-```
-
-It accepts no product request body. It reuses the existing trusted workforce identity, server-resolved tenant boundary, and `knowledge.sources.manage` capability.
-
-A successful request returns HTTP 202 with the normal knowledge-source projection. The source is now `syncing`, its `syncVersion` has increased by exactly one, its prior `lastErrorCode` is cleared, and its existing `lastSyncedAt` value is preserved.
-
-A disabled source returns `409 KNOWLEDGE_SOURCE_DISABLED`. An absent source and a source owned by another tenant both return the same `404 KNOWLEDGE_SOURCE_NOT_FOUND` response so the route does not reveal cross-tenant existence. Existing permission failure remains `403 FORBIDDEN`.
-
-### Why PostgreSQL row locking is used
-
-Two administrators or automation processes can request synchronization at nearly the same time. If both requests simply read version N and then write N+1, one increment can be lost and two downstream jobs can receive the same version identity.
-
-The command therefore selects the tenant-scoped source with `SELECT ... FOR UPDATE` inside the transaction. Concurrent accepted requests serialize at that row. If a source starts at version 7, two simultaneous requests receive versions 8 and 9 rather than both receiving 8.
-
-The HTTP command is intentionally not request-idempotent. Every accepted request means “start another synchronization version.” Durable downstream identity is the outbox event ID together with the tenant/source/version tuple.
-
-### Source mutation and event persistence are one transaction
-
-Inside one PostgreSQL transaction Serviq:
-
-1. verifies the existing management capability;
-2. locks the tenant-owned source row;
-3. rejects absent/foreign or disabled sources before mutation;
-4. increments `sync_version` exactly once;
-5. sets `status = syncing`;
-6. clears `last_error_code`;
-7. preserves `last_synced_at`;
-8. updates `updated_at`;
-9. stages one outbox event;
-10. flushes and commits once.
-
-If outbox persistence fails, PostgreSQL rolls back the source mutation with it. The integration suite deliberately forces outbox staging to fail and verifies that the source remains at its original status/version/error state with no event row.
-
-### Generic outbox foundation
-
-Alembic revision `20260902_0012` creates the architecture-owned `outbox_events` table rather than a knowledge-specific queue table.
-
-The schema stores:
-
-```text
-id
-nullable tenant_id
-event_type
-schema_version
-aggregate_type
-aggregate_id
-payload
-correlation_id
-causation_id
-status
-attempts
-next_attempt_at
-published_at
-```
-
-It also creates the frozen `(status, next_attempt_at)` delivery index and `(tenant_id, aggregate_type, aggregate_id)` aggregate lookup index.
-
-The generic table keeps `tenant_id` nullable because future platform events may not belong to one tenant. Knowledge synchronization always writes the current tenant ID.
-
-The downgrade refuses to drop the table while any pending or failed delivery obligation remains. That prevents a rollback from silently deleting the only durable record of work that still needs publication or reconciliation.
-
-### Knowledge sync event
-
-Every accepted command stages exactly one event with this contract:
-
-```text
-event_type      = serviq.knowledge.sync.v1
-schema_version  = 1
-aggregate_type  = knowledge_source
-aggregate_id    = <source UUID>
-status          = pending
-attempts        = 0
-next_attempt_at = database now()
-causation_id    = null
-```
-
-The payload contains only:
-
-```text
-tenantId
-sourceId
-syncVersion
-```
-
-It deliberately excludes the source URI, object-storage key, uploaded content, credentials, prompts, user PII, and other unnecessary data. Downstream workers can load tenant-scoped source state using the identifiers rather than copying sensitive source information into the event bus contract.
-
-### Correlation IDs
-
-A valid inbound `X-Request-ID` is preserved as the durable event correlation ID only when its trimmed value is 1 to 128 printable ASCII characters with no spaces or control characters. Invalid or missing values are replaced with a generated UUID string.
-
-This keeps durable correlation data bounded and safe for later logs/traces without trusting arbitrary client text.
-
-### Real PostgreSQL validation
-
-The new integration suite covers both URL-backed and file-backed knowledge sources and verifies:
-
-- HTTP 202 success and the returned `syncing` projection;
-- exact source version/state mutation;
-- exact event type, aggregate identity, schema version, payload, status, attempts, timestamps, and correlation behavior;
-- disabled-source rejection with no mutation/event;
-- unknown-source 404;
-- cross-tenant 404 indistinguishable from unknown;
-- permission failure;
-- generated correlation IDs when no valid request ID exists;
-- concurrent requests allocating distinct monotonic versions/events;
-- full transaction rollback when event staging fails.
-
-The database integration contract was also updated to include `outbox_events` in the expected migrated schema.
-
-### Validation and review evidence
-
-The final implementation head passed the permanent repository CI, Security, and Knowledge Quota Integration workflows. CI includes the real PostgreSQL migration/integration path, while Security includes the repository's dependency, secret, filesystem/configuration, and CodeQL gates.
-
-The final Staff Engineer review found no Critical or High issue within the V1.3.06 scope. The design uses the existing capability and tenant boundaries, serializes version allocation in PostgreSQL, keeps event persistence atomic with source mutation, avoids sensitive event payloads, and adds no new third-party dependency or in-process background task.
-
-### What V1.3.06 intentionally does not implement
-
-This ticket creates the producer-side durable event boundary only. It does not add:
-
-- an outbox publisher;
-- Kafka/Redpanda publication;
-- a knowledge-sync consumer;
-- crawler or sitemap traversal;
-- parsing or chunking;
-- embedding or indexing;
-- synchronization completion/failure transitions;
-- retry execution or dead-letter processing;
-- a new service;
-- a FastAPI background task.
-
-Those later tickets must consume the generic outbox contract rather than bypassing it with an ad hoc asynchronous path.
-
-### What this improves
-
-Before V1.3.06, Serviq could persist knowledge metadata but could not safely acknowledge “start synchronization” as durable asynchronous work. After this ticket, an accepted request has one atomic database truth: the source is on a new sync version and a matching pending domain event exists, or neither change exists.
-
-That foundation is important for the later worker pipeline because API-process failure after HTTP acknowledgement can no longer erase an accepted sync command.
-EOF
+          if ! grep -Fq '## V1.3.06 — Transactional knowledge source sync and durable outbox' docs/SERVIQ_BUILD_GUIDE.md; then
+            printf '%s' "$BUILD_GUIDE_APPEND_B64" | base64 --decode >> docs/SERVIQ_BUILD_GUIDE.md
           fi
-
-          context_marker='## V1.3.06 current state — transactional source sync and outbox'
-          if ! grep -Fq "$context_marker" docs/repo_context.md; then
-            cat >> docs/repo_context.md <<'EOF'
-
-## V1.3.06 current state — transactional source sync and outbox
-
-The API now implements `POST /api/v1/knowledge-sources/{sourceId}/sync`. The route reuses trusted workforce/tenant resolution and `knowledge.sources.manage`, locks the tenant-scoped source row with PostgreSQL `FOR UPDATE`, increments `sync_version`, sets `status=syncing`, clears the prior error, preserves `last_synced_at`, and inserts `serviq.knowledge.sync.v1` into the generic `outbox_events` table in the same transaction.
-
-Alembic revision `20260902_0012` introduces the architecture-owned transactional outbox schema and its delivery/aggregate indexes. Knowledge events contain only tenant ID, source ID, and sync version. Missing/cross-tenant sources are indistinguishable 404s, disabled sources return the frozen 409, and permission failure remains 403.
-
-Real PostgreSQL integration coverage proves URL/file happy paths, exact durable event metadata, tenant isolation, disabled/permission behavior, bounded correlation IDs, concurrent monotonic version allocation, and rollback when outbox staging fails. The publisher, broker publication, sync consumer, crawler/parser/chunker/embedder/indexer, retry execution, and completion/failure transitions remain future work.
-EOF
+          if ! grep -Fq '## V1.3.06 current state — transactional source sync and outbox' docs/repo_context.md; then
+            printf '%s' "$REPO_CONTEXT_APPEND_B64" | base64 --decode >> docs/repo_context.md
           fi
-
           rm .github/workflows/ope312-doc-finalizer.yml
-
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/SERVIQ_BUILD_GUIDE.md docs/repo_context.md .github/workflows/ope312-doc-finalizer.yml
-
           if git diff --cached --quiet; then
             exit 0
           fi
-
           git commit -m 'docs: finalize OPE-312 implementation record'
           git push origin HEAD:openclawneutron/ope-312-v1306-implement-source-sync-command-and-durable-outbox-event

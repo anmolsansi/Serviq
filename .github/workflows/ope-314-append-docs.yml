@@ -1,0 +1,76 @@
+name: OPE-314 Append Documentation
+
+on:
+  push:
+    branches:
+      - openclawneutron/ope-314-v1306a-publish-transactional-outbox-events-to-kafka
+    paths:
+      - .github/ope-314-docs-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  append:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: openclawneutron/ope-314-v1306a-publish-transactional-outbox-events-to-kafka
+
+      - name: Append cumulative documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -q '^## OPE-314 — Transactional outbox Kafka publication$' docs/SERVIQ_BUILD_GUIDE.md; then
+            cat >> docs/SERVIQ_BUILD_GUIDE.md <<'EOF'
+
+## OPE-314 — Transactional outbox Kafka publication
+
+V1.3.06A closes the durable-delivery gap left intentionally after source-sync command persistence. PostgreSQL `outbox_events` remains the source of truth, while the worker now publishes due pending rows to the Kafka-compatible broker with explicit **at-least-once** semantics.
+
+### Runtime boundary
+
+The worker now uses the same SQLAlchemy 2 + Psycopg 3 async database pattern already frozen for the API. `DATABASE_URL` remains unchanged externally and normal `postgresql://` values are adapted internally to `postgresql+psycopg://`. The worker also owns a small Kafka adapter around `confluent-kafka`; feature jobs depend on the `EventPublisher` protocol rather than the SDK.
+
+For every due row, the publisher uses PostgreSQL `FOR UPDATE SKIP LOCKED`, serializes the exact ADR-022 envelope, and publishes to a topic equal to `event_type` with `aggregate_id` as the Kafka key. The row becomes `published` only after broker delivery acknowledgement. A crash after broker acknowledgement but before the PostgreSQL commit can duplicate the record, so consumer idempotency remains mandatory.
+
+### Retry and failure behavior
+
+Broker failures keep the row pending, increment `attempts`, and schedule deterministic backoff of 5s, 10s, 20s, 40s, 80s, 160s, then 300s capped. Contract/serialization failures are terminal and mark the row `failed`. Raw event payloads and broker error bodies are never used as logs.
+
+The publisher loop sleeps for one second only when no due work exists. Shutdown closes the producer and disposes the worker database engine. No database migration or public API change is introduced.
+
+### Validation
+
+Focused unit coverage proves deterministic envelope serialization and retry timing. Real PostgreSQL integration coverage proves publish-state transitions, retry scheduling, terminal malformed-payload handling, and `SKIP LOCKED` behavior. A dedicated Redpanda integration test proves the actual Kafka adapter preserves topic, key, and value. The branch keeps the worker dependency lock frozen and adds a dedicated PR integration workflow for the PostgreSQL + Redpanda boundary.
+
+### Rollback
+
+Rollback stops the worker publisher and reverts the worker runtime change. Unpublished rows stay durable in PostgreSQL for later replay. Because V1.3.06A adds no schema, rollback requires no data migration or destructive reconciliation.
+EOF
+          fi
+
+          if ! grep -q '^## OPE-314 — Outbox publisher runtime$' docs/repo_context.md; then
+            cat >> docs/repo_context.md <<'EOF'
+
+## OPE-314 — Outbox publisher runtime
+
+The worker now owns the generic PostgreSQL-to-Kafka publication boundary for `outbox_events`. Publication is at-least-once, topics equal `event_type`, aggregate IDs are partition keys, broker acknowledgement precedes the `published` database transition, and duplicate delivery is intentionally handled by downstream idempotency contracts. Publisher broker failures use bounded persistent backoff in the existing outbox fields; malformed durable events become `failed`. ADR-022 is the architecture source of truth. Real PostgreSQL and Redpanda PR integration coverage exists for this runtime boundary.
+EOF
+          fi
+
+      - name: Remove temporary documentation trigger and workflow
+        run: git rm .github/ope-314-docs-trigger.txt .github/workflows/ope-314-append-docs.yml
+
+      - name: Commit documentation reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/SERVIQ_BUILD_GUIDE.md docs/repo_context.md
+          git commit -m "docs(worker): reconcile OPE-314 build guide [22/24] (#199)"
+          git push origin HEAD:${GITHUB_REF_NAME}

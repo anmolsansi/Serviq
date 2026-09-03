@@ -31,6 +31,7 @@ _ATTEMPT_HEADER = "serviq-attempt"
 _NOT_BEFORE_HEADER = "serviq-not-before-ms"
 _ERROR_HEADER = "serviq-error-code"
 _RETRY_DELAYS_SECONDS = (30, 300, 1800)
+_POLL_TIMEOUT_SECONDS = 0.1
 _INVALID_EVENT_CODE = "KNOWLEDGE_SYNC_EVENT_INVALID"
 _DATABASE_ERROR_CODE = "KNOWLEDGE_SYNC_DATABASE_UNAVAILABLE"
 
@@ -84,9 +85,14 @@ class KnowledgeSyncConsumer:
         self._paused_until: dict[tuple[str, int], int] = {}
 
     async def run_forever(self) -> None:
+        """Poll without crossing threads so consumer shutdown cannot race librdkafka."""
+
         while True:
             self._resume_due_partitions()
-            message: Any = await asyncio.to_thread(self._consumer.poll, 1.0)
+            message: Any = self._consumer.poll(_POLL_TIMEOUT_SECONDS)
+            # Poll is intentionally short and synchronous. Yield immediately so the
+            # outbox publisher coroutine is not starved by an idle consumer.
+            await asyncio.sleep(0)
             if message is None or message.error() is not None:
                 continue
             await self._handle_message(message)
@@ -135,7 +141,7 @@ class KnowledgeSyncConsumer:
             result = KnowledgeSyncResult.failure(_DATABASE_ERROR_CODE, retryable=True)
 
         if result.completed:
-            await self._commit(message)
+            self._commit(message)
             return
 
         error_code = result.error_code or _INVALID_EVENT_CODE
@@ -173,7 +179,7 @@ class KnowledgeSyncConsumer:
             )
         except BrokerUnavailableError:
             return
-        await self._commit(message)
+        self._commit(message)
 
     async def _publish_dlq(
         self,
@@ -193,14 +199,10 @@ class KnowledgeSyncConsumer:
             )
         except BrokerUnavailableError:
             return
-        await self._commit(message)
+        self._commit(message)
 
-    async def _commit(self, message: Any) -> None:
-        await asyncio.to_thread(
-            self._consumer.commit,
-            message=message,
-            asynchronous=False,
-        )
+    def _commit(self, message: Any) -> None:
+        self._consumer.commit(message=message, asynchronous=False)
 
     def _resume_due_partitions(self) -> None:
         now_ms = int(time.time() * 1000)

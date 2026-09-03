@@ -1,0 +1,125 @@
+name: Knowledge Sync Integration
+
+on:
+  pull_request:
+    paths:
+      - services/worker/**
+      - services/api/alembic/**
+      - infra/docker/compose.yml
+      - .github/workflows/knowledge-sync-integration.yml
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-redpanda-s3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg18-bookworm
+        env:
+          POSTGRES_DB: serviq
+          POSTGRES_USER: serviq
+          POSTGRES_PASSWORD: serviq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U serviq -d serviq"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SERVIQ_DATABASE_INTEGRATION: "1"
+      SERVIQ_OBJECT_STORAGE_INTEGRATION: "1"
+      SERVIQ_KNOWLEDGE_SYNC_INTEGRATION: "1"
+      SERVIQ_ENV: test
+      SERVIQ_PUBLIC_BASE_URL: http://localhost:3000
+      SERVIQ_API_BASE_URL: http://localhost:8000
+      DATABASE_URL: postgresql://serviq:serviq@localhost:5432/serviq
+      VALKEY_URL: valkey://localhost:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+      OBJECT_STORAGE_ENDPOINT: http://localhost:8333
+      OBJECT_STORAGE_BUCKET: serviq-local-objects
+      OBJECT_STORAGE_ACCESS_KEY: serviq-local
+      OBJECT_STORAGE_SECRET_KEY: serviq-local-dev-only
+      OIDC_ISSUER_URL: http://localhost:8080/realms/serviq
+      OIDC_CLIENT_ID: serviq-test
+      OIDC_CLIENT_SECRET: test-placeholder
+      OIDC_REDIRECT_URI: http://localhost:3000/auth/callback
+      SESSION_SECRET: test-placeholder
+      LLM_GATEWAY_URL: http://localhost:8100
+      LLM_GATEWAY_INTERNAL_TOKEN: test-placeholder
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+      LOG_LEVEL: INFO
+      SERVIQ_LOCAL_WEBHOOK_ALLOWLIST: ""
+      KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD: test-placeholder
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14.6'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/*/uv.lock
+
+      - name: Install frozen API and worker environments
+        run: |
+          cd services/api && uv sync --frozen
+          cd ../worker && uv sync --frozen
+
+      - name: Upgrade database to migration head
+        run: cd services/api && uv run alembic upgrade head
+
+      - name: Start S3-compatible storage
+        run: docker compose -f infra/docker/compose.yml up -d object-storage
+
+      - name: Wait for S3-compatible storage
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --silent --show-error --output /dev/null http://localhost:8333/; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f infra/docker/compose.yml logs object-storage
+          exit 1
+
+      - name: Start Redpanda
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name serviq-redpanda -p 9092:9092 \
+            docker.redpanda.com/redpandadata/redpanda:v26.2.1 \
+            redpanda start \
+            --kafka-addr 0.0.0.0:9092 \
+            --advertise-kafka-addr 127.0.0.1:9092 \
+            --mode dev-container --smp 1
+          for attempt in $(seq 1 30); do
+            if docker exec serviq-redpanda rpk cluster info >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs serviq-redpanda
+          exit 1
+
+      - name: Run knowledge sync integration suite
+        run: |
+          cd services/worker
+          uv run pytest \
+            tests/integration/test_knowledge_sync_postgres.py \
+            tests/integration/test_knowledge_sync_object_storage.py \
+            tests/integration/test_knowledge_sync_end_to_end.py
+
+      - name: Stop integration infrastructure
+        if: always()
+        run: |
+          docker rm --force serviq-redpanda || true
+          docker compose -f infra/docker/compose.yml down --volumes

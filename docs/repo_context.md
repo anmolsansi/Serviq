@@ -275,3 +275,7 @@ The API now implements `POST /api/v1/knowledge-sources/{sourceId}/sync`. It reus
 Alembic revision `20260902_0012` introduces the generic outbox schema and its delivery/aggregate indexes. Knowledge events contain only tenant ID, source ID, sync version, and bounded correlation metadata. Missing/cross-tenant sources are indistinguishable 404s, disabled sources return the frozen 409, and permission failure remains 403.
 
 Real PostgreSQL integration coverage proves URL/file happy paths, exact durable event metadata, tenant isolation, concurrent monotonic version allocation, and rollback when outbox staging fails. The publisher, broker publication, sync consumer, crawler/parser/chunker/embedder/indexer, retry execution, and completion/failure transitions remain future work.
+
+## OPE-314 — Outbox publisher runtime
+
+The worker now owns the generic PostgreSQL-to-Kafka publication boundary for `outbox_events`. Publication is at-least-once, topics equal `event_type`, aggregate IDs are partition keys, broker acknowledgement precedes the `published` database transition, and duplicate delivery is intentionally handled by downstream idempotency contracts. Publisher broker failures use bounded persistent backoff in the existing outbox fields; malformed durable events become `failed`. ADR-022 is the architecture source of truth. Real PostgreSQL and Redpanda PR integration coverage exists for this runtime boundary.

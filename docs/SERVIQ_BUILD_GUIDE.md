@@ -6473,3 +6473,27 @@ The downgrade refuses to remove the outbox table while pending or failed deliver
 Real PostgreSQL integration coverage proves URL/file happy paths, exact event metadata, disabled and permission behavior, cross-tenant non-disclosure, correlation IDs, concurrent monotonic version allocation, and atomic rollback when event staging fails. The final implementation head passed CI, Security, and the Knowledge Quota Integration workflow. Final Staff Engineer review found no Critical or High issue in the V1.3.06 scope.
 
 This ticket does not implement the outbox publisher, Kafka/Redpanda publication, knowledge-sync consumer, crawler, parser, chunker, embedder, indexer, retry execution, or completion/failure transitions. Those later tickets must consume this durable outbox boundary rather than use an in-process background task or a second ad hoc queue.
+
+## OPE-314 — Transactional outbox Kafka publication
+
+V1.3.06A closes the durable-delivery gap left intentionally after source-sync command persistence. PostgreSQL `outbox_events` remains the source of truth, while the worker now publishes due pending rows to the Kafka-compatible broker with explicit **at-least-once** semantics.
+
+### Runtime boundary
+
+The worker now uses the same SQLAlchemy 2 + Psycopg 3 async database pattern already frozen for the API. `DATABASE_URL` remains unchanged externally and normal `postgresql://` values are adapted internally to `postgresql+psycopg://`. The worker also owns a small Kafka adapter around `confluent-kafka`; feature jobs depend on the `EventPublisher` protocol rather than the SDK.
+
+For every due row, the publisher uses PostgreSQL `FOR UPDATE SKIP LOCKED`, serializes the exact ADR-022 envelope, and publishes to a topic equal to `event_type` with `aggregate_id` as the Kafka key. The row becomes `published` only after broker delivery acknowledgement. A crash after broker acknowledgement but before the PostgreSQL commit can duplicate the record, so consumer idempotency remains mandatory.
+
+### Retry and failure behavior
+
+Broker failures keep the row pending, increment `attempts`, and schedule deterministic backoff of 5s, 10s, 20s, 40s, 80s, 160s, then 300s capped. Contract/serialization failures are terminal and mark the row `failed`. Raw event payloads and broker error bodies are never used as logs.
+
+The publisher loop sleeps for one second only when no due work exists. Shutdown closes the producer and disposes the worker database engine. No database migration or public API change is introduced.
+
+### Validation
+
+Focused unit coverage proves deterministic envelope serialization and retry timing. Real PostgreSQL integration coverage proves publish-state transitions, retry scheduling, terminal malformed-payload handling, and `SKIP LOCKED` behavior. A dedicated Redpanda integration test proves the actual Kafka adapter preserves topic, key, and value. The branch keeps the worker dependency lock frozen and adds a dedicated PR integration workflow for the PostgreSQL + Redpanda boundary.
+
+### Rollback
+
+Rollback stops the worker publisher and reverts the worker runtime change. Unpublished rows stay durable in PostgreSQL for later replay. Because V1.3.06A adds no schema, rollback requires no data migration or destructive reconciliation.

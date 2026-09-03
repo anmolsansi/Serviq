@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
 from app.core.object_storage import S3RawObjectStorage
+from app.core.public_knowledge_fetch import PublicKnowledgeFetchResult
 from app.jobs.knowledge_sync import (
     KnowledgeSyncCommand,
     KnowledgeSyncErrorCode,
@@ -40,11 +41,18 @@ class MemoryStorage:
 
 async def _create_fixture(
     session_factory: async_sessionmaker[AsyncSession],
-) -> tuple[UUID, UUID, UUID, str]:
+    *,
+    source_type: str = "text",
+    source_uri: str | None = None,
+) -> tuple[UUID, UUID, UUID, str | None]:
     tenant_id = uuid4()
     user_id = uuid4()
     source_id = uuid4()
-    object_key = f"tenants/{tenant_id}/knowledge/{source_id}/raw/{uuid4()}"
+    object_key = (
+        None
+        if source_type == "url"
+        else f"tenants/{tenant_id}/knowledge/{source_id}/raw/{uuid4()}"
+    )
     async with session_factory() as session, session.begin():
         await session.execute(
             text(
@@ -79,7 +87,7 @@ async def _create_fixture(
                     id, tenant_id, source_type, name, source_uri, object_key,
                     access_scope, status, sync_version, created_by
                 ) VALUES (
-                    :id, :tenant_id, 'text', 'Runbook', NULL, :object_key,
+                    :id, :tenant_id, :source_type, 'Runbook', :source_uri, :object_key,
                     'internal', 'syncing', 1, :created_by
                 )
                 """
@@ -87,6 +95,8 @@ async def _create_fixture(
             {
                 "id": source_id,
                 "tenant_id": tenant_id,
+                "source_type": source_type,
+                "source_uri": source_uri,
                 "object_key": object_key,
                 "created_by": user_id,
             },
@@ -128,6 +138,7 @@ def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
         tenant_id, user_id, source_id, object_key = await _create_fixture(session_factory)
+        assert object_key is not None
         memory = MemoryStorage({object_key: b"alpha knowledge"})
         storage = cast(S3RawObjectStorage, memory)
         command = KnowledgeSyncCommand(
@@ -285,6 +296,96 @@ def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
             )
             assert missing.completed is False
             assert missing.error_code == KnowledgeSyncErrorCode.SOURCE_NOT_FOUND
+        finally:
+            await _cleanup(session_factory, tenant_id, user_id, source_id)
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_url_sync_uses_exact_host_and_stores_deterministic_raw_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_bytes = b"approved public knowledge"
+    source_uri = "https://docs.example.com/start"
+    final_url = "https://docs.example.com/guide"
+
+    def fake_fetch(
+        url: str,
+        policy: object,
+    ) -> PublicKnowledgeFetchResult:
+        allowed_hosts = getattr(policy, "allowed_hosts", frozenset())
+        assert url == source_uri
+        assert allowed_hosts == frozenset({"docs.example.com"})
+        return PublicKnowledgeFetchResult(
+            final_url=final_url,
+            status_code=200,
+            content_type="text/html",
+            body=raw_bytes,
+        )
+
+    monkeypatch.setattr("app.jobs.knowledge_sync.fetch_public_knowledge", fake_fetch)
+
+    async def scenario() -> None:
+        engine = create_database_engine(load_settings())
+        session_factory = create_database_session_factory(engine)
+        tenant_id, user_id, source_id, object_key = await _create_fixture(
+            session_factory,
+            source_type="url",
+            source_uri=source_uri,
+        )
+        assert object_key is None
+        memory = MemoryStorage({})
+        storage = cast(S3RawObjectStorage, memory)
+        command = KnowledgeSyncCommand(
+            event_id=uuid4(),
+            tenant_id=tenant_id,
+            source_id=source_id,
+            sync_version=1,
+            correlation_id="url-sync",
+        )
+        expected_key = f"tenants/{tenant_id}/knowledge/{source_id}/sync/1/raw"
+        try:
+            result = await run_knowledge_sync(session_factory, storage, command)
+            assert result.completed is True
+            assert memory.writes == [(expected_key, raw_bytes, "text/html")]
+
+            async with session_factory() as session:
+                document = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT id, canonical_uri, content_hash, document_version
+                            FROM knowledge_documents
+                            WHERE tenant_id=:tenant_id AND source_id=:source_id
+                            """
+                        ),
+                        {"tenant_id": tenant_id, "source_id": source_id},
+                    )
+                ).mappings().one()
+                parse_payload = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT payload
+                            FROM outbox_events
+                            WHERE tenant_id=:tenant_id
+                              AND event_type='serviq.knowledge.parse.v1'
+                            """
+                        ),
+                        {"tenant_id": tenant_id},
+                    )
+                ).scalar_one()
+
+            expected_hash = hashlib.sha256(raw_bytes).hexdigest()
+            assert document["canonical_uri"] == final_url
+            assert document["content_hash"] == expected_hash
+            assert document["document_version"] == 1
+            assert parse_payload["documentId"] == str(document["id"])
+            assert parse_payload["sourceType"] == "url"
+            assert parse_payload["rawObjectKey"] == expected_key
+            assert parse_payload["canonicalUri"] == final_url
+            assert parse_payload["contentHash"] == expected_hash
         finally:
             await _cleanup(session_factory, tenant_id, user_id, source_id)
             await engine.dispose()

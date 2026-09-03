@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.broker import BrokerUnavailableError
 from app.core.config import load_settings
@@ -34,14 +35,12 @@ class RecordingPublisher:
 
 
 async def _insert_event(
-    session_factory: object,
+    session_factory: async_sessionmaker[AsyncSession],
     *,
     event_id: UUID,
     payload_json: str = '{"syncVersion": 1}',
 ) -> None:
-    # The concrete async sessionmaker type is deliberately kept at the call site by
-    # the repository's database factory. Runtime use below proves the exact boundary.
-    async with session_factory() as session, session.begin():  # type: ignore[operator]
+    async with session_factory() as session, session.begin():
         await session.execute(
             text(
                 """
@@ -64,8 +63,10 @@ async def _insert_event(
         )
 
 
-async def _delete_event(session_factory: object, event_id: UUID) -> None:
-    async with session_factory() as session, session.begin():  # type: ignore[operator]
+async def _delete_event(
+    session_factory: async_sessionmaker[AsyncSession], event_id: UUID
+) -> None:
+    async with session_factory() as session, session.begin():
         await session.execute(text("DELETE FROM outbox_events WHERE id=:id"), {"id": event_id})
 
 
@@ -155,7 +156,6 @@ def test_success_retry_terminal_and_skip_locked_contracts() -> None:
                 assert competing.records == []
                 await transaction.rollback()
 
-            # Once the competing lock is released, the same durable row is claimable.
             unlocked = RecordingPublisher()
             async with session_factory() as session:
                 processed = await publish_due_batch(session, unlocked, batch_size=1)

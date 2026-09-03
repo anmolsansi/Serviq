@@ -92,7 +92,7 @@ def _consumer_with_fakes(
     kafka_consumer: _FakeConsumer,
     publisher: _RecordingPublisher,
 ) -> KnowledgeSyncConsumer:
-    consumer = cast(KnowledgeSyncConsumer, object.__new__(KnowledgeSyncConsumer))
+    consumer = object.__new__(KnowledgeSyncConsumer)
     consumer._consumer = kafka_consumer
     consumer._publisher = cast(KafkaEventPublisher, publisher)
     consumer._paused_until = {}

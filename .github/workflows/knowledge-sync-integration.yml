@@ -113,10 +113,7 @@ jobs:
       - name: Run knowledge sync integration suite
         run: |
           cd services/worker
-          uv run pytest \
-            tests/integration/test_knowledge_sync_postgres.py \
-            tests/integration/test_knowledge_sync_object_storage.py \
-            tests/integration/test_knowledge_sync_end_to_end.py
+          uv run pytest tests/integration/test_knowledge_sync_*.py
 
       - name: Stop integration infrastructure
         if: always()

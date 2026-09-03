@@ -11,6 +11,7 @@ import pytest
 from app.consumers.knowledge_sync import (
     DLQ_TOPIC,
     RETRY_TOPIC,
+    SYNC_TOPIC,
     KnowledgeSyncConsumer,
     _decode_command,
     retry_delay_seconds,
@@ -21,10 +22,18 @@ from app.core.broker import BrokerUnavailableError, KafkaEventPublisher
 class _FakeConsumer:
     def __init__(self) -> None:
         self.commits: list[object] = []
+        self.seeks: list[Any] = []
+        self.pauses: list[list[Any]] = []
 
     def commit(self, *, message: object, asynchronous: bool) -> None:
         assert asynchronous is False
         self.commits.append(message)
+
+    def seek(self, partition: Any) -> None:
+        self.seeks.append(partition)
+
+    def pause(self, partitions: list[Any]) -> None:
+        self.pauses.append(partitions)
 
 
 class _RecordingPublisher:
@@ -46,7 +55,14 @@ class _RecordingPublisher:
 
 
 class _Message:
-    pass
+    def topic(self) -> str:
+        return SYNC_TOPIC
+
+    def partition(self) -> int:
+        return 2
+
+    def offset(self) -> int:
+        return 17
 
 
 def _event_bytes() -> tuple[bytes, bytes]:
@@ -79,6 +95,7 @@ def _consumer_with_fakes(
     consumer = cast(KnowledgeSyncConsumer, object.__new__(KnowledgeSyncConsumer))
     consumer._consumer = kafka_consumer
     consumer._publisher = cast(KafkaEventPublisher, publisher)
+    consumer._paused_until = {}
     return consumer
 
 
@@ -120,7 +137,7 @@ def test_malformed_event_fails_closed() -> None:
     assert _decode_command(b"source", b"not-json") is None
 
 
-def test_retry_publish_failure_does_not_commit_original_offset() -> None:
+def test_retry_publish_failure_does_not_commit_and_rewinds_partition() -> None:
     async def scenario() -> None:
         kafka_consumer = _FakeConsumer()
         publisher = _RecordingPublisher(fail=True)
@@ -131,6 +148,9 @@ def test_retry_publish_failure_does_not_commit_original_offset() -> None:
 
         assert kafka_consumer.commits == []
         assert publisher.records == []
+        assert len(kafka_consumer.seeks) == 1
+        assert len(kafka_consumer.pauses) == 1
+        assert (SYNC_TOPIC, 2) in consumer._paused_until
 
     asyncio.run(scenario())
 
@@ -145,6 +165,7 @@ def test_successful_retry_publish_commits_with_exact_headers() -> None:
         await consumer._publish_retry(message, b"source", b"event", 2)
 
         assert kafka_consumer.commits == [message]
+        assert kafka_consumer.seeks == []
         assert len(publisher.records) == 1
         topic, key, value, headers = publisher.records[0]
         assert topic == RETRY_TOPIC
@@ -157,7 +178,7 @@ def test_successful_retry_publish_commits_with_exact_headers() -> None:
     asyncio.run(scenario())
 
 
-def test_dlq_publish_failure_does_not_commit_original_offset() -> None:
+def test_dlq_publish_failure_does_not_commit_and_rewinds_partition() -> None:
     async def scenario() -> None:
         kafka_consumer = _FakeConsumer()
         publisher = _RecordingPublisher(fail=True)
@@ -172,6 +193,8 @@ def test_dlq_publish_failure_does_not_commit_original_offset() -> None:
         )
 
         assert kafka_consumer.commits == []
+        assert len(kafka_consumer.seeks) == 1
+        assert len(kafka_consumer.pauses) == 1
 
     asyncio.run(scenario())
 
@@ -191,6 +214,7 @@ def test_successful_dlq_publish_commits_safe_error_header() -> None:
         )
 
         assert kafka_consumer.commits == [message]
+        assert kafka_consumer.seeks == []
         assert publisher.records == [
             (
                 DLQ_TOPIC,

@@ -191,6 +191,12 @@ async def run_knowledge_sync(
             retryable=False,
         )
 
+    # A Kafka duplicate after a successful database commit must not touch the
+    # remote source again. Otherwise mutable URL content could turn a valid
+    # at-least-once replay into a false content-mismatch failure.
+    if await _completed_handoff_exists(session_factory, command):
+        return KnowledgeSyncResult.no_op()
+
     fetched = await _fetch_content(storage, command, source)
     if isinstance(fetched, KnowledgeSyncResult):
         return fetched
@@ -256,6 +262,36 @@ async def _load_source(
         )
         row = result.mappings().one_or_none()
     return None if row is None else _snapshot_from_row(row)
+
+
+async def _completed_handoff_exists(
+    session_factory: async_sessionmaker[AsyncSession],
+    command: KnowledgeSyncCommand,
+) -> bool:
+    """Return true only when document and parser obligation both committed."""
+
+    async with session_factory() as session:
+        document_result = await session.execute(
+            _DOCUMENT_BY_VERSION,
+            {
+                "tenant_id": command.tenant_id,
+                "source_id": command.source_id,
+                "document_version": command.sync_version,
+            },
+        )
+        document = document_result.mappings().one_or_none()
+        if document is None:
+            return False
+        document_id = _required_uuid(document.get("id"))
+        event_result = await session.execute(
+            _PARSE_EVENT_EXISTS,
+            {
+                "tenant_id": command.tenant_id,
+                "event_type": PARSE_EVENT_TYPE,
+                "aggregate_id": str(document_id),
+            },
+        )
+        return event_result.scalar_one_or_none() is not None
 
 
 async def _preflight_replay_mismatch(

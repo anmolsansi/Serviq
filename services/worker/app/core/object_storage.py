@@ -25,6 +25,14 @@ class ObjectNotFoundError(ObjectStorageError):
     """Safe missing-object failure."""
 
 
+class RawObjectStorage(Protocol):
+    """Minimal raw-object boundary consumed by knowledge jobs."""
+
+    async def put_bytes(self, key: str, data: bytes, *, content_type: str) -> None: ...
+
+    async def get_bytes(self, key: str) -> bytes: ...
+
+
 class _S3Client(Protocol):
     def put_object(self, **kwargs: Any) -> dict[str, Any]: ...
 

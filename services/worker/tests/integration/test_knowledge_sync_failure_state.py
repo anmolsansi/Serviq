@@ -38,11 +38,15 @@ async def _seed_source(
     *,
     source_type: str,
     source_uri: str | None,
-    object_key: str | None,
 ) -> tuple[UUID, UUID, UUID]:
     tenant_id = uuid4()
     user_id = uuid4()
     source_id = uuid4()
+    object_key = (
+        f"tenants/{tenant_id}/knowledge/{source_id}/raw/{uuid4()}"
+        if source_type in {"pdf", "markdown", "text"}
+        else None
+    )
     async with session_factory() as session, session.begin():
         await session.execute(
             text(
@@ -129,7 +133,6 @@ def test_sitemap_is_terminal_without_document_or_object_access() -> None:
             session_factory,
             source_type="sitemap",
             source_uri="https://docs.example.com/sitemap.xml",
-            object_key=None,
         )
         storage = cast(S3RawObjectStorage, _EmptyStorage())
         command = KnowledgeSyncCommand(
@@ -167,18 +170,11 @@ def test_failure_state_only_updates_matching_current_version() -> None:
     async def scenario() -> None:
         engine = create_database_engine(load_settings())
         session_factory = create_database_session_factory(engine)
-        tenant_id = uuid4()
-        source_id = uuid4()
-        object_key = f"tenants/{tenant_id}/knowledge/{source_id}/raw/{uuid4()}"
-        # Seed with the helper's generated IDs, then align the object key with its source.
-        seeded_tenant_id, user_id, seeded_source_id = await _seed_source(
+        tenant_id, user_id, source_id = await _seed_source(
             session_factory,
             source_type="text",
             source_uri=None,
-            object_key=object_key,
         )
-        tenant_id = seeded_tenant_id
-        source_id = seeded_source_id
         old_command = KnowledgeSyncCommand(
             event_id=uuid4(),
             tenant_id=tenant_id,

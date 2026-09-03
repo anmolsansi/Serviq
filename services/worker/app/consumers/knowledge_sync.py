@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
@@ -88,27 +87,37 @@ class KnowledgeSyncConsumer:
         while True:
             self._resume_due_partitions()
             message: Any = await asyncio.to_thread(self._consumer.poll, 1.0)
-            if message is None:
-                continue
-            if message.error() is not None:
+            if message is None or message.error() is not None:
                 continue
             await self._handle_message(message)
 
     async def _handle_message(self, message: Any) -> None:
         headers = _headers_dict(message.headers())
         attempt = _parse_nonnegative_ascii_int(headers.get(_ATTEMPT_HEADER), default=0)
-        not_before_ms = _parse_nonnegative_ascii_int(headers.get(_NOT_BEFORE_HEADER), default=0)
+        not_before_ms = _parse_nonnegative_ascii_int(
+            headers.get(_NOT_BEFORE_HEADER),
+            default=0,
+        )
         now_ms = int(time.time() * 1000)
         if message.topic() == RETRY_TOPIC and not_before_ms > now_ms:
-            partition = confluent_kafka.TopicPartition(message.topic(), message.partition())
-            self._consumer.pause([partition])
+            partition = confluent_kafka.TopicPartition(
+                message.topic(),
+                message.partition(),
+                message.offset(),
+            )
+            self._consumer.seek(partition)
+            self._consumer.pause(
+                [confluent_kafka.TopicPartition(message.topic(), message.partition())]
+            )
             self._paused_until[(message.topic(), message.partition())] = not_before_ms
             return
 
         raw_key = message.key()
         raw_value = message.value()
         if not isinstance(raw_key, bytes) or not isinstance(raw_value, bytes):
-            await self._publish_dlq(message, raw_key or b"", raw_value or b"", _INVALID_EVENT_CODE)
+            safe_key = raw_key if isinstance(raw_key, bytes) else b""
+            safe_value = raw_value if isinstance(raw_value, bytes) else b""
+            await self._publish_dlq(message, safe_key, safe_value, _INVALID_EVENT_CODE)
             return
 
         command = _decode_command(raw_key, raw_value)
@@ -139,8 +148,6 @@ class KnowledgeSyncConsumer:
         except SQLAlchemyError:
             if attempt < len(_RETRY_DELAYS_SECONDS):
                 await self._publish_retry(message, raw_key, raw_value, attempt + 1)
-                return
-            # The record remains uncommitted so a later delivery can persist failure state.
             return
         await self._publish_dlq(message, raw_key, raw_value, error_code)
 
@@ -189,14 +196,20 @@ class KnowledgeSyncConsumer:
         await self._commit(message)
 
     async def _commit(self, message: Any) -> None:
-        await asyncio.to_thread(self._consumer.commit, message=message, asynchronous=False)
+        await asyncio.to_thread(
+            self._consumer.commit,
+            message=message,
+            asynchronous=False,
+        )
 
     def _resume_due_partitions(self) -> None:
         now_ms = int(time.time() * 1000)
         due = [key for key, resume_ms in self._paused_until.items() if resume_ms <= now_ms]
         if not due:
             return
-        partitions = [confluent_kafka.TopicPartition(topic, partition) for topic, partition in due]
+        partitions = [
+            confluent_kafka.TopicPartition(topic, partition) for topic, partition in due
+        ]
         self._consumer.resume(partitions)
         for key in due:
             del self._paused_until[key]
@@ -264,4 +277,6 @@ def _parse_nonnegative_ascii_int(value: bytes | None, *, default: int) -> int:
 
 
 def _is_safe_error_code(value: str) -> bool:
-    return bool(value) and len(value) <= 100 and all(char.isupper() or char.isdigit() or char == "_" for char in value)
+    if not value or len(value) > 100:
+        return False
+    return all(char.isupper() or char.isdigit() or char == "_" for char in value)

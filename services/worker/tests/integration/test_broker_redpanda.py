@@ -6,7 +6,7 @@ import time
 from typing import Any
 from uuid import uuid4
 
-import confluent_kafka  # type: ignore[import-untyped]
+import confluent_kafka
 import pytest
 
 from app.core.broker import KafkaEventPublisher

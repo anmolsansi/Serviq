@@ -13,7 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
 from app.core.object_storage import S3RawObjectStorage
-from app.core.public_knowledge_fetch import PublicKnowledgeFetchResult
+from app.core.public_knowledge_fetch import (
+    PublicKnowledgeFetchPolicy,
+    PublicKnowledgeFetchResult,
+)
 from app.jobs.knowledge_sync import (
     KnowledgeSyncCommand,
     KnowledgeSyncErrorCode,
@@ -213,8 +216,6 @@ def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
             assert source_state["last_synced_at"] is not None
             assert source_state["last_error_code"] is None
 
-            # Simulate a crash window from an older implementation or manual repair:
-            # the document exists, but its durable parser obligation is missing.
             async with session_factory() as session, session.begin():
                 await session.execute(
                     text(
@@ -312,9 +313,9 @@ def test_url_sync_uses_exact_host_and_stores_deterministic_raw_bytes(
 
     def fake_fetch(
         url: str,
-        policy: object,
+        policy: PublicKnowledgeFetchPolicy,
     ) -> PublicKnowledgeFetchResult:
-        allowed_hosts = getattr(policy, "allowed_hosts", frozenset())
+        allowed_hosts: frozenset[str] = policy.allowed_hosts
         assert url == source_uri
         assert allowed_hosts == frozenset({"docs.example.com"})
         return PublicKnowledgeFetchResult(

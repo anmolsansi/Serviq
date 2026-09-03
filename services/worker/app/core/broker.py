@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
 import confluent_kafka
@@ -42,10 +42,23 @@ class KafkaEventPublisher:
             }
         )
 
-    async def publish(self, *, topic: str, key: bytes, value: bytes) -> None:
-        await asyncio.to_thread(self._publish_sync, topic, key, value)
+    async def publish(
+        self,
+        *,
+        topic: str,
+        key: bytes,
+        value: bytes,
+        headers: Mapping[str, bytes] | None = None,
+    ) -> None:
+        await asyncio.to_thread(self._publish_sync, topic, key, value, headers)
 
-    def _publish_sync(self, topic: str, key: bytes, value: bytes) -> None:
+    def _publish_sync(
+        self,
+        topic: str,
+        key: bytes,
+        value: bytes,
+        headers: Mapping[str, bytes] | None,
+    ) -> None:
         delivered = False
         delivery_failed = False
 
@@ -56,10 +69,12 @@ class KafkaEventPublisher:
 
         try:
             callback: Callable[[Any, Any], None] = on_delivery
+            kafka_headers = None if headers is None else list(headers.items())
             self._producer.produce(
                 topic=topic,
                 key=key,
                 value=value,
+                headers=kafka_headers,
                 on_delivery=callback,
             )
             remaining = int(self._producer.flush(_DELIVERY_TIMEOUT_SECONDS))

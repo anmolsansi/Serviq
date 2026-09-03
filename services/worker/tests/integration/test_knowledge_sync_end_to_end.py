@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.consumers.knowledge_sync import KnowledgeSyncConsumer, SYNC_TOPIC
+from app.consumers.knowledge_sync import SYNC_TOPIC, KnowledgeSyncConsumer
 from app.core.broker import KafkaEventPublisher
 from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
@@ -122,7 +122,10 @@ async def _cleanup(
             text("DELETE FROM knowledge_sources WHERE id=:source_id"),
             {"source_id": source_id},
         )
-        await session.execute(text("DELETE FROM users WHERE id=:user_id"), {"user_id": user_id})
+        await session.execute(
+            text("DELETE FROM users WHERE id=:user_id"),
+            {"user_id": user_id},
+        )
         await session.execute(
             text("DELETE FROM tenants WHERE id=:tenant_id"),
             {"tenant_id": tenant_id},

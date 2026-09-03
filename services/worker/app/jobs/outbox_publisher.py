@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -83,7 +84,7 @@ def publisher_backoff_seconds(attempts_after_failure: int) -> int:
     if attempts_after_failure >= 7:
         return _MAX_RETRY_SECONDS
     return min(
-        _BASE_RETRY_SECONDS * (2 ** (attempts_after_failure - 1)),
+        _BASE_RETRY_SECONDS << (attempts_after_failure - 1),
         _MAX_RETRY_SECONDS,
     )
 
@@ -124,7 +125,7 @@ def _required_nonnegative_int(value: object) -> int:
     return value
 
 
-def serialize_outbox_row(row: Mapping[str, object]) -> BrokerRecord:
+def serialize_outbox_row(row: Mapping[Any, Any]) -> BrokerRecord:
     """Serialize one database row to the exact ADR-022 Kafka envelope."""
 
     event_id = _required_uuid(row.get("id"))

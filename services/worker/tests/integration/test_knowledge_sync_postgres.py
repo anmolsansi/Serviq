@@ -101,11 +101,26 @@ async def _cleanup(
     source_id: UUID,
 ) -> None:
     async with session_factory() as session, session.begin():
-        await session.execute(text("DELETE FROM outbox_events WHERE tenant_id=:tenant_id"), {"tenant_id": tenant_id})
-        await session.execute(text("DELETE FROM knowledge_documents WHERE source_id=:source_id"), {"source_id": source_id})
-        await session.execute(text("DELETE FROM knowledge_sources WHERE id=:source_id"), {"source_id": source_id})
-        await session.execute(text("DELETE FROM users WHERE id=:user_id"), {"user_id": user_id})
-        await session.execute(text("DELETE FROM tenants WHERE id=:tenant_id"), {"tenant_id": tenant_id})
+        await session.execute(
+            text("DELETE FROM outbox_events WHERE tenant_id=:tenant_id"),
+            {"tenant_id": tenant_id},
+        )
+        await session.execute(
+            text("DELETE FROM knowledge_documents WHERE source_id=:source_id"),
+            {"source_id": source_id},
+        )
+        await session.execute(
+            text("DELETE FROM knowledge_sources WHERE id=:source_id"),
+            {"source_id": source_id},
+        )
+        await session.execute(
+            text("DELETE FROM users WHERE id=:user_id"),
+            {"user_id": user_id},
+        )
+        await session.execute(
+            text("DELETE FROM tenants WHERE id=:tenant_id"),
+            {"tenant_id": tenant_id},
+        )
 
 
 def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
@@ -187,6 +202,20 @@ def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
             assert source_state["last_synced_at"] is not None
             assert source_state["last_error_code"] is None
 
+            # Simulate a crash window from an older implementation or manual repair:
+            # the document exists, but its durable parser obligation is missing.
+            async with session_factory() as session, session.begin():
+                await session.execute(
+                    text(
+                        """
+                        DELETE FROM outbox_events
+                        WHERE tenant_id=:tenant_id
+                          AND event_type='serviq.knowledge.parse.v1'
+                        """
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+
             replay = await run_knowledge_sync(session_factory, storage, command)
             assert replay.completed is True
             async with session_factory() as session:
@@ -195,8 +224,17 @@ def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
                         text(
                             """
                             SELECT
-                              (SELECT count(*) FROM knowledge_documents WHERE source_id=:source_id) AS documents,
-                              (SELECT count(*) FROM outbox_events WHERE tenant_id=:tenant_id AND event_type='serviq.knowledge.parse.v1') AS parse_events
+                              (
+                                SELECT count(*)
+                                FROM knowledge_documents
+                                WHERE source_id=:source_id
+                              ) AS documents,
+                              (
+                                SELECT count(*)
+                                FROM outbox_events
+                                WHERE tenant_id=:tenant_id
+                                  AND event_type='serviq.knowledge.parse.v1'
+                              ) AS parse_events
                             """
                         ),
                         {"source_id": source_id, "tenant_id": tenant_id},

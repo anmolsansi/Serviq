@@ -169,13 +169,22 @@ async def run_knowledge_sync(
 
     source = await _load_source(session_factory, command)
     if source is None:
-        return KnowledgeSyncResult.failure(KnowledgeSyncErrorCode.SOURCE_NOT_FOUND, retryable=False)
+        return KnowledgeSyncResult.failure(
+            KnowledgeSyncErrorCode.SOURCE_NOT_FOUND,
+            retryable=False,
+        )
     if source.status == "disabled":
-        return KnowledgeSyncResult.failure(KnowledgeSyncErrorCode.SOURCE_DISABLED, retryable=False)
+        return KnowledgeSyncResult.failure(
+            KnowledgeSyncErrorCode.SOURCE_DISABLED,
+            retryable=False,
+        )
     if command.sync_version < source.sync_version:
         return KnowledgeSyncResult.no_op()
     if command.sync_version > source.sync_version:
-        return KnowledgeSyncResult.failure(KnowledgeSyncErrorCode.VERSION_AHEAD, retryable=False)
+        return KnowledgeSyncResult.failure(
+            KnowledgeSyncErrorCode.VERSION_AHEAD,
+            retryable=False,
+        )
     if source.source_type == "sitemap":
         return KnowledgeSyncResult.failure(
             KnowledgeSyncErrorCode.SOURCE_TYPE_UNSUPPORTED,
@@ -187,9 +196,13 @@ async def run_knowledge_sync(
         return fetched
 
     content_hash = hashlib.sha256(fetched.raw_bytes).hexdigest()
-    existing = await _load_existing_document(session_factory, command, content_hash)
-    if existing is not None:
-        return existing
+    mismatch = await _preflight_replay_mismatch(
+        session_factory,
+        command,
+        content_hash,
+    )
+    if mismatch is not None:
+        return mismatch
 
     if source.source_type == "url":
         try:
@@ -220,17 +233,16 @@ async def mark_matching_source_failed(
 ) -> None:
     """Persist a safe failure only when the event still owns the source version."""
 
-    async with session_factory() as session:
-        async with session.begin():
-            await session.execute(
-                _SOURCE_FAILURE_UPDATE,
-                {
-                    "source_id": command.source_id,
-                    "tenant_id": command.tenant_id,
-                    "sync_version": command.sync_version,
-                    "error_code": error_code,
-                },
-            )
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            _SOURCE_FAILURE_UPDATE,
+            {
+                "source_id": command.source_id,
+                "tenant_id": command.tenant_id,
+                "sync_version": command.sync_version,
+                "error_code": error_code,
+            },
+        )
 
 
 async def _load_source(
@@ -246,11 +258,13 @@ async def _load_source(
     return None if row is None else _snapshot_from_row(row)
 
 
-async def _load_existing_document(
+async def _preflight_replay_mismatch(
     session_factory: async_sessionmaker[AsyncSession],
     command: KnowledgeSyncCommand,
     content_hash: str,
 ) -> KnowledgeSyncResult | None:
+    """Reject hash-changing replay before writing a deterministic URL raw object."""
+
     async with session_factory() as session:
         result = await session.execute(
             _DOCUMENT_BY_VERSION,
@@ -261,15 +275,13 @@ async def _load_existing_document(
             },
         )
         row = result.mappings().one_or_none()
-    if row is None:
+    if row is None or row.get("content_hash") == content_hash:
+        # A same-hash replay must continue so a missing parse obligation can be repaired.
         return None
-    existing_hash = row.get("content_hash")
-    if existing_hash != content_hash:
-        return KnowledgeSyncResult.failure(
-            KnowledgeSyncErrorCode.REPLAY_CONTENT_MISMATCH,
-            retryable=False,
-        )
-    return KnowledgeSyncResult.no_op()
+    return KnowledgeSyncResult.failure(
+        KnowledgeSyncErrorCode.REPLAY_CONTENT_MISMATCH,
+        retryable=False,
+    )
 
 
 async def _fetch_content(
@@ -280,10 +292,16 @@ async def _fetch_content(
     if source.source_type == "url":
         source_uri = source.source_uri
         if source_uri is None:
-            return KnowledgeSyncResult.failure(KnowledgeSyncErrorCode.SOURCE_NOT_FOUND, retryable=False)
+            return KnowledgeSyncResult.failure(
+                KnowledgeSyncErrorCode.SOURCE_NOT_FOUND,
+                retryable=False,
+            )
         host = urlsplit(source_uri).hostname
         if host is None:
-            return KnowledgeSyncResult.failure(KnowledgeSyncErrorCode.SOURCE_NOT_FOUND, retryable=False)
+            return KnowledgeSyncResult.failure(
+                KnowledgeSyncErrorCode.SOURCE_NOT_FOUND,
+                retryable=False,
+            )
         try:
             result = await asyncio.to_thread(
                 fetch_public_knowledge,
@@ -291,7 +309,10 @@ async def _fetch_content(
                 PublicKnowledgeFetchPolicy(allowed_hosts=frozenset({host})),
             )
         except PublicKnowledgeFetchError as error:
-            return KnowledgeSyncResult.failure(error.code.value, retryable=error.retryable)
+            return KnowledgeSyncResult.failure(
+                error.code.value,
+                retryable=error.retryable,
+            )
         return _FetchedContent(
             raw_bytes=result.body,
             raw_object_key=_sync_raw_key(command),
@@ -306,7 +327,10 @@ async def _fetch_content(
         )
     object_key = source.object_key
     if object_key is None or not _is_tenant_source_key(object_key, command):
-        return KnowledgeSyncResult.failure(KnowledgeSyncErrorCode.SOURCE_NOT_FOUND, retryable=False)
+        return KnowledgeSyncResult.failure(
+            KnowledgeSyncErrorCode.SOURCE_NOT_FOUND,
+            retryable=False,
+        )
     try:
         raw_bytes = await storage.get_bytes(object_key)
     except (ObjectNotFoundError, ObjectStorageError):
@@ -329,103 +353,107 @@ async def _persist_document_and_parse_event(
     fetched: _FetchedContent,
     content_hash: str,
 ) -> KnowledgeSyncResult:
-    async with session_factory() as session:
-        async with session.begin():
-            locked_result = await session.execute(
-                _SOURCE_LOCK,
-                {"source_id": command.source_id, "tenant_id": command.tenant_id},
+    async with session_factory() as session, session.begin():
+        locked_result = await session.execute(
+            _SOURCE_LOCK,
+            {"source_id": command.source_id, "tenant_id": command.tenant_id},
+        )
+        locked_row = locked_result.mappings().one_or_none()
+        if locked_row is None:
+            return KnowledgeSyncResult.failure(
+                KnowledgeSyncErrorCode.SOURCE_NOT_FOUND,
+                retryable=False,
             )
-            locked_row = locked_result.mappings().one_or_none()
-            if locked_row is None:
-                return KnowledgeSyncResult.failure(
-                    KnowledgeSyncErrorCode.SOURCE_NOT_FOUND,
-                    retryable=False,
-                )
-            locked = _snapshot_from_row(locked_row)
-            if locked.status == "disabled":
-                return KnowledgeSyncResult.failure(
-                    KnowledgeSyncErrorCode.SOURCE_DISABLED,
-                    retryable=False,
-                )
-            if command.sync_version < locked.sync_version:
-                return KnowledgeSyncResult.no_op()
-            if command.sync_version > locked.sync_version:
-                return KnowledgeSyncResult.failure(
-                    KnowledgeSyncErrorCode.VERSION_AHEAD,
-                    retryable=False,
-                )
+        locked = _snapshot_from_row(locked_row)
+        if locked.status == "disabled":
+            return KnowledgeSyncResult.failure(
+                KnowledgeSyncErrorCode.SOURCE_DISABLED,
+                retryable=False,
+            )
+        if command.sync_version < locked.sync_version:
+            return KnowledgeSyncResult.no_op()
+        if command.sync_version > locked.sync_version:
+            return KnowledgeSyncResult.failure(
+                KnowledgeSyncErrorCode.VERSION_AHEAD,
+                retryable=False,
+            )
 
-            existing_result = await session.execute(
-                _DOCUMENT_BY_VERSION,
+        existing_result = await session.execute(
+            _DOCUMENT_BY_VERSION,
+            {
+                "tenant_id": command.tenant_id,
+                "source_id": command.source_id,
+                "document_version": command.sync_version,
+            },
+        )
+        existing = existing_result.mappings().one_or_none()
+        if existing is not None:
+            if existing.get("content_hash") != content_hash:
+                return KnowledgeSyncResult.failure(
+                    KnowledgeSyncErrorCode.REPLAY_CONTENT_MISMATCH,
+                    retryable=False,
+                )
+            document_id = _required_uuid(existing.get("id"))
+        else:
+            inserted = await session.execute(
+                _DOCUMENT_INSERT,
                 {
                     "tenant_id": command.tenant_id,
                     "source_id": command.source_id,
+                    "canonical_uri": fetched.canonical_uri,
+                    "title": source.name,
+                    "content_hash": content_hash,
                     "document_version": command.sync_version,
                 },
             )
-            existing = existing_result.mappings().one_or_none()
-            if existing is not None:
-                if existing.get("content_hash") != content_hash:
-                    return KnowledgeSyncResult.failure(
-                        KnowledgeSyncErrorCode.REPLAY_CONTENT_MISMATCH,
-                        retryable=False,
-                    )
-                document_id = _required_uuid(existing.get("id"))
-            else:
-                inserted = await session.execute(
-                    _DOCUMENT_INSERT,
-                    {
-                        "tenant_id": command.tenant_id,
-                        "source_id": command.source_id,
-                        "canonical_uri": fetched.canonical_uri,
-                        "title": source.name,
-                        "content_hash": content_hash,
-                        "document_version": command.sync_version,
-                    },
-                )
-                document_id = _required_uuid(inserted.scalar_one())
+            document_id = _required_uuid(inserted.scalar_one())
 
-            aggregate_id = str(document_id)
-            event_exists = await session.execute(
-                _PARSE_EVENT_EXISTS,
+        aggregate_id = str(document_id)
+        event_exists = await session.execute(
+            _PARSE_EVENT_EXISTS,
+            {
+                "tenant_id": command.tenant_id,
+                "event_type": PARSE_EVENT_TYPE,
+                "aggregate_id": aggregate_id,
+            },
+        )
+        if event_exists.scalar_one_or_none() is None:
+            payload = {
+                "tenantId": str(command.tenant_id),
+                "sourceId": str(command.source_id),
+                "documentId": aggregate_id,
+                "documentVersion": command.sync_version,
+                "sourceType": source.source_type,
+                "rawObjectKey": fetched.raw_object_key,
+                "canonicalUri": fetched.canonical_uri,
+                "contentHash": content_hash,
+            }
+            payload_json = json.dumps(
+                payload,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            await session.execute(
+                _PARSE_EVENT_INSERT,
                 {
                     "tenant_id": command.tenant_id,
                     "event_type": PARSE_EVENT_TYPE,
+                    "schema_version": PARSE_SCHEMA_VERSION,
                     "aggregate_id": aggregate_id,
+                    "payload": payload_json,
+                    "correlation_id": command.correlation_id,
+                    "causation_id": str(command.event_id),
                 },
             )
-            if event_exists.scalar_one_or_none() is None:
-                payload = {
-                    "tenantId": str(command.tenant_id),
-                    "sourceId": str(command.source_id),
-                    "documentId": aggregate_id,
-                    "documentVersion": command.sync_version,
-                    "sourceType": source.source_type,
-                    "rawObjectKey": fetched.raw_object_key,
-                    "canonicalUri": fetched.canonical_uri,
-                    "contentHash": content_hash,
-                }
-                await session.execute(
-                    _PARSE_EVENT_INSERT,
-                    {
-                        "tenant_id": command.tenant_id,
-                        "event_type": PARSE_EVENT_TYPE,
-                        "schema_version": PARSE_SCHEMA_VERSION,
-                        "aggregate_id": aggregate_id,
-                        "payload": json.dumps(payload, separators=(",", ":"), sort_keys=True),
-                        "correlation_id": command.correlation_id,
-                        "causation_id": str(command.event_id),
-                    },
-                )
 
-            await session.execute(
-                _SOURCE_SUCCESS_UPDATE,
-                {
-                    "source_id": command.source_id,
-                    "tenant_id": command.tenant_id,
-                    "sync_version": command.sync_version,
-                },
-            )
+        await session.execute(
+            _SOURCE_SUCCESS_UPDATE,
+            {
+                "source_id": command.source_id,
+                "tenant_id": command.tenant_id,
+                "sync_version": command.sync_version,
+            },
+        )
     return KnowledgeSyncResult.success()
 
 
@@ -465,7 +493,12 @@ def _sync_raw_key(command: KnowledgeSyncCommand) -> str:
 
 def _is_tenant_source_key(key: str, command: KnowledgeSyncCommand) -> bool:
     prefix = f"tenants/{command.tenant_id}/knowledge/{command.source_id}/"
-    return key.startswith(prefix) and "\0" not in key and "\r" not in key and "\n" not in key
+    return (
+        key.startswith(prefix)
+        and "\0" not in key
+        and "\r" not in key
+        and "\n" not in key
+    )
 
 
 def _file_content_type(source_type: str) -> str:

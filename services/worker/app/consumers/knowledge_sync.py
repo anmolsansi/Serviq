@@ -32,6 +32,7 @@ _NOT_BEFORE_HEADER = "serviq-not-before-ms"
 _ERROR_HEADER = "serviq-error-code"
 _RETRY_DELAYS_SECONDS = (30, 300, 1800)
 _POLL_TIMEOUT_SECONDS = 0.1
+_INTERNAL_REDELIVERY_DELAY_MS = 1000
 _INVALID_EVENT_CODE = "KNOWLEDGE_SYNC_EVENT_INVALID"
 _DATABASE_ERROR_CODE = "KNOWLEDGE_SYNC_DATABASE_UNAVAILABLE"
 
@@ -99,30 +100,28 @@ class KnowledgeSyncConsumer:
 
     async def _handle_message(self, message: Any) -> None:
         headers = _headers_dict(message.headers())
-        attempt = _parse_nonnegative_ascii_int(headers.get(_ATTEMPT_HEADER), default=0)
-        not_before_ms = _parse_nonnegative_ascii_int(
-            headers.get(_NOT_BEFORE_HEADER),
-            default=0,
-        )
-        now_ms = int(time.time() * 1000)
-        if message.topic() == RETRY_TOPIC and not_before_ms > now_ms:
-            partition = confluent_kafka.TopicPartition(
-                message.topic(),
-                message.partition(),
-                message.offset(),
-            )
-            self._consumer.seek(partition)
-            self._consumer.pause(
-                [confluent_kafka.TopicPartition(message.topic(), message.partition())]
-            )
-            self._paused_until[(message.topic(), message.partition())] = not_before_ms
-            return
+        attempt = 0
+        if message.topic() == RETRY_TOPIC:
+            retry_metadata = _parse_retry_metadata(headers)
+            if retry_metadata is None:
+                raw_key, raw_value = _safe_message_bytes(message)
+                await self._publish_dlq(
+                    message,
+                    raw_key,
+                    raw_value,
+                    _INVALID_EVENT_CODE,
+                )
+                return
+            attempt, not_before_ms = retry_metadata
+            now_ms = int(time.time() * 1000)
+            if not_before_ms > now_ms:
+                self._rewind_and_pause(message, resume_at_ms=not_before_ms)
+                return
 
         raw_key = message.key()
         raw_value = message.value()
         if not isinstance(raw_key, bytes) or not isinstance(raw_value, bytes):
-            safe_key = raw_key if isinstance(raw_key, bytes) else b""
-            safe_value = raw_value if isinstance(raw_value, bytes) else b""
+            safe_key, safe_value = _safe_message_bytes(message)
             await self._publish_dlq(message, safe_key, safe_value, _INVALID_EVENT_CODE)
             return
 
@@ -154,6 +153,10 @@ class KnowledgeSyncConsumer:
         except SQLAlchemyError:
             if attempt < len(_RETRY_DELAYS_SECONDS):
                 await self._publish_retry(message, raw_key, raw_value, attempt + 1)
+            else:
+                # Failure state is part of the terminal contract. Do not advance this
+                # partition until the database can record it safely.
+                self._rewind_and_pause(message)
             return
         await self._publish_dlq(message, raw_key, raw_value, error_code)
 
@@ -178,6 +181,7 @@ class KnowledgeSyncConsumer:
                 headers=headers,
             )
         except BrokerUnavailableError:
+            self._rewind_and_pause(message)
             return
         self._commit(message)
 
@@ -198,11 +202,27 @@ class KnowledgeSyncConsumer:
                 headers=headers,
             )
         except BrokerUnavailableError:
+            self._rewind_and_pause(message)
             return
         self._commit(message)
 
     def _commit(self, message: Any) -> None:
         self._consumer.commit(message=message, asynchronous=False)
+
+    def _rewind_and_pause(self, message: Any, *, resume_at_ms: int | None = None) -> None:
+        topic = message.topic()
+        partition_number = message.partition()
+        offset = message.offset()
+        partition_at_offset = confluent_kafka.TopicPartition(
+            topic,
+            partition_number,
+            offset,
+        )
+        self._consumer.seek(partition_at_offset)
+        self._consumer.pause([confluent_kafka.TopicPartition(topic, partition_number)])
+        if resume_at_ms is None:
+            resume_at_ms = int(time.time() * 1000) + _INTERNAL_REDELIVERY_DELAY_MS
+        self._paused_until[(topic, partition_number)] = resume_at_ms
 
     def _resume_due_partitions(self) -> None:
         now_ms = int(time.time() * 1000)
@@ -267,15 +287,32 @@ def _headers_dict(headers: Any) -> dict[str, bytes]:
     return parsed
 
 
-def _parse_nonnegative_ascii_int(value: bytes | None, *, default: int) -> int:
+def _parse_retry_metadata(headers: dict[str, bytes]) -> tuple[int, int] | None:
+    attempt = _parse_positive_ascii_int(headers.get(_ATTEMPT_HEADER))
+    not_before_ms = _parse_positive_ascii_int(headers.get(_NOT_BEFORE_HEADER))
+    if attempt is None or not_before_ms is None:
+        return None
+    if attempt > len(_RETRY_DELAYS_SECONDS):
+        return None
+    return attempt, not_before_ms
+
+
+def _parse_positive_ascii_int(value: bytes | None) -> int | None:
     if value is None:
-        return default
+        return None
     try:
-        decoded = value.decode("ascii")
-        parsed = int(decoded, 10)
+        parsed = int(value.decode("ascii"), 10)
     except (UnicodeDecodeError, ValueError):
-        return default
-    return parsed if parsed >= 0 else default
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _safe_message_bytes(message: Any) -> tuple[bytes, bytes]:
+    raw_key = message.key()
+    raw_value = message.value()
+    key = raw_key if isinstance(raw_key, bytes) else b""
+    value = raw_value if isinstance(raw_value, bytes) else b""
+    return key, value
 
 
 def _is_safe_error_code(value: str) -> bool:

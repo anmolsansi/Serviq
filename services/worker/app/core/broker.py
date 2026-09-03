@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any, Protocol
 
-import confluent_kafka  # type: ignore[import-untyped]
+import confluent_kafka
 
 from app.core.config import PlatformSettings
 

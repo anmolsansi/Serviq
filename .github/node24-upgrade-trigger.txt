@@ -1,1 +1,0 @@
-upgrade permanent GitHub Actions to Node 24-native releases and pin uv 0.12.9

@@ -117,10 +117,10 @@ jobs:
       - name: Audit pnpm lockfile
         shell: bash
         env:
-          npm_config_fetch_retries: '3'
-          npm_config_fetch_retry_maxtimeout: '60000'
-          npm_config_fetch_retry_mintimeout: '10000'
-          npm_config_fetch_timeout: '120000'
+          npm_config_fetch_retries: '1'
+          npm_config_fetch_retry_maxtimeout: '15000'
+          npm_config_fetch_retry_mintimeout: '5000'
+          npm_config_fetch_timeout: '30000'
         run: |
           status=1
           infra_failure=0
@@ -128,7 +128,7 @@ jobs:
           for attempt in 1 2 3; do
             echo "pnpm audit attempt ${attempt}/3"
             set +e
-            pnpm audit --audit-level high --prod --json > pnpm-audit.json
+            timeout 45s pnpm audit --audit-level high --prod --json > pnpm-audit.json
             status=$?
             set -e
 
@@ -137,9 +137,19 @@ jobs:
               break
             fi
 
-            if node -e 'const fs=require("fs"); try { const report=JSON.parse(fs.readFileSync("pnpm-audit.json","utf8")); process.exit(report && report.error ? 0 : 1); } catch { process.exit(1); }'; then
-              infra_failure=1
+            registry_error=0
+            error_summary=""
+
+            if [ "$status" -eq 124 ]; then
+              registry_error=1
+              error_summary="audit command exceeded the 45 second attempt limit"
+            elif node -e 'const fs=require("fs"); try { const report=JSON.parse(fs.readFileSync("pnpm-audit.json","utf8")); process.exit(report && report.error ? 0 : 1); } catch { process.exit(1); }'; then
+              registry_error=1
               error_summary="$(node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync("pnpm-audit.json","utf8")); const error=report.error || {}; process.stdout.write([error.code,error.message].filter(Boolean).join(": "));')"
+            fi
+
+            if [ "$registry_error" -eq 1 ]; then
+              infra_failure=1
               echo "::warning::pnpm audit registry error on attempt ${attempt}/3: ${error_summary:-unknown registry error}"
 
               if [ "$attempt" -lt 3 ]; then
@@ -147,7 +157,7 @@ jobs:
                 continue
               fi
 
-              echo "::warning::pnpm audit remained unavailable after 3 attempts. The report is retained as an artifact; this transient registry failure will not be treated as a vulnerability finding."
+              echo "::warning::pnpm audit remained unavailable after 3 bounded attempts. The report is retained as an artifact; this transient registry failure will not be treated as a vulnerability finding."
               status=0
               break
             fi

@@ -1,0 +1,136 @@
+name: Upgrade Actions Node 24
+
+on:
+  push:
+    branches:
+      - openclawneutron/upgrade-actions-node24
+    paths:
+      - .github/node24-upgrade-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out upgrade branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: openclawneutron/upgrade-actions-node24
+          fetch-depth: 0
+
+      - name: Upgrade permanent action pins and pin uv CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          workflow_dir = Path('.github/workflows')
+          self_path = workflow_dir / 'upgrade-actions-node24.yml'
+
+          targets = {
+              'actions/checkout': ('3d3c42e5aac5ba805825da76410c181273ba90b1', 'v7.0.1'),
+              'actions/setup-node': ('820762786026740c76f36085b0efc47a31fe5020', 'v7.0.0'),
+              'actions/setup-python': ('5fda3b95a4ea91299a34e894583c3862153e4b97', 'v7.0.0'),
+              'pnpm/action-setup': ('0977fd99725f1db4007ccb2928dbb4e90d06cc86', 'v6.0.10'),
+              'astral-sh/setup-uv': ('20cfd1bf945f4377ade1205e4dbc17946fc9a30d', 'v10.0.1'),
+              'actions/upload-artifact': ('043fb46d1a93c77aae656e7c1c64a875d1fc6a0a', 'v7.0.1'),
+          }
+
+          files = sorted({*workflow_dir.glob('*.yml'), *workflow_dir.glob('*.yaml')})
+          changed: list[str] = []
+
+          for path in files:
+              if path == self_path:
+                  continue
+
+              text = path.read_text(encoding='utf-8')
+              original = text
+
+              for action, (sha, version) in targets.items():
+                  pattern = re.compile(
+                      rf'(?m)^(\s*uses:\s*){re.escape(action)}@[0-9a-fA-F]{{40}}(?:\s+#.*)?$'
+                  )
+                  text = pattern.sub(rf'\1{action}@{sha} # {version}', text)
+
+              lines = text.splitlines()
+              output: list[str] = []
+              index = 0
+              uv_marker = 'uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d'
+
+              while index < len(lines):
+                  line = lines[index]
+                  output.append(line)
+
+                  if uv_marker in line:
+                      indent = line[: len(line) - len(line.lstrip())]
+                      if index + 1 < len(lines) and lines[index + 1].strip() == 'with:':
+                          index += 1
+                          output.append(lines[index])
+                          if not (
+                              index + 1 < len(lines)
+                              and lines[index + 1].strip().startswith('version:')
+                          ):
+                              output.append(f"{indent}  version: '0.12.9'")
+                      else:
+                          output.append(f'{indent}with:')
+                          output.append(f"{indent}  version: '0.12.9'")
+
+                  index += 1
+
+              text = '\n'.join(output) + ('\n' if original.endswith('\n') else '')
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+                  changed.append(str(path))
+
+          if not changed:
+              raise SystemExit('Expected permanent workflow action upgrades, but no files changed.')
+
+          old_shas = {
+              '11d5960a326750d5838078e36cf38b85af677262',
+              'd23441a48e516b6c34aea4fa41551a30e30af803',
+              '49933ea5288caeca8642d1e84afbd3f7d6820020',
+              '249970729cb0ef3589644e2896645e5dc5ba9c38',
+              'a26af69be951a213d495a4c3e4e4022e16d87065',
+              'ece7cb06caefa5fff74198d8649806c4678c61a1',
+              'b906affcce14559ad1aafd4ab0e942779e9f58b1',
+              'd0cc045d04ccac9d8b7881df0226f9e82c39688e',
+              'ea165f8d65b6e75b540449e92b4886f43607fa02',
+          }
+
+          for path in files:
+              if path == self_path:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              stale = sorted(sha for sha in old_shas if sha in text)
+              if stale:
+                  raise SystemExit(f'{path} still contains stale action SHAs: {stale}')
+
+              lines = text.splitlines()
+              for idx, line in enumerate(lines):
+                  if uv_marker not in line:
+                      continue
+                  window = '\n'.join(lines[idx + 1 : idx + 4])
+                  if "version: '0.12.9'" not in window:
+                      raise SystemExit(f'{path} has an unpinned setup-uv step near line {idx + 1}')
+
+          print('Updated workflow files:')
+          print('\n'.join(changed))
+          PY
+
+      - name: Remove one-shot upgrader and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/node24-upgrade-trigger.txt .github/workflows/upgrade-actions-node24.yml
+          git add .github/workflows
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: upgrade GitHub Actions to Node 24-native releases'
+          git push origin HEAD:openclawneutron/upgrade-actions-node24

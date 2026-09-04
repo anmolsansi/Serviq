@@ -256,6 +256,22 @@ def test_file_sync_idempotency_versions_and_parse_handoff() -> None:
             assert counts.parse_events == 1
 
             memory.objects[object_key] = b"different replay bytes"
+            completed_replay = await run_knowledge_sync(session_factory, storage, command)
+            assert completed_replay.completed is True
+            assert completed_replay.noop is True
+
+            async with session_factory() as session, session.begin():
+                await session.execute(
+                    text(
+                        """
+                        DELETE FROM outbox_events
+                        WHERE tenant_id=:tenant_id
+                          AND event_type='serviq.knowledge.parse.v1'
+                        """
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+
             mismatch = await run_knowledge_sync(session_factory, storage, command)
             assert mismatch.completed is False
             assert mismatch.error_code == KnowledgeSyncErrorCode.REPLAY_CONTENT_MISMATCH

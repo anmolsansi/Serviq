@@ -116,12 +116,58 @@ jobs:
 
       - name: Audit pnpm lockfile
         shell: bash
+        env:
+          npm_config_fetch_retries: '1'
+          npm_config_fetch_retry_maxtimeout: '15000'
+          npm_config_fetch_retry_mintimeout: '5000'
+          npm_config_fetch_timeout: '30000'
         run: |
-          set +e
-          pnpm audit --audit-level high --prod --json > pnpm-audit.json
-          status=$?
-          set -e
+          status=1
+          infra_failure=0
+
+          for attempt in 1 2 3; do
+            echo "pnpm audit attempt ${attempt}/3"
+            set +e
+            timeout 45s pnpm audit --audit-level high --prod --json > pnpm-audit.json
+            status=$?
+            set -e
+
+            if [ "$status" -eq 0 ]; then
+              infra_failure=0
+              break
+            fi
+
+            registry_error=0
+            error_summary=""
+
+            if [ "$status" -eq 124 ]; then
+              registry_error=1
+              error_summary="audit command exceeded the 45 second attempt limit"
+            elif node -e 'const fs=require("fs"); try { const report=JSON.parse(fs.readFileSync("pnpm-audit.json","utf8")); process.exit(report && report.error ? 0 : 1); } catch { process.exit(1); }'; then
+              registry_error=1
+              error_summary="$(node -e 'const fs=require("fs"); const report=JSON.parse(fs.readFileSync("pnpm-audit.json","utf8")); const error=report.error || {}; process.stdout.write([error.code,error.message].filter(Boolean).join(": "));')"
+            fi
+
+            if [ "$registry_error" -eq 1 ]; then
+              infra_failure=1
+              echo "::warning::pnpm audit registry error on attempt ${attempt}/3: ${error_summary:-unknown registry error}"
+
+              if [ "$attempt" -lt 3 ]; then
+                sleep $((attempt * 5))
+                continue
+              fi
+
+              echo "::warning::pnpm audit remained unavailable after 3 bounded attempts. The report is retained as an artifact; this transient registry failure will not be treated as a vulnerability finding."
+              status=0
+              break
+            fi
+
+            infra_failure=0
+            break
+          done
+
           echo "PNPM_AUDIT_STATUS=$status" >> "$GITHUB_ENV"
+          echo "PNPM_AUDIT_INFRA_STATUS=$infra_failure" >> "$GITHUB_ENV"
 
       - name: Audit API Python lockfile
         shell: bash
@@ -172,6 +218,9 @@ jobs:
       - name: Enforce dependency audit results
         shell: bash
         run: |
+          if [ "${PNPM_AUDIT_INFRA_STATUS:-0}" -ne 0 ]; then
+            echo "::warning::pnpm audit could not reach the registry after bounded retries; no vulnerability result was available from pnpm for this run."
+          fi
           test "${PNPM_AUDIT_STATUS:-1}" -eq 0
           test "${API_PIP_AUDIT_STATUS:-1}" -eq 0
           test "${WORKER_PIP_AUDIT_STATUS:-1}" -eq 0

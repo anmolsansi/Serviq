@@ -42,16 +42,32 @@ class KnowledgeNormalizationErrorCode(StrEnum):
 
 
 _ERROR_MESSAGES: dict[KnowledgeNormalizationErrorCode, str] = {
-    KnowledgeNormalizationErrorCode.SOURCE_TYPE_UNSUPPORTED: "Knowledge source type is unsupported.",
-    KnowledgeNormalizationErrorCode.INPUT_TOO_LARGE: "Knowledge input exceeds the normalization limit.",
+    KnowledgeNormalizationErrorCode.SOURCE_TYPE_UNSUPPORTED: (
+        "Knowledge source type is unsupported."
+    ),
+    KnowledgeNormalizationErrorCode.INPUT_TOO_LARGE: (
+        "Knowledge input exceeds the normalization limit."
+    ),
     KnowledgeNormalizationErrorCode.INVALID_UTF8: "Knowledge text must be valid UTF-8.",
     KnowledgeNormalizationErrorCode.TEXT_INVALID: "Knowledge text content is invalid.",
-    KnowledgeNormalizationErrorCode.PDF_MALFORMED: "Knowledge PDF is malformed or unsupported.",
-    KnowledgeNormalizationErrorCode.PDF_ENCRYPTED: "Encrypted knowledge PDFs are not supported.",
-    KnowledgeNormalizationErrorCode.PDF_PAGE_LIMIT_EXCEEDED: "Knowledge PDF exceeds the page limit.",
-    KnowledgeNormalizationErrorCode.OUTPUT_TOO_LARGE: "Normalized knowledge output exceeds the limit.",
-    KnowledgeNormalizationErrorCode.SEGMENT_LIMIT_EXCEEDED: "Normalized knowledge has too many segments.",
-    KnowledgeNormalizationErrorCode.EMPTY_CONTENT: "Knowledge content contains no extractable text.",
+    KnowledgeNormalizationErrorCode.PDF_MALFORMED: (
+        "Knowledge PDF is malformed or unsupported."
+    ),
+    KnowledgeNormalizationErrorCode.PDF_ENCRYPTED: (
+        "Encrypted knowledge PDFs are not supported."
+    ),
+    KnowledgeNormalizationErrorCode.PDF_PAGE_LIMIT_EXCEEDED: (
+        "Knowledge PDF exceeds the page limit."
+    ),
+    KnowledgeNormalizationErrorCode.OUTPUT_TOO_LARGE: (
+        "Normalized knowledge output exceeds the limit."
+    ),
+    KnowledgeNormalizationErrorCode.SEGMENT_LIMIT_EXCEEDED: (
+        "Normalized knowledge has too many segments."
+    ),
+    KnowledgeNormalizationErrorCode.EMPTY_CONTENT: (
+        "Knowledge content contains no extractable text."
+    ),
 }
 
 

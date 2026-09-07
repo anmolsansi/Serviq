@@ -34,7 +34,7 @@ cross-service integration test, end-to-end flow, then deployed acceptance.
 | `apps/customer-web` | End-customer Next.js surface | Scaffold page only |
 | `apps/platform-console` | Separate platform-operator surface | Scaffold page only |
 | `services/api` | FastAPI control plane and domain APIs | Active; most implemented surface |
-| `services/worker` | Durable asynchronous execution | Minimal health/entrypoint foundation |
+| `services/worker` | Durable asynchronous execution | Knowledge sync/fetch plus pure file and HTML normalization libraries; parse consumer not yet activated |
 | `services/llm-gateway` | Provider abstraction/connectivity | Active adapters and internal test route |
 | `packages/*` | Shared TypeScript packages | Early scaffolding |
 | `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Keycloak 26.7.1 service; V1.1.15 adds a deterministic test-only realm/client fixture at `infra/keycloak/serviq-test-realm.json`, mounted only by the opt-in integration harness |
@@ -129,8 +129,9 @@ browser-level proof for all three trust surfaces does not exist.
 - service liveness/readiness;
 - internal normalized provider-connectivity testing.
 
-Knowledge sources can be registered and stored, but the complete
-fetch/parse/chunk/embed/index/retrieve lifecycle is pending.
+Knowledge sources can be registered and stored. URL/file fetch and pure normalization
+foundations exist, but parse-consumer persistence and the complete
+chunk/embed/index/retrieve lifecycle are still pending.
 
 ## Data and migrations
 
@@ -279,3 +280,14 @@ Real PostgreSQL integration coverage proves URL/file happy paths, exact durable 
 ## OPE-314 — Outbox publisher runtime
 
 The worker now owns the generic PostgreSQL-to-Kafka publication boundary for `outbox_events`. Publication is at-least-once, topics equal `event_type`, aggregate IDs are partition keys, broker acknowledgement precedes the `published` database transition, and duplicate delivery is intentionally handled by downstream idempotency contracts. Publisher broker failures use bounded persistent backoff in the existing outbox fields; malformed durable events become `failed`. ADR-022 is the architecture source of truth. Real PostgreSQL and Redpanda PR integration coverage exists for this runtime boundary.
+
+## V1.3.09 current state — HTML/help-center normalization
+
+The worker's pure knowledge normalizer now accepts the repository's existing `url` source type in addition to `pdf`, `markdown`, and `text`. URL bytes are decoded through the same strict UTF-8-SIG and NUL-safe boundary and remain subject to the existing 5 MiB text-input, total-output, per-segment, and segment-count limits.
+
+HTML parsing is intentionally standard-library-only and in-process. It extracts the first non-empty title, `h1`–`h6` headings, paragraphs, and list items; preserves explicit `br` line breaks; chooses article content before main content before body/global fallback; and computes heading ancestry after scope selection. Script, style, form, navigation, header/footer/aside, template, SVG/canvas, iframe/object/embed, and noscript subtrees are dropped completely. Attributes and URLs never enter normalized output.
+
+The parser does not fetch network content, render a browser, execute JavaScript, crawl links, bypass anti-bot controls, read object storage, write PostgreSQL, consume `serviq.knowledge.parse.v1`, or emit chunking work. Unexpected HTML parser failures map to `KNOWLEDGE_NORMALIZATION_HTML_MALFORMED` without raw-input leakage. Empty/noise-only pages use the existing `KNOWLEDGE_NORMALIZATION_EMPTY_CONTENT` failure.
+
+Primary evidence is ADR-025, `services/worker/app/core/knowledge_normalization.py`, and `services/worker/tests/test_knowledge_normalization.py`. V1.3.10 still owns deterministic heading-aware chunking, while parse-event activation/persistence remains outside this pure-library ticket.
+

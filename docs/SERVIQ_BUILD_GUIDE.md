@@ -6543,7 +6543,7 @@ V1.3.07 deliberately does not parse document contents, chunk text, generate embe
 **Linear ticket:** OPE-315  
 **Work branch:** `openclawneutron/ope-315-v1308-implement-pdfmarkdowntext-normalization-parser`  
 **Architecture decision:** `docs/architecture-decisions/ADR-024-knowledge-file-normalization-parser.md`  
-**Current status:** implementation in progress; not yet merge-complete
+**Current status:** merged and acceptance-verified through PRs #209 and #210
 
 V1.3.08 adds the first content-normalization capability behind the parser obligation created by V1.3.07. The important scope decision is that this ticket implements a **pure worker-side normalization library**. It does not yet activate a Kafka consumer for `serviq.knowledge.parse.v1`, persist normalized output, change source/document lifecycle state, or emit a chunking obligation. Those orchestration and persistence contracts are intentionally left for the later tickets that own them.
 
@@ -6661,3 +6661,36 @@ V1.3.08 does not add:
 ### Completion gate
 
 This section describes the current V1.3.08 implementation boundary, not a completed release. Before the ticket is reconciled as done, the worker lockfile must be current, the focused and full worker Ruff/mypy/pytest gates must pass on Python 3.14, repository CI and Security must pass, Staff Engineer review must have no open Critical or High finding, the final PR diff must stay inside the ticket allowlist, and the PR must be merged. The guide should then be updated with the final PR/merge and CI/Security evidence rather than silently treating branch code as production-complete.
+
+---
+
+## V1.3.09 — HTML/help-center normalization parser
+
+**GitHub issue:** #211  
+**Linear ticket:** OPE-316  
+**Work branch:** `openclawneutron/ope-316-v1309-implement-htmlhelp-center-normalization-parser`  
+**Architecture decision:** `docs/architecture-decisions/ADR-025-knowledge-html-normalization-parser.md`  
+**Current status:** implementation complete on the ticket branch; merge requires green repository gates
+
+V1.3.09 extends the same pure worker-side normalization library from V1.3.08 to web-page knowledge. Serviq already represents fetched web pages as `source_type="url"`, so this ticket does not add a new durable `html` source type or change the API, database, or parse-event contract.
+
+For URL content, the normalizer now treats supplied HTML bytes as inert data. It uses Python's standard-library `HTMLParser`; it does not fetch a URL, launch a browser, execute JavaScript, crawl links, solve anti-bot challenges, or inspect external resources.
+
+The parser extracts a deliberately small useful surface:
+
+- the first non-empty document `<title>`;
+- `<h1>` through `<h6>` headings;
+- article/help text inside `<p>` elements;
+- list-item text inside `<li>` elements;
+- explicit `<br>` line breaks inside captured text.
+
+HTML attributes are ignored, so `href`, `src`, form values, and image attributes never become normalized text. Unknown inline tags can contribute only their visible character data while they are inside a recognized title, heading, paragraph, or list item.
+
+Help-center pages often repeat menus and site chrome around the actual article. The parser therefore chooses one deterministic content scope after parsing: eligible `<article>` content wins, otherwise eligible `<main>` content wins, otherwise eligible body/global content is used. Heading ancestry is computed only after that selection so discarded navigation or body headings cannot contaminate the article's retrieval structure.
+
+Entire `script`, `style`, `form`, `nav`, `noscript`, `template`, `svg`, `canvas`, `iframe`, `object`, `embed`, `header`, `footer`, and `aside` subtrees are ignored. This is not an HTML sanitizer for re-rendering; the output is plain text only.
+
+URL bytes reuse the existing strict UTF-8-SIG/NUL boundary and the 5 MiB text input ceiling. The existing 5,242,880-character total-output limit, 32,768-character segment limit, and 20,000-segment limit remain in force. Empty/noise-only pages fail safely. Unexpected parser failures return the stable `KNOWLEDGE_NORMALIZATION_HTML_MALFORMED` code without copying raw HTML or upstream exception text into logs or errors.
+
+This ticket still does not activate the `serviq.knowledge.parse.v1` Kafka consumer or persist normalized segments. Chunking remains V1.3.10. The implementation is intentionally a deterministic transformation library that later orchestration can call once its persistence and retry contracts are frozen.
+

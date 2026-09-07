@@ -1,4 +1,4 @@
-"""Deterministic, bounded normalization for untrusted file-backed knowledge content."""
+"""Deterministic, bounded normalization for untrusted knowledge content."""
 
 from __future__ import annotations
 
@@ -6,13 +6,14 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from html.parser import HTMLParser
 from io import BytesIO
 from typing import Literal
 
 from pypdf import PdfReader
 from pypdf.errors import LimitReachedError, PdfReadError, PdfStreamError
 
-KnowledgeSourceType = Literal["pdf", "markdown", "text"]
+KnowledgeSourceType = Literal["pdf", "markdown", "text", "url"]
 
 _MIB = 1024 * 1024
 _ATX_HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")
@@ -26,6 +27,30 @@ _INLINE_CODE = re.compile(r"`+([^`\n]+?)`+")
 _MARKDOWN_ESCAPE = re.compile(r"\\([\\`*_[\]{}()#+.!>~-])")
 _EMPHASIS_MARKER = re.compile(r"(?<!\w)[*_](?=\S)|(?<=\S)[*_](?!\w)")
 _HORIZONTAL_SPACE = re.compile(r"[ \t\f\v]+")
+_HTML_SPACE = re.compile(r"[ \t\r\n\f\v]+")
+_HTML_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+_HTML_IGNORED_SUBTREES = frozenset(
+    {
+        "script",
+        "style",
+        "form",
+        "nav",
+        "noscript",
+        "template",
+        "svg",
+        "canvas",
+        "iframe",
+        "object",
+        "embed",
+        "header",
+        "footer",
+        "aside",
+    }
+)
+_HTML_VOID_IGNORED = frozenset({"embed"})
+HtmlScope = Literal["article", "main", "fallback"]
+HtmlCandidateKind = Literal["heading", "content"]
+HtmlCaptureKind = Literal["title", "heading", "content"]
 
 
 class KnowledgeNormalizationErrorCode(StrEnum):
@@ -36,6 +61,7 @@ class KnowledgeNormalizationErrorCode(StrEnum):
     PDF_MALFORMED = "KNOWLEDGE_NORMALIZATION_PDF_MALFORMED"
     PDF_ENCRYPTED = "KNOWLEDGE_NORMALIZATION_PDF_ENCRYPTED"
     PDF_PAGE_LIMIT_EXCEEDED = "KNOWLEDGE_NORMALIZATION_PDF_PAGE_LIMIT_EXCEEDED"
+    HTML_MALFORMED = "KNOWLEDGE_NORMALIZATION_HTML_MALFORMED"
     OUTPUT_TOO_LARGE = "KNOWLEDGE_NORMALIZATION_OUTPUT_TOO_LARGE"
     SEGMENT_LIMIT_EXCEEDED = "KNOWLEDGE_NORMALIZATION_SEGMENT_LIMIT_EXCEEDED"
     EMPTY_CONTENT = "KNOWLEDGE_NORMALIZATION_EMPTY_CONTENT"
@@ -58,6 +84,9 @@ _ERROR_MESSAGES: dict[KnowledgeNormalizationErrorCode, str] = {
     ),
     KnowledgeNormalizationErrorCode.PDF_PAGE_LIMIT_EXCEEDED: (
         "Knowledge PDF exceeds the page limit."
+    ),
+    KnowledgeNormalizationErrorCode.HTML_MALFORMED: (
+        "Knowledge HTML is malformed or unsupported."
     ),
     KnowledgeNormalizationErrorCode.OUTPUT_TOO_LARGE: (
         "Normalized knowledge output exceeds the limit."
@@ -126,6 +155,168 @@ class _Block:
     end_line: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _HtmlCandidate:
+    kind: HtmlCandidateKind
+    text: str
+    scope: HtmlScope
+    heading_level: int | None = None
+
+
+@dataclass(slots=True)
+class _HtmlCapture:
+    tag: str
+    kind: HtmlCaptureKind
+    scope: HtmlScope
+    heading_level: int | None
+    parts: list[str | None]
+
+
+class _KnowledgeHtmlParser(HTMLParser):
+    """Collect HTML text candidates without rendering or executing content."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.titles: list[str] = []
+        self.candidates: list[_HtmlCandidate] = []
+        self._capture: _HtmlCapture | None = None
+        self._skip_stack: list[str] = []
+        self._article_depth = 0
+        self._main_depth = 0
+        self._body_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        tag = tag.lower()
+        if (
+            self._skip_stack
+            and tag in _HTML_IGNORED_SUBTREES
+            and tag not in _HTML_VOID_IGNORED
+        ):
+            self._skip_stack.append(tag)
+            return
+        if self._skip_stack:
+            return
+        if tag in _HTML_IGNORED_SUBTREES and tag not in _HTML_VOID_IGNORED:
+            self._skip_stack.append(tag)
+            return
+        if tag in _HTML_IGNORED_SUBTREES:
+            return
+
+        if tag == "article":
+            self._article_depth += 1
+            return
+        if tag == "main":
+            self._main_depth += 1
+            return
+        if tag == "body":
+            self._body_depth += 1
+            return
+        if tag == "br" and self._capture is not None:
+            self._capture.parts.append(None)
+            return
+        if tag == "br":
+            return
+        if self._capture is not None:
+            return
+
+        if tag == "title":
+            self._capture = _HtmlCapture(
+                tag=tag,
+                kind="title",
+                scope="fallback",
+                heading_level=None,
+                parts=[],
+            )
+            return
+        if tag in _HTML_HEADING_TAGS:
+            self._capture = _HtmlCapture(
+                tag=tag,
+                kind="heading",
+                scope=self._current_scope(),
+                heading_level=int(tag[1]),
+                parts=[],
+            )
+            return
+        if tag in {"p", "li"}:
+            self._capture = _HtmlCapture(
+                tag=tag,
+                kind="content",
+                scope=self._current_scope(),
+                heading_level=None,
+                parts=[],
+            )
+
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        tag = tag.lower()
+        if self._skip_stack or tag in _HTML_IGNORED_SUBTREES:
+            return
+        if tag == "br" and self._capture is not None:
+            self._capture.parts.append(None)
+            return
+        if tag == "br":
+            return
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if self._skip_stack:
+            if tag == self._skip_stack[-1]:
+                self._skip_stack.pop()
+            return
+
+        if self._capture is not None and tag == self._capture.tag:
+            self._finish_capture()
+
+        if tag == "article" and self._article_depth > 0:
+            self._article_depth -= 1
+        elif tag == "main" and self._main_depth > 0:
+            self._main_depth -= 1
+        elif tag == "body" and self._body_depth > 0:
+            self._body_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_stack and self._capture is not None:
+            self._capture.parts.append(data)
+
+    def finish(self) -> None:
+        """Flush one unclosed eligible capture after HTMLParser.close()."""
+
+        if self._capture is not None and not self._skip_stack:
+            self._finish_capture()
+
+    def _current_scope(self) -> HtmlScope:
+        if self._article_depth > 0:
+            return "article"
+        if self._main_depth > 0:
+            return "main"
+        return "fallback"
+
+    def _finish_capture(self) -> None:
+        capture = self._capture
+        self._capture = None
+        if capture is None:
+            return
+        text = _clean_html_parts(capture.parts)
+        if not text:
+            return
+        if capture.kind == "title":
+            self.titles.append(text)
+            return
+        kind: HtmlCandidateKind = "heading" if capture.kind == "heading" else "content"
+        self.candidates.append(
+            _HtmlCandidate(
+                kind=kind,
+                text=text,
+                scope=capture.scope,
+                heading_level=capture.heading_level,
+            )
+        )
+
+
 def normalize_knowledge_content(
     raw_bytes: bytes,
     source_type: str,
@@ -133,7 +324,7 @@ def normalize_knowledge_content(
 ) -> tuple[NormalizedSegment, ...]:
     """Normalize untrusted knowledge bytes without executing embedded content."""
 
-    if source_type not in {"pdf", "markdown", "text"}:
+    if source_type not in {"pdf", "markdown", "text", "url"}:
         raise KnowledgeNormalizationError(
             KnowledgeNormalizationErrorCode.SOURCE_TYPE_UNSUPPORTED
         )
@@ -148,11 +339,12 @@ def normalize_knowledge_content(
         blocks = _normalize_pdf(raw_bytes, limits)
     else:
         decoded = _decode_text(raw_bytes)
-        blocks = (
-            _normalize_markdown(decoded)
-            if source_type == "markdown"
-            else _normalize_plain_text(decoded)
-        )
+        if source_type == "markdown":
+            blocks = _normalize_markdown(decoded)
+        elif source_type == "url":
+            blocks = _normalize_html(decoded)
+        else:
+            blocks = _normalize_plain_text(decoded)
     return _materialize_segments(blocks, limits)
 
 
@@ -227,6 +419,74 @@ def _normalize_markdown(text: str) -> list[_Block]:
             pending.append((line_number, cleaned))
     flush_pending()
     return blocks
+
+
+
+def _normalize_html(text: str) -> list[_Block]:
+    try:
+        parser = _KnowledgeHtmlParser()
+        parser.feed(text)
+        parser.close()
+        parser.finish()
+        return _html_blocks(parser)
+    except Exception:
+        raise KnowledgeNormalizationError(
+            KnowledgeNormalizationErrorCode.HTML_MALFORMED
+        ) from None
+
+
+def _html_blocks(parser: _KnowledgeHtmlParser) -> list[_Block]:
+    article = [candidate for candidate in parser.candidates if candidate.scope == "article"]
+    main = [candidate for candidate in parser.candidates if candidate.scope == "main"]
+    fallback = [
+        candidate for candidate in parser.candidates if candidate.scope == "fallback"
+    ]
+    selected = article or main or fallback
+
+    blocks: list[_Block] = []
+    if parser.titles:
+        blocks.append(_Block(text=parser.titles[0]))
+
+    headings: list[str] = []
+    for candidate in selected:
+        if candidate.kind == "heading":
+            level = candidate.heading_level
+            if level is None:
+                continue
+            headings[:] = headings[: level - 1]
+            while len(headings) < level - 1:
+                headings.append("")
+            headings.append(candidate.text)
+            heading_path = tuple(item for item in headings if item)
+            blocks.append(_Block(text=candidate.text, heading_path=heading_path))
+            continue
+        blocks.append(
+            _Block(
+                text=candidate.text,
+                heading_path=tuple(item for item in headings if item),
+            )
+        )
+    return blocks
+
+
+def _clean_html_parts(parts: list[str | None]) -> str:
+    lines: list[str] = []
+    pending: list[str] = []
+    for part in parts:
+        if part is None:
+            lines.append(_HTML_SPACE.sub(" ", "".join(pending)).strip())
+            pending = []
+            continue
+        pending.append(part)
+    lines.append(_HTML_SPACE.sub(" ", "".join(pending)).strip())
+
+    start = 0
+    while start < len(lines) and not lines[start]:
+        start += 1
+    end = len(lines)
+    while end > start and not lines[end - 1]:
+        end -= 1
+    return "\n".join(lines[start:end])
 
 
 def _normalize_pdf(raw_bytes: bytes, limits: NormalizationLimits) -> list[_Block]:

@@ -6670,7 +6670,7 @@ This section describes the current V1.3.08 implementation boundary, not a comple
 **Linear ticket:** OPE-316  
 **Work branch:** `openclawneutron/ope-316-v1309-implement-htmlhelp-center-normalization-parser`  
 **Architecture decision:** `docs/architecture-decisions/ADR-025-knowledge-html-normalization-parser.md`  
-**Current status:** implementation complete on the ticket branch; merge requires green repository gates
+**Current status:** merged and acceptance-verified through PR #212
 
 V1.3.09 extends the same pure worker-side normalization library from V1.3.08 to web-page knowledge. Serviq already represents fetched web pages as `source_type="url"`, so this ticket does not add a new durable `html` source type or change the API, database, or parse-event contract.
 

@@ -1,0 +1,44 @@
+name: Temporary V1.3.09 Docs Closeout
+
+on:
+  push:
+    branches:
+      - openclawneutron/ope-316-v1309-docs-closeout
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: openclawneutron/ope-316-v1309-docs-closeout
+
+      - name: Reconcile merged V1.3.09 status
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/SERVIQ_BUILD_GUIDE.md')
+          text = path.read_text(encoding='utf-8')
+          old = '**Current status:** implementation complete on the ticket branch; merge requires green repository gates'
+          new = '**Current status:** merged and acceptance-verified through PR #212'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected exactly one V1.3.09 status line, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git rm .github/workflows/temp-v1309-docs-closeout.yml
+
+      - name: Commit clean documentation closeout
+        shell: bash
+        run: |
+          git status --short
+          git add -A
+          git config user.name "anmolsansi"
+          git config user.email "143311415+anmolsansi@users.noreply.github.com"
+          git commit -m "docs: reconcile V1.3.09 merge evidence (#211)"
+          git push origin HEAD:openclawneutron/ope-316-v1309-docs-closeout

@@ -1,0 +1,72 @@
+name: Temporary V1.3.09 Commit
+
+on:
+  push:
+    branches:
+      - openclawneutron/ope-316-v1309-implement-htmlhelp-center-normalization-parser
+
+permissions:
+  contents: write
+
+jobs:
+  commit-v1309:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: openclawneutron/ope-316-v1309-implement-htmlhelp-center-normalization-parser
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.14.6"
+          check-latest: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: "0.12.9"
+
+      - name: Reapply previously validated changes and remove helpers
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64
+          import gzip
+          import re
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/temp-v1309-complete.yml').read_text()
+          match = re.search(r'payload = "([A-Za-z0-9+/=]+)"', workflow)
+          if match is None:
+              raise SystemExit('Validated V1.3.09 payload not found.')
+          script = gzip.decompress(base64.b64decode(match.group(1)))
+          Path('/tmp/v1309_apply.py').write_bytes(script)
+          PY
+          python /tmp/v1309_apply.py
+          rm /tmp/v1309_apply.py
+          git rm .github/workflows/temp-v1309-complete.yml
+          git rm .github/workflows/temp-v1309-commit.yml
+
+      - name: Reconfirm focused and full worker validation
+        shell: bash
+        run: |
+          cd services/worker
+          uv sync --frozen
+          uv run pytest tests/test_knowledge_normalization.py
+          uv run ruff check app/core/knowledge_normalization.py tests/test_knowledge_normalization.py
+          uv run mypy app/core/knowledge_normalization.py tests/test_knowledge_normalization.py
+          uv run pytest
+          uv run ruff check .
+          uv run mypy app tests
+
+      - name: Commit validated ticket changes
+        shell: bash
+        run: |
+          git status --short
+          git add -A
+          git config user.name "anmolsansi"
+          git config user.email "143311415+anmolsansi@users.noreply.github.com"
+          git commit -m "feat(worker): implement V1.3.09 HTML normalization (#211)"
+          git push origin HEAD:openclawneutron/ope-316-v1309-implement-htmlhelp-center-normalization-parser

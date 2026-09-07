@@ -5,6 +5,7 @@ from io import BytesIO
 import pytest
 from pypdf import PdfWriter
 
+import app.core.knowledge_normalization as normalization
 from app.core.knowledge_normalization import (
     KnowledgeNormalizationError,
     KnowledgeNormalizationErrorCode,
@@ -203,7 +204,7 @@ def test_empty_and_unsupported_content_fail_safely() -> None:
     assert empty.value.code == KnowledgeNormalizationErrorCode.EMPTY_CONTENT
 
     with pytest.raises(KnowledgeNormalizationError) as unsupported:
-        normalize_knowledge_content(b"content", "url")
+        normalize_knowledge_content(b"content", "sitemap")
     assert unsupported.value.code == KnowledgeNormalizationErrorCode.SOURCE_TYPE_UNSUPPORTED
 
 
@@ -216,6 +217,170 @@ def test_raw_sensitive_content_never_appears_in_parser_error_or_logs(
     with pytest.raises(KnowledgeNormalizationError) as exc_info:
         normalize_knowledge_content(raw, "pdf")
 
+    assert sentinel not in str(exc_info.value)
+    assert sentinel not in caplog.text
+
+
+
+def test_html_article_extracts_title_headings_paragraphs_and_lists() -> None:
+    html = b"""<html>
+<head><title>Help &amp; Support</title></head>
+<body>
+<article>
+  <h1>Returns</h1>
+  <p>Read <strong>this</strong><br>carefully.</p>
+  <h2>Steps</h2>
+  <ul>
+    <li>Open <a href="https://secret.example/orders">orders</a></li>
+    <li>Choose an item</li>
+  </ul>
+</article>
+</body>
+</html>"""
+
+    segments = normalize_knowledge_content(html, "url")
+
+    assert [segment.text for segment in segments] == [
+        "Help & Support",
+        "Returns",
+        "Read this\ncarefully.",
+        "Steps",
+        "Open orders",
+        "Choose an item",
+    ]
+    assert [segment.heading_path for segment in segments] == [
+        (),
+        ("Returns",),
+        ("Returns",),
+        ("Returns", "Steps"),
+        ("Returns", "Steps"),
+        ("Returns", "Steps"),
+    ]
+    assert all(segment.page_number is None for segment in segments)
+    assert all(segment.start_line is None for segment in segments)
+    assert all(segment.end_line is None for segment in segments)
+    assert "secret.example" not in " ".join(segment.text for segment in segments)
+
+
+def test_html_strips_executable_form_and_navigation_noise() -> None:
+    sentinel = "SECRET-HTML-NOISE-17c8"
+    html = f"""<html><body>
+<header><p>{sentinel}-header</p></header>
+<nav><p>{sentinel}-nav</p></nav>
+<main><h1>Visible</h1><p>Safe article text.</p></main>
+<aside><p>{sentinel}-aside</p></aside>
+<footer><p>{sentinel}-footer</p></footer>
+<script>{sentinel}-script</script>
+<style>.x::before {{ content: '{sentinel}-style'; }}</style>
+<form><p>{sentinel}-form</p><input value="{sentinel}-value"></form>
+<noscript><p>{sentinel}-noscript</p></noscript>
+<template><p>{sentinel}-template</p></template>
+<svg><text>{sentinel}-svg</text></svg>
+<canvas>{sentinel}-canvas</canvas>
+<iframe>{sentinel}-iframe</iframe>
+<object>{sentinel}-object</object>
+<embed src="{sentinel}-embed">
+</body></html>""".encode()
+
+    segments = normalize_knowledge_content(html, "url")
+
+    assert [segment.text for segment in segments] == ["Visible", "Safe article text."]
+    assert sentinel not in " ".join(segment.text for segment in segments)
+
+
+def test_html_article_scope_wins_over_main_and_body() -> None:
+    html = b"""<html><head><title>Help</title></head><body>
+<h1>Body heading</h1><p>Body text</p>
+<main><h1>Main heading</h1><p>Main text</p></main>
+<article><h2>Article heading</h2><p>Article text</p></article>
+</body></html>"""
+
+    segments = normalize_knowledge_content(html, "url")
+
+    assert [segment.text for segment in segments] == [
+        "Help",
+        "Article heading",
+        "Article text",
+    ]
+    assert [segment.heading_path for segment in segments] == [
+        (),
+        ("Article heading",),
+        ("Article heading",),
+    ]
+
+
+def test_html_main_scope_wins_when_article_has_no_eligible_content() -> None:
+    html = b"""<body>
+<h1>Body heading</h1><p>Body text</p>
+<main><h2>Main heading</h2><p>Main text</p></main>
+<article><div>Uncaptured article wrapper text</div></article>
+</body>"""
+
+    segments = normalize_knowledge_content(html, "url")
+
+    assert [segment.text for segment in segments] == ["Main heading", "Main text"]
+    assert [segment.heading_path for segment in segments] == [
+        ("Main heading",),
+        ("Main heading",),
+    ]
+
+
+def test_html_empty_and_url_text_safety_fail_closed() -> None:
+    with pytest.raises(KnowledgeNormalizationError) as empty:
+        normalize_knowledge_content(b"<nav><p>noise only</p></nav>", "url")
+    assert empty.value.code == KnowledgeNormalizationErrorCode.EMPTY_CONTENT
+
+    assert normalize_knowledge_content(
+        b"\xef\xbb\xbf<article><p>hello</p></article>", "url"
+    )[0].text == "hello"
+
+    with pytest.raises(KnowledgeNormalizationError) as invalid_utf8:
+        normalize_knowledge_content(b"<p>hello\xff</p>", "url")
+    assert invalid_utf8.value.code == KnowledgeNormalizationErrorCode.INVALID_UTF8
+
+    with pytest.raises(KnowledgeNormalizationError) as nul:
+        normalize_knowledge_content(b"<p>hello\x00world</p>", "url")
+    assert nul.value.code == KnowledgeNormalizationErrorCode.TEXT_INVALID
+
+    tiny = NormalizationLimits(
+        max_pdf_bytes=1_000,
+        max_text_bytes=4,
+        max_pdf_pages=10,
+        max_total_chars=100,
+        max_segment_chars=100,
+        max_segments=10,
+    )
+    with pytest.raises(KnowledgeNormalizationError) as too_large:
+        normalize_knowledge_content(b"<p>x</p>", "url", tiny)
+    assert too_large.value.code == KnowledgeNormalizationErrorCode.INPUT_TOO_LARGE
+
+
+def test_html_normalization_is_deterministic() -> None:
+    raw = b"<article><h1>One</h1><p>alpha &amp; beta</p><li>gamma</li></article>"
+
+    first = normalize_knowledge_content(raw, "url")
+    second = normalize_knowledge_content(raw, "url")
+
+    assert first == second
+
+
+def test_html_unexpected_parser_failure_is_safe_and_does_not_log_raw_content(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sentinel = "SECRET-HTML-PARSER-FAILURE-c9a2"
+
+    def fail_feed(self: object, data: str) -> None:
+        del self, data
+        raise RuntimeError(sentinel)
+
+    monkeypatch.setattr(normalization._KnowledgeHtmlParser, "feed", fail_feed)
+
+    with pytest.raises(KnowledgeNormalizationError) as exc_info:
+        normalize_knowledge_content(f"<p>{sentinel}</p>".encode(), "url")
+
+    assert exc_info.value.code == KnowledgeNormalizationErrorCode.HTML_MALFORMED
+    assert str(exc_info.value) == "Knowledge HTML is malformed or unsupported."
     assert sentinel not in str(exc_info.value)
     assert sentinel not in caplog.text
 

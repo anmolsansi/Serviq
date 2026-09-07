@@ -6497,3 +6497,167 @@ Focused unit coverage proves deterministic envelope serialization and retry timi
 ### Rollback
 
 Rollback stops the worker publisher and reverts the worker runtime change. Unpublished rows stay durable in PostgreSQL for later replay. Because V1.3.06A adds no schema, rollback requires no data migration or destructive reconciliation.
+
+
+---
+
+## V1.3.07 — Knowledge sync fetch worker
+
+**GitHub issue:** #198  
+**Linear ticket:** OPE-313  
+**Implementation PRs:** #201 and #202  
+**Architecture decision:** `docs/architecture-decisions/ADR-023-knowledge-sync-fetch-worker.md`  
+**Contract change:** `docs/contract-changes/CCR-008-knowledge-sync-fetch-and-parse-handoff.md`
+
+V1.3.07 connects the durable sync command from V1.3.06/V1.3.06A to the next knowledge-ingestion stage. Before this ticket, Serviq could accept a sync request, save the request as a durable outbox event, and publish that event to the Kafka-compatible broker. It still did not have a worker that turned one source/version into a durable knowledge document and a parser obligation.
+
+The worker now consumes `serviq.knowledge.sync.v1` with explicit at-least-once semantics and manual offset commits. It validates the generic event envelope, requires the Kafka key to match the source aggregate, and processes exactly one `{tenantId, sourceId, syncVersion}` job at a time. Duplicate delivery is expected and handled idempotently rather than treated as an exceptional case.
+
+For a URL source, the worker reuses the V1.3.05 SSRF-safe public HTTPS boundary. It allows only the normalized hostname already registered for the source, fails closed on cross-host redirects, fetches the approved raw bytes, and stores them under the deterministic tenant-scoped key:
+
+```text
+tenants/{tenantId}/knowledge/{sourceId}/sync/{syncVersion}/raw
+```
+
+For `pdf`, `markdown`, and `text` sources, the worker reuses the existing uploaded raw object in place. It does not make a second copy. Sitemap traversal remains intentionally unsupported here because traversal/crawling belongs to later work.
+
+The worker creates or reuses the exact versioned `knowledge_document`. `document_version` equals `syncVersion`, and `content_hash` is the lowercase SHA-256 digest of the exact raw bytes. A replay that sees the same completed document and parser handoff is a no-op. If an incomplete replay sees different backing bytes for the same source/version, it fails safely instead of overwriting the already-recorded document identity.
+
+After the document is durable, the same PostgreSQL transaction stages `serviq.knowledge.parse.v1`. That event contains only bounded identifiers and provenance: tenant ID, source ID, document ID/version, source type, raw object key, canonical URI when relevant, and content hash. Raw document content, credentials, prompts, remote error bodies, and user PII are not copied into the event.
+
+The source intentionally remains `syncing` after this worker succeeds. V1.3.07 records `last_synced_at`, clears the safe error code, and leaves the final `ready` transition to the later parse/chunk/embed/index pipeline. This prevents a source from appearing fully searchable before downstream ingestion is actually complete.
+
+Retry behavior is bounded and explicit. Retryable failures wait 30 seconds, then 5 minutes, then 30 minutes, and the next retryable failure goes to the DLQ. The original Kafka offset is committed only after success/no-op or after the retry/DLQ record has itself been acknowledged. A failed retry/DLQ publication therefore cannot silently lose the original obligation.
+
+Tenant and version checks are repeated before persistence. Missing and cross-tenant sources are indistinguishable, disabled sources fail terminally, stale source versions are acknowledged without mutating newer state, and future versions fail closed. Older failure handling is also prevented from overwriting a newer source version.
+
+Real integration coverage exercises PostgreSQL, S3-compatible storage, and Redpanda together. PR #201 merged the main implementation, and PR #202 corrected and proved the completed-handoff replay contract. GitHub issue #198 and Linear OPE-313 are completed.
+
+V1.3.07 deliberately does not parse document contents, chunk text, generate embeddings, create vector indexes, perform sitemap traversal, or expose new UI/API product behavior. Its responsibility is the durable and idempotent handoff from a sync event to one versioned document plus one parser obligation.
+
+---
+
+## V1.3.08 — PDF/Markdown/text normalization parser
+
+**GitHub issue:** #208  
+**Linear ticket:** OPE-315  
+**Work branch:** `openclawneutron/ope-315-v1308-implement-pdfmarkdowntext-normalization-parser`  
+**Architecture decision:** `docs/architecture-decisions/ADR-024-knowledge-file-normalization-parser.md`  
+**Current status:** implementation in progress; not yet merge-complete
+
+V1.3.08 adds the first content-normalization capability behind the parser obligation created by V1.3.07. The important scope decision is that this ticket implements a **pure worker-side normalization library**. It does not yet activate a Kafka consumer for `serviq.knowledge.parse.v1`, persist normalized output, change source/document lifecycle state, or emit a chunking obligation. Those orchestration and persistence contracts are intentionally left for the later tickets that own them.
+
+The public library boundary is:
+
+```text
+normalize_knowledge_content(raw_bytes, source_type, limits=DEFAULT_NORMALIZATION_LIMITS)
+    -> tuple[NormalizedSegment, ...]
+```
+
+Each immutable `NormalizedSegment` records:
+
+```text
+ordinal
+text
+page_number
+heading_path
+start_line
+end_line
+```
+
+`ordinal` is deterministic and zero-based. PDF segments carry a one-based `page_number`. Markdown segments carry heading ancestry. Markdown/text segments can carry one-based source-line provenance. The segment object deliberately does not contain tenant IDs, object keys, filenames, URLs, raw bytes, secrets, or credentials.
+
+### Why normalize before chunking
+
+PDFs, Markdown files, and text files represent structure differently. If the later chunker tried to understand every file format itself, parsing rules and chunking rules would become tangled together. V1.3.08 creates a narrower boundary: first turn supported file bytes into deterministic, provenance-aware plain text, then let V1.3.10 decide how that normalized text should be chunked.
+
+That also makes parser behavior testable independently from databases, Kafka, embedding providers, and retrieval logic.
+
+### PDF behavior
+
+PDF extraction uses `pypdf` in strict mode. The branch selects the normal `pypdf>=6.17,<6.18` package without crypto extras.
+
+The parser extracts text only. It does not run OCR, extract images, execute JavaScript/actions, launch attachments, follow external resources, or decrypt encrypted PDFs. If a PDF is encrypted, the parser rejects it before page extraction and never calls a decryption path. A blank or image-only PDF therefore does not magically become text; if no normalized text remains, the document fails as empty content.
+
+PDF provenance is page-based. Every emitted segment remembers the one-based page number that produced it, and blank pages are skipped.
+
+### Markdown behavior
+
+Markdown is decoded as strict UTF-8 with an optional UTF-8 BOM. CRLF/CR line endings are normalized to LF, trailing horizontal whitespace is removed deterministically, and NUL-containing content is rejected.
+
+ATX headings from `#` through `######` update a deterministic heading path. Heading markers are not kept in the emitted text. Paragraphs preserve their internal line order. Common list, ordered-list, and blockquote markers are removed while the readable item text remains.
+
+Fenced-code delimiters are removed, but the code content is treated only as inert text. Common inline emphasis, code-span, link, and image syntax is reduced to readable plain text. Raw HTML is treated as data and is never executed.
+
+### Plain-text behavior
+
+Plain text uses the same strict UTF-8/BOM, newline-normalization, NUL-rejection, and deterministic block rules. Non-empty logical blocks are emitted in source order with one-based line provenance so later chunks and answers can still be traced back to where the text came from.
+
+### Bounded resource behavior
+
+The parser has explicit document limits instead of trusting input size or parser defaults indefinitely:
+
+```text
+PDF raw input:            25 MiB
+Markdown/text raw input:   5 MiB
+PDF page count:            2,000 pages
+Normalized document text:  5,242,880 characters
+One segment:               32,768 characters
+Segment count:             20,000
+```
+
+The raw-input ceilings match the existing V1 upload contract. Long logical blocks are split deterministically. The implementation does not disable or raise `pypdf`'s own decompression/resource protections.
+
+### Safe failure contract
+
+Parser failures become a Serviq-owned `KnowledgeNormalizationError` with a stable safe code such as invalid UTF-8, malformed PDF, encrypted PDF, page-limit exceeded, output-limit exceeded, segment-limit exceeded, or empty normalized content.
+
+The error message remains generic. Upstream parser exception text and raw document text are not embedded in Serviq errors or parser logs. This matters because knowledge files can contain customer information, internal procedures, secrets, or other sensitive business text.
+
+### Tests being added
+
+The focused suite covers:
+
+- text happy path and line provenance;
+- UTF-8 BOM acceptance;
+- invalid UTF-8 and NUL rejection;
+- Markdown heading ancestry;
+- Markdown list/blockquote/fence/inline normalization as inert text;
+- multi-page PDF extraction with one-based page provenance;
+- blank/image-only PDF behavior proving there is no OCR fallback;
+- malformed and encrypted PDF safe failures;
+- raw-input, page-count, total-output, per-segment, and segment-count limits;
+- deterministic repeated output;
+- regression coverage proving a raw secret sentinel does not appear in parser errors or captured parser logs.
+
+### Main implementation files
+
+```text
+services/worker/app/core/knowledge_normalization.py
+services/worker/tests/test_knowledge_normalization.py
+services/worker/pyproject.toml
+services/worker/uv.lock
+docs/architecture-decisions/ADR-024-knowledge-file-normalization-parser.md
+docs/SERVIQ_BUILD_GUIDE.md
+docs/repo_context.md
+```
+
+The worker dependency lock remains part of the completion contract. Selecting `pypdf` in `pyproject.toml` is not enough; the resolved `uv.lock` must also be regenerated and accepted by `uv sync --frozen` before this ticket can be called complete.
+
+### What remains intentionally out of scope
+
+V1.3.08 does not add:
+
+- a `serviq.knowledge.parse.v1` Kafka consumer or retry/DLQ worker;
+- normalized-object persistence;
+- database migrations;
+- source/document lifecycle transitions;
+- HTML/help-center normalization, which belongs to V1.3.09;
+- chunking, which belongs to V1.3.10;
+- embeddings, vector indexing, retrieval, or answer generation;
+- OCR or image extraction;
+- any new public API or UI.
+
+### Completion gate
+
+This section describes the current V1.3.08 implementation boundary, not a completed release. Before the ticket is reconciled as done, the worker lockfile must be current, the focused and full worker Ruff/mypy/pytest gates must pass on Python 3.14, repository CI and Security must pass, Staff Engineer review must have no open Critical or High finding, the final PR diff must stay inside the ticket allowlist, and the PR must be merged. The guide should then be updated with the final PR/merge and CI/Security evidence rather than silently treating branch code as production-complete.

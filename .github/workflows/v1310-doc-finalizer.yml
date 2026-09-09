@@ -1,0 +1,163 @@
+name: V1.3.10 Documentation Finalizer
+
+on:
+  push:
+    branches:
+      - openclawneutron/ope-317-v1310-implement-deterministic-heading-aware-chunker
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Append V1.3.10 documentation and remove finalizer
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          guide = Path("docs/SERVIQ_BUILD_GUIDE.md")
+          guide_marker = "## V1.3.10 — Deterministic heading-aware knowledge chunker"
+          guide_section = r'''
+
+---
+
+## V1.3.10 — Deterministic heading-aware knowledge chunker
+
+**GitHub issue:** #214  
+**Linear ticket:** OPE-317  
+**Implementation PR:** #215  
+**Architecture decision:** `docs/architecture-decisions/ADR-026-knowledge-heading-aware-chunker.md`  
+**Current status:** implementation and focused tests are present on the ticket branch; merge still requires exact-head CI/Security and final Staff Engineer review.
+
+V1.3.10 adds the deterministic transformation that sits between the normalized segments produced by V1.3.08/V1.3.09 and the later embedding/indexing pipeline. The ticket intentionally remains a **pure worker-side library**. It does not consume `serviq.knowledge.parse.v1`, read object storage, write PostgreSQL, emit Kafka events, generate embeddings, or change any API/UI behavior.
+
+### Why chunk normalized text
+
+Normalization gives Serviq ordered plain-text segments plus source provenance. Retrieval still needs smaller bounded units so later embedding and lexical/vector search do not treat an entire long document as one search result. V1.3.10 creates those units without mixing provider/model decisions into parsing.
+
+The public function is:
+
+```text
+chunk_normalized_segments(segments, policy=DEFAULT_CHUNK_POLICY)
+    -> tuple[KnowledgeChunk, ...]
+```
+
+Each `KnowledgeChunk` contains a zero-based ordinal, text, token count, heading path, and ordered source-segment provenance. Provenance retains the original segment ordinal, page number, heading path, and line range. When a chunk uses only part of a normalized segment, Serviq keeps that segment's existing coarse provenance instead of inventing finer offsets that normalization never supplied.
+
+### Frozen V1 token policy
+
+No embedding model/tokenizer is frozen yet. Adding a provider-specific tokenizer now would couple chunk construction to a future model choice and add a dependency before that architecture exists.
+
+V1 therefore defines one deterministic repository-owned token as one non-whitespace run matched by Python Unicode regex `\S+`. This is a chunking/replay unit, not a claim that it equals a provider's billing tokenizer.
+
+The default chunk policy is:
+
+```text
+max_tokens     = 512
+overlap_tokens = 64
+max_chunks     = 20,000
+stride         = 448
+```
+
+Exactly 512 tokens remain one chunk. At 513 tokens, the second window starts at zero-based token index 448, so the two windows overlap by exactly 64 tokens. Windows begin and end on token boundaries and preserve the normalized characters and whitespace between those boundaries.
+
+Any future change to token definition, maximum size, overlap, heading grouping, separator behavior, or provenance semantics is a retrieval-policy change and requires evaluation plus ADR review before rollout.
+
+### Heading-aware grouping
+
+The chunker uses exact normalized heading ancestry as a semantic boundary.
+
+Leading segments with an empty heading path are treated as document preamble and attach to the first following non-empty heading group. This keeps an HTML `<title>` with the first article section. If the document has no non-empty heading path, the empty-path segments form one group.
+
+After the leading preamble, groups are consecutive runs whose `heading_path` values are exactly equal. The chunker does not search ahead, reorder sections, or merge unrelated headings. Text from segments inside one group is joined with exactly two newline characters before token windows are calculated.
+
+### Deterministic and fail-closed input behavior
+
+Input order is contractual. Segment ordinals must be exactly `0..n-1` in supplied order. The chunker does not sort, renumber, deduplicate, or silently drop malformed normalized input.
+
+Stable generic failures cover empty input, malformed segment order/type, token-empty segment text, invalid policy values, and the 20,000-chunk ceiling. Raw knowledge text is not copied into error messages or logs, and the library itself emits no logs.
+
+### Why there is no provider tokenizer dependency
+
+The alternative was to choose a tokenizer from an eventual embedding/model provider. That was rejected because the embedding profile is still a later architecture decision. Provider-specific tokenization would create dependency and replay coupling before Serviq knows which embedding model owns that contract.
+
+A character-count chunker was also rejected because the roadmap explicitly requires token counts and overlap. Cross-heading greedy packing was rejected because it weakens the heading-aware requirement and can mix unrelated sections.
+
+### Tests
+
+The focused V1.3.10 suite covers:
+
+- short single-chunk input;
+- long 512-token windows with exact 64-token overlap;
+- heading changes and leading title/preamble attachment;
+- list-segment ordering and provenance;
+- exact 512/513-token boundary behavior;
+- repeated-input determinism;
+- page and line provenance preservation;
+- empty input;
+- malformed/non-contiguous ordinals and wrong segment types;
+- token-empty input and raw-content redaction;
+- invalid policy values;
+- deterministic `max_chunks` enforcement.
+
+The initial local focused execution passed 16 tests. Repository Ruff, strict mypy, full worker pytest, CI, Security, and any existing integration gates remain authoritative before merge.
+
+### Main implementation files
+
+```text
+services/worker/app/core/knowledge_chunking.py
+services/worker/tests/test_knowledge_chunking.py
+docs/architecture-decisions/ADR-026-knowledge-heading-aware-chunker.md
+docs/SERVIQ_BUILD_GUIDE.md
+docs/repo_context.md
+```
+
+No dependency, lockfile, migration, database, API, event, auth, UI, or deployment file is part of the final V1.3.10 diff.
+
+### What remains intentionally out of scope
+
+V1.3.10 does not activate the parse-event consumer, persist normalized segments or chunks, generate embeddings, create vector indexes, implement retrieval/ranking/citations, change lifecycle state, or add product UI. Those later tickets must consume this deterministic chunk contract instead of changing it silently.
+
+### Rollback
+
+The change is additive and side-effect free. Before later orchestration integrates it, rollback is a normal code/docs revert with no data migration or external reconciliation. Once persisted embeddings/indexes depend on this policy, changing or rolling back the policy requires retrieval evaluation and re-index planning rather than an opportunistic constant change.
+'''
+
+          guide_text = guide.read_text()
+          if guide_marker not in guide_text:
+              guide.write_text(guide_text.rstrip() + guide_section + "\n")
+
+          context = Path("docs/repo_context.md")
+          context_marker = "## V1.3.10 current state — deterministic heading-aware chunking"
+          context_section = r'''
+
+## V1.3.10 current state — deterministic heading-aware chunking
+
+The worker now has a pure deterministic chunking library on the V1.3.10 implementation branch. It consumes the immutable `NormalizedSegment` output produced by the existing PDF/Markdown/text/URL normalizers and returns immutable chunks with zero-based ordinals, exact V1 token counts, heading paths, and ordered segment-level provenance.
+
+ADR-026 freezes the V1 token unit as a Unicode `\S+` non-whitespace run, with `max_tokens=512`, `overlap_tokens=64`, stride 448, and `max_chunks=20_000`. Leading empty-heading document preamble attaches to the first following non-empty heading group; later groups are consecutive exact `heading_path` runs. Input segment ordinals must be contiguous and are never repaired or resorted.
+
+The chunker is pure in-process code. It does not consume `serviq.knowledge.parse.v1`, access object storage, persist chunks, mutate lifecycle state, generate embeddings, emit events, or call an LLM/provider tokenizer. Stable errors contain no raw knowledge text. Any future token/size/overlap/grouping/provenance policy change requires retrieval evaluation and ADR review.
+
+Primary implementation evidence is ADR-026, `services/worker/app/core/knowledge_chunking.py`, and `services/worker/tests/test_knowledge_chunking.py`. V1.3.10 focused behavior is covered by 16 local passing tests; repository Ruff, strict mypy, full worker tests, CI/Security, and merge remain the authoritative completion gates. Parse-event activation/persistence and embedding/index/retrieval remain later work.
+'''
+
+          context_text = context.read_text()
+          if context_marker not in context_text:
+              context.write_text(context_text.rstrip() + context_section + "\n")
+          PY
+
+          rm .github/workflows/v1310-doc-finalizer.yml
+          git config user.name "serviq-doc-finalizer"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/SERVIQ_BUILD_GUIDE.md docs/repo_context.md .github/workflows/v1310-doc-finalizer.yml
+          git commit -m "docs(knowledge): document V1.3.10 chunking [37/40] (#214)"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

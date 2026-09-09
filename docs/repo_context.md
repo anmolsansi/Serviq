@@ -294,10 +294,10 @@ Primary evidence is ADR-025, `services/worker/app/core/knowledge_normalization.p
 
 ## V1.3.10 current state — deterministic heading-aware chunking
 
-The worker now has a pure deterministic chunking library on the V1.3.10 implementation branch. It consumes the immutable `NormalizedSegment` output produced by the existing PDF/Markdown/text/URL normalizers and returns immutable chunks with zero-based ordinals, exact V1 token counts, heading paths, and ordered segment-level provenance.
+The worker now has a pure deterministic chunking library. It consumes the immutable `NormalizedSegment` output produced by the existing PDF/Markdown/text/URL normalizers and returns immutable chunks with zero-based ordinals, exact V1 token counts, heading paths, and ordered segment-level provenance.
 
 ADR-026 freezes the V1 token unit as a Unicode `\S+` non-whitespace run, with `max_tokens=512`, `overlap_tokens=64`, stride 448, and `max_chunks=20_000`. Leading empty-heading document preamble attaches to the first following non-empty heading group; later groups are consecutive exact `heading_path` runs. Input segment ordinals must be contiguous and are never repaired or resorted.
 
 The chunker is pure in-process code. It does not consume `serviq.knowledge.parse.v1`, access object storage, persist chunks, mutate lifecycle state, generate embeddings, emit events, or call an LLM/provider tokenizer. Stable errors contain no raw knowledge text. Any future token/size/overlap/grouping/provenance policy change requires retrieval evaluation and ADR review.
 
-Primary implementation evidence is ADR-026, `services/worker/app/core/knowledge_chunking.py`, and `services/worker/tests/test_knowledge_chunking.py`. V1.3.10 focused behavior is covered by 16 local passing tests; repository Ruff, strict mypy, full worker tests, CI/Security, and merge remain the authoritative completion gates. Parse-event activation/persistence and embedding/index/retrieval remain later work.
+Primary evidence is ADR-026 (Linear OPE-317, GitHub #214), `services/worker/app/core/knowledge_chunking.py`, and `services/worker/tests/test_knowledge_chunking.py`. The implementation PR #215 passed final CI and Security evidence and was merged as SHA 81674164. Rollback strategy is a simple revert of the pure-library change. Parse-event activation/persistence and embedding/index/retrieval remain later work.

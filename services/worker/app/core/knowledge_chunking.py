@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections import deque
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import islice
 
 from app.core.knowledge_normalization import NormalizedSegment
 
@@ -50,6 +52,10 @@ def _is_positive_int(value: object) -> bool:
 
 def _is_nonnegative_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_optional_int(value: object) -> bool:
+    return value is None or (isinstance(value, int) and not isinstance(value, bool))
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,21 +114,22 @@ def chunk_normalized_segments(
 ) -> tuple[KnowledgeChunk, ...]:
     """Chunk normalized segments using the frozen deterministic V1 policy."""
 
+    if not isinstance(policy, ChunkPolicy):
+        raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.INVALID_POLICY)
+
     validated = _validate_segments(segments)
     chunks: list[KnowledgeChunk] = []
 
     for group in _heading_groups(validated):
         group_text, segment_spans = _materialize_group(group.segments)
-        token_spans = tuple(_TOKEN.finditer(group_text))
-        if not token_spans:
-            raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.TOKEN_EMPTY_SEGMENT)
+        provenance_start_index = 0
 
-        token_start = 0
-        while token_start < len(token_spans):
-            token_end = min(token_start + policy.max_tokens, len(token_spans))
-            char_start = token_spans[token_start].start()
-            char_end = token_spans[token_end - 1].end()
-            chunk_text = group_text[char_start:char_end]
+        for char_start, char_end, token_count in _token_windows(group_text, policy):
+            while (
+                provenance_start_index < len(segment_spans)
+                and segment_spans[provenance_start_index].end <= char_start
+            ):
+                provenance_start_index += 1
 
             if len(chunks) >= policy.max_chunks:
                 raise KnowledgeChunkingError(
@@ -132,20 +139,17 @@ def chunk_normalized_segments(
             chunks.append(
                 KnowledgeChunk(
                     ordinal=len(chunks),
-                    text=chunk_text,
-                    token_count=token_end - token_start,
+                    text=group_text[char_start:char_end],
+                    token_count=token_count,
                     heading_path=group.heading_path,
                     provenance=_window_provenance(
                         segment_spans,
+                        start_index=provenance_start_index,
                         char_start=char_start,
                         char_end=char_end,
                     ),
                 )
             )
-
-            if token_end == len(token_spans):
-                break
-            token_start = token_end - policy.overlap_tokens
 
     return tuple(chunks)
 
@@ -162,7 +166,19 @@ def _validate_segments(
         raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.EMPTY_INPUT)
 
     for expected_ordinal, segment in enumerate(materialized):
-        if not isinstance(segment, NormalizedSegment) or segment.ordinal != expected_ordinal:
+        if not isinstance(segment, NormalizedSegment):
+            raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.INVALID_SEGMENTS)
+        if (
+            not isinstance(segment.ordinal, int)
+            or isinstance(segment.ordinal, bool)
+            or segment.ordinal != expected_ordinal
+            or not isinstance(segment.text, str)
+            or not isinstance(segment.heading_path, tuple)
+            or any(not isinstance(heading, str) for heading in segment.heading_path)
+            or not _is_optional_int(segment.page_number)
+            or not _is_optional_int(segment.start_line)
+            or not _is_optional_int(segment.end_line)
+        ):
             raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.INVALID_SEGMENTS)
         if _TOKEN.search(segment.text) is None:
             raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.TOKEN_EMPTY_SEGMENT)
@@ -224,16 +240,44 @@ def _materialize_group(
     return "".join(text_parts), tuple(spans)
 
 
+def _token_windows(text: str, policy: ChunkPolicy) -> Iterator[tuple[int, int, int]]:
+    token_iter = _TOKEN.finditer(text)
+    window: deque[re.Match[str]] = deque(islice(token_iter, policy.max_tokens))
+    if not window:
+        raise KnowledgeChunkingError(KnowledgeChunkingErrorCode.TOKEN_EMPTY_SEGMENT)
+
+    stride = policy.max_tokens - policy.overlap_tokens
+    while window:
+        yield window[0].start(), window[-1].end(), len(window)
+
+        if len(window) < policy.max_tokens:
+            return
+
+        for _ in range(stride):
+            window.popleft()
+
+        try:
+            window.append(next(token_iter))
+        except StopIteration:
+            return
+
+        window.extend(islice(token_iter, policy.max_tokens - len(window)))
+
+
 def _window_provenance(
     spans: tuple[_SegmentSpan, ...],
     *,
+    start_index: int,
     char_start: int,
     char_end: int,
 ) -> tuple[ChunkProvenance, ...]:
     provenance: list[ChunkProvenance] = []
 
-    for span in spans:
-        if span.end <= char_start or span.start >= char_end:
+    for index in range(start_index, len(spans)):
+        span = spans[index]
+        if span.start >= char_end:
+            break
+        if span.end <= char_start:
             continue
         segment = span.segment
         provenance.append(

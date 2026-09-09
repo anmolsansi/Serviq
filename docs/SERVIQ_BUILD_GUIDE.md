@@ -6700,7 +6700,7 @@ This ticket still does not activate the `serviq.knowledge.parse.v1` Kafka consum
 
 **GitHub issue:** #214  
 **Linear ticket:** OPE-317  
-**Architecture decision:** `docs/architecture-decisions/ADR-026-knowledge-deterministic-chunking.md`  
+**Architecture decision:** `docs/architecture-decisions/ADR-026-knowledge-heading-aware-chunker.md`  
 **Current status:** merged and acceptance-verified through implementation PR #215 (SHA 81674164)
 
 V1.3.10 adds a pure deterministic chunking library to the worker. It consumes the immutable `NormalizedSegment` output produced by the existing PDF, Markdown, text, and URL normalizers and returns immutable chunks with zero-based ordinals, exact V1 token counts, heading paths, and ordered segment-level provenance.
@@ -6709,5 +6709,5 @@ ADR-026 freezes the V1 token unit as a Unicode `\S+` non-whitespace run. The chu
 
 The chunker is pure in-process code. It does not consume `serviq.knowledge.parse.v1`, access object storage, persist chunks, mutate lifecycle state, generate embeddings, emit events, or call an LLM/provider tokenizer. Stable errors contain no raw knowledge text. 
 
-The implementation PR #215 successfully generated final CI evidence and final Security evidence before merging. The rollback strategy is a simple revert of the pure-library change. Parse-event activation, persistence, embedding, indexing, and retrieval remain out of scope for this library step.
+Implementation PR #215 merged the deterministic chunker. Subsequent repository dependency-security remediation completed through PRs #217 and #218. The final V1.3.10 closeout state on main passed repository CI and Security. The rollback strategy is a simple revert of the pure-library change. Parse-event activation, persistence, embedding, indexing, and retrieval remain out of scope for this library step.
 

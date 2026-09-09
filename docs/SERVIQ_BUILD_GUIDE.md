@@ -6694,3 +6694,20 @@ URL bytes reuse the existing strict UTF-8-SIG/NUL boundary and the 5 MiB text in
 
 This ticket still does not activate the `serviq.knowledge.parse.v1` Kafka consumer or persist normalized segments. Chunking remains V1.3.10. The implementation is intentionally a deterministic transformation library that later orchestration can call once its persistence and retry contracts are frozen.
 
+---
+
+## V1.3.10 — Deterministic heading-aware chunking
+
+**GitHub issue:** #214  
+**Linear ticket:** OPE-317  
+**Architecture decision:** `docs/architecture-decisions/ADR-026-knowledge-deterministic-chunking.md`  
+**Current status:** merged and acceptance-verified through implementation PR #215 (SHA 81674164)
+
+V1.3.10 adds a pure deterministic chunking library to the worker. It consumes the immutable `NormalizedSegment` output produced by the existing PDF, Markdown, text, and URL normalizers and returns immutable chunks with zero-based ordinals, exact V1 token counts, heading paths, and ordered segment-level provenance.
+
+ADR-026 freezes the V1 token unit as a Unicode `\S+` non-whitespace run. The chunker enforces a 512 max tokens limit, 64 overlap tokens, a 448 stride, and a 20,000 chunk ceiling. Leading empty-heading document preamble attaches to the first following non-empty heading group; later groups are consecutive exact `heading_path` runs. Input segment ordinals must be contiguous and are never repaired or resorted.
+
+The chunker is pure in-process code. It does not consume `serviq.knowledge.parse.v1`, access object storage, persist chunks, mutate lifecycle state, generate embeddings, emit events, or call an LLM/provider tokenizer. Stable errors contain no raw knowledge text. 
+
+The implementation PR #215 successfully generated final CI evidence and final Security evidence before merging. The rollback strategy is a simple revert of the pure-library change. Parse-event activation, persistence, embedding, indexing, and retrieval remain out of scope for this library step.
+

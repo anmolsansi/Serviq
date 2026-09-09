@@ -34,7 +34,7 @@ cross-service integration test, end-to-end flow, then deployed acceptance.
 | `apps/customer-web` | End-customer Next.js surface | Scaffold page only |
 | `apps/platform-console` | Separate platform-operator surface | Scaffold page only |
 | `services/api` | FastAPI control plane and domain APIs | Active; most implemented surface |
-| `services/worker` | Durable asynchronous execution | Knowledge sync/fetch plus pure file and HTML normalization libraries; parse consumer not yet activated |
+| `services/worker` | Durable asynchronous execution | Knowledge sync/fetch plus pure file/HTML normalization and deterministic heading-aware chunking libraries; parse consumer not yet activated |
 | `services/llm-gateway` | Provider abstraction/connectivity | Active adapters and internal test route |
 | `packages/*` | Shared TypeScript packages | Early scaffolding |
 | `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Keycloak 26.7.1 service; V1.1.15 adds a deterministic test-only realm/client fixture at `infra/keycloak/serviq-test-realm.json`, mounted only by the opt-in integration harness |
@@ -129,9 +129,9 @@ browser-level proof for all three trust surfaces does not exist.
 - service liveness/readiness;
 - internal normalized provider-connectivity testing.
 
-Knowledge sources can be registered and stored. URL/file fetch and pure normalization
-foundations exist, but parse-consumer persistence and the complete
-chunk/embed/index/retrieve lifecycle are still pending.
+Knowledge sources can be registered and stored. URL/file fetch, pure normalization,
+and deterministic pure chunking foundations exist, but parse-consumer persistence
+and the complete embed/index/retrieve lifecycle are still pending.
 
 ## Data and migrations
 
@@ -199,11 +199,12 @@ Implemented and evidenced at repository level:
 - workforce identity, tenants, invitations, roles, permissions;
 - provider/model configuration with secret-safe responses;
 - knowledge registration/upload foundations;
+- pure file/HTML normalization and deterministic heading-aware chunking foundations;
 - migrations and focused service tests.
 
 Not implemented end to end:
 
-- safe crawling, parsing, chunking, embeddings, indexing, hybrid retrieval;
+- safe crawling, parse-consumer persistence, embeddings, indexing, hybrid retrieval;
 - customer identity, conversations, messages, SSE;
 - bounded agent execution, budgets, retries, and failure classification;
 - demo tools, policy, confirmation, approval, reconciliation, compensation;
@@ -291,3 +292,12 @@ The parser does not fetch network content, render a browser, execute JavaScript,
 
 Primary evidence is ADR-025, `services/worker/app/core/knowledge_normalization.py`, and `services/worker/tests/test_knowledge_normalization.py`. V1.3.10 still owns deterministic heading-aware chunking, while parse-event activation/persistence remains outside this pure-library ticket.
 
+## V1.3.10 current state — deterministic heading-aware chunking
+
+The worker now has a pure deterministic chunking library on the V1.3.10 implementation branch. It consumes the immutable `NormalizedSegment` output produced by the existing PDF/Markdown/text/URL normalizers and returns immutable chunks with zero-based ordinals, exact V1 token counts, heading paths, and ordered segment-level provenance.
+
+ADR-026 freezes the V1 token unit as a Unicode `\S+` non-whitespace run, with `max_tokens=512`, `overlap_tokens=64`, stride 448, and `max_chunks=20_000`. Leading empty-heading document preamble attaches to the first following non-empty heading group; later groups are consecutive exact `heading_path` runs. Input segment ordinals must be contiguous and are never repaired or resorted.
+
+The chunker is pure in-process code. It does not consume `serviq.knowledge.parse.v1`, access object storage, persist chunks, mutate lifecycle state, generate embeddings, emit events, or call an LLM/provider tokenizer. Stable errors contain no raw knowledge text. Any future token/size/overlap/grouping/provenance policy change requires retrieval evaluation and ADR review.
+
+Primary implementation evidence is ADR-026, `services/worker/app/core/knowledge_chunking.py`, and `services/worker/tests/test_knowledge_chunking.py`. V1.3.10 focused behavior is covered by 16 local passing tests; repository Ruff, strict mypy, full worker tests, CI/Security, and merge remain the authoritative completion gates. Parse-event activation/persistence and embedding/index/retrieval remain later work.

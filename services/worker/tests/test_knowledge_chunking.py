@@ -122,6 +122,21 @@ def test_exact_token_boundary_and_one_token_over_boundary_are_deterministic() ->
     assert over[0].text.split()[-64:] == over[1].text.split()[:64]
 
 
+def test_overlap_across_segments_keeps_only_intersecting_provenance() -> None:
+    policy = ChunkPolicy(max_tokens=4, overlap_tokens=1)
+    segments = (
+        NormalizedSegment(ordinal=0, text="a b c", heading_path=("Guide",)),
+        NormalizedSegment(ordinal=1, text="d e f", heading_path=("Guide",)),
+    )
+
+    chunks = chunk_normalized_segments(segments, policy)
+
+    assert [chunk.text for chunk in chunks] == ["a b c\n\nd", "d e f"]
+    assert [chunk.token_count for chunk in chunks] == [4, 3]
+    assert [item.segment_ordinal for item in chunks[0].provenance] == [0, 1]
+    assert [item.segment_ordinal for item in chunks[1].provenance] == [1]
+
+
 def test_repeated_identical_input_produces_identical_chunks() -> None:
     segments = (
         NormalizedSegment(ordinal=0, text="Guide", heading_path=("Guide",)),
@@ -173,6 +188,24 @@ def test_noncontiguous_or_wrong_type_input_fails_instead_of_being_repaired() -> 
     assert wrong_type.value.code == KnowledgeChunkingErrorCode.INVALID_SEGMENTS
 
 
+@pytest.mark.parametrize(
+    "segment",
+    [
+        NormalizedSegment(ordinal=False, text="content"),
+        NormalizedSegment(ordinal=0, text=None),  # type: ignore[arg-type]
+        NormalizedSegment(ordinal=0, text="content", heading_path=["Guide"]),  # type: ignore[arg-type]
+        NormalizedSegment(ordinal=0, text="content", page_number=True),
+    ],
+)
+def test_malformed_runtime_segment_fields_fail_with_stable_error(
+    segment: NormalizedSegment,
+) -> None:
+    with pytest.raises(KnowledgeChunkingError) as exc_info:
+        chunk_normalized_segments((segment,))
+
+    assert exc_info.value.code == KnowledgeChunkingErrorCode.INVALID_SEGMENTS
+
+
 def test_token_empty_segment_fails_without_raw_content_leakage(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -199,6 +232,16 @@ def test_token_empty_segment_fails_without_raw_content_leakage(
 def test_invalid_policy_values_are_rejected(kwargs: dict[str, object]) -> None:
     with pytest.raises(KnowledgeChunkingError) as exc_info:
         ChunkPolicy(**kwargs)  # type: ignore[arg-type]
+
+    assert exc_info.value.code == KnowledgeChunkingErrorCode.INVALID_POLICY
+
+
+def test_wrong_policy_runtime_type_is_rejected_safely() -> None:
+    with pytest.raises(KnowledgeChunkingError) as exc_info:
+        chunk_normalized_segments(
+            (NormalizedSegment(ordinal=0, text="content"),),
+            None,  # type: ignore[arg-type]
+        )
 
     assert exc_info.value.code == KnowledgeChunkingErrorCode.INVALID_POLICY
 

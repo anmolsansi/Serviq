@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-09
 - Ticket: V1.3.10 / OPE-317 / GitHub #214
+- Implementation PR: #215
 
 ## Context
 

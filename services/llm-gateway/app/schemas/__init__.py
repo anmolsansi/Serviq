@@ -1,8 +1,13 @@
 """Provider-neutral Serviq gateway contract exports."""
 
 from app.schemas.c4 import (
+    EMBEDDING_DIMENSION,
+    MAX_EMBEDDING_BATCH_SIZE,
+    MAX_EMBEDDING_INPUT_CHARS,
     MAX_OUTPUT_TOKENS,
     MAX_TIMEOUT_MS,
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
     GatewayError,
     GatewayErrorCode,
     GatewayMessage,
@@ -17,8 +22,13 @@ from app.schemas.c4 import (
 )
 
 __all__ = [
+    "EMBEDDING_DIMENSION",
+    "MAX_EMBEDDING_BATCH_SIZE",
+    "MAX_EMBEDDING_INPUT_CHARS",
     "MAX_OUTPUT_TOKENS",
     "MAX_TIMEOUT_MS",
+    "GatewayEmbeddingRequest",
+    "GatewayEmbeddingResponse",
     "GatewayError",
     "GatewayErrorCode",
     "GatewayMessage",

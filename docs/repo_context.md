@@ -35,7 +35,7 @@ cross-service integration test, end-to-end flow, then deployed acceptance.
 | `apps/platform-console` | Separate platform-operator surface | Scaffold page only |
 | `services/api` | FastAPI control plane and domain APIs | Active; most implemented surface |
 | `services/worker` | Durable asynchronous execution | Knowledge sync/fetch plus pure file/HTML normalization and deterministic heading-aware chunking libraries; parse consumer not yet activated |
-| `services/llm-gateway` | Provider abstraction/connectivity | Active adapters and internal test route |
+| `services/llm-gateway` | Provider abstraction/connectivity | Active adapters, internal connectivity route, and V1 deterministic embedding route/profile |
 | `packages/*` | Shared TypeScript packages | Early scaffolding |
 | `infra/docker/compose.yml` (Keycloak service) | Local identity provider | Keycloak 26.7.1 service; V1.1.15 adds a deterministic test-only realm/client fixture at `infra/keycloak/serviq-test-realm.json`, mounted only by the opt-in integration harness |
 | `infra/observability` | OTel, Prometheus, Grafana, Loki, Tempo | Templates; little app instrumentation |
@@ -127,11 +127,14 @@ browser-level proof for all three trust surfaces does not exist.
 - model configurations: create, list, update, delete;
 - knowledge sources: URL/sitemap registration and PDF/Markdown/text uploads;
 - service liveness/readiness;
-- internal normalized provider-connectivity testing.
+- internal normalized provider-connectivity testing;
+- internal deterministic V1 embedding generation at `POST /internal/v1/embeddings`.
 
 Knowledge sources can be registered and stored. URL/file fetch, pure normalization,
-and deterministic pure chunking foundations exist, but parse-consumer persistence
-and the complete embed/index/retrieve lifecycle are still pending.
+and deterministic pure chunking foundations exist. V1.3.11 now freezes the
+embedding profile and exposes a deterministic offline gateway path, but parse-
+consumer persistence, real provider-backed embedding generation, vector
+indexing, and the complete retrieve lifecycle are still pending.
 
 ## Data and migrations
 
@@ -188,8 +191,15 @@ fixture for workforce trust-boundary regression tests. Keep the fixture
 strictly test-only and do not turn its direct-access grant or placeholder users
 into product login behavior. Also reuse permission/active-organization
 dependencies, provider normalization and error mapping, knowledge object-storage
-boundary, database/migration conventions, health patterns, and CI infrastructure
-setup before adding parallel abstractions.
+boundary, database/migration conventions, health patterns, C-4 gateway models,
+the existing internal gateway bearer-token guard, and CI infrastructure setup
+before adding parallel abstractions.
+
+For embeddings, `serviq-embedding-v1` is the only V1 alias. ADR-027 freezes a
+1536-dimensional vector, maximum batch size of 100, and maximum input length of
+32,000 characters. The V1.3.11 adapter is deterministic fake-only, performs no
+network call, and exists to make the gateway contract testable before vector
+indexing. Real provider embedding transport remains a separate future decision.
 
 ## Capability boundary
 
@@ -200,11 +210,12 @@ Implemented and evidenced at repository level:
 - provider/model configuration with secret-safe responses;
 - knowledge registration/upload foundations;
 - pure file/HTML normalization and deterministic heading-aware chunking foundations;
+- a frozen V1 embedding profile and deterministic internal embedding gateway path;
 - migrations and focused service tests.
 
 Not implemented end to end:
 
-- safe crawling, parse-consumer persistence, embeddings, indexing, hybrid retrieval;
+- parse-consumer persistence, real embeddings, vector indexing, hybrid retrieval;
 - customer identity, conversations, messages, SSE;
 - bounded agent execution, budgets, retries, and failure classification;
 - demo tools, policy, confirmation, approval, reconciliation, compensation;
@@ -219,8 +230,8 @@ Not implemented end to end:
 - Linear's V1 percentage measures created foundation issues, not total scope.
 - The staged roadmap has 198 additional tickets. Counts are not estimates, and
   several nominal 1–3 hour items are operational or multi-day programs.
-- Embedding profile/index and hybrid-ranking decisions should precede retrieval
-  schema and quality commitments.
+- The V1 embedding profile is now frozen by ADR-027, but vector persistence/index
+  metric and index construction remain later work; do not infer V1.3.12 is done.
 - Customer identity, production secrets, deployment, E2E/load harnesses, and
   operational ownership remain unresolved.
 - End-customer attachments remain a product decision.
@@ -301,3 +312,13 @@ ADR-026 freezes the V1 token unit as a Unicode `\S+` non-whitespace run, with `m
 The chunker is pure in-process code. It does not consume `serviq.knowledge.parse.v1`, access object storage, persist chunks, mutate lifecycle state, generate embeddings, emit events, or call an LLM/provider tokenizer. Stable errors contain no raw knowledge text. Any future token/size/overlap/grouping/provenance policy change requires retrieval evaluation and ADR review.
 
 Primary evidence is ADR-026 (Linear OPE-317, GitHub #214), `services/worker/app/core/knowledge_chunking.py`, and `services/worker/tests/test_knowledge_chunking.py`. The implementation PR #215 passed final CI and Security evidence and was merged as SHA 81674164. Rollback strategy is a simple revert of the pure-library change. Parse-event activation/persistence and embedding/index/retrieval remain later work.
+
+## V1.3.11 current state — frozen embedding profile and deterministic gateway path
+
+V1.3.11 is tracked by Linear OPE-319, GitHub #221, and draft PR #222. ADR-027 freezes the V1 embedding contract before any vector index is created: alias `serviq-embedding-v1`, dimension 1536, maximum 100 inputs per request, maximum 32,000 characters per input, and purpose exactly `embedding`.
+
+The gateway exposes `POST /internal/v1/embeddings` behind the existing `LLM_GATEWAY_INTERNAL_TOKEN` bearer-token boundary. Only the frozen V1 alias resolves. The implementation is deliberately backed only by `FakeLLMAdapter`: it performs no provider network request, requires no provider credential, preserves request order, returns exactly one 1536-dimensional vector per input, and produces deterministic input-sensitive vectors plus a deterministic request ID.
+
+This ticket does not implement OpenAI, Anthropic, Gemini, or OpenRouter embedding transport. The existing generation adapters and shared generation protocol remain unchanged. A response-count mismatch fails closed as `PROVIDER_UNAVAILABLE`; request purpose, batch cardinality, input size, and vector dimension are validated by the Serviq-owned C-4 models. No database, migration, vector index, persistence, worker orchestration, event, public API, or UI change is part of V1.3.11.
+
+Exact merge/CI/Security evidence is intentionally not claimed here until PR #222 reaches a final validated head and merges. V1.3.12 still owns vector persistence/index construction against this now-frozen dimension.

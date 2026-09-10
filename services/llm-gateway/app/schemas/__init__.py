@@ -3,6 +3,8 @@
 from app.schemas.c4 import (
     MAX_OUTPUT_TOKENS,
     MAX_TIMEOUT_MS,
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
     GatewayError,
     GatewayErrorCode,
     GatewayMessage,
@@ -21,6 +23,8 @@ __all__ = [
     "MAX_TIMEOUT_MS",
     "GatewayError",
     "GatewayErrorCode",
+    "GatewayEmbeddingRequest",
+    "GatewayEmbeddingResponse",
     "GatewayMessage",
     "GatewayProvider",
     "GatewayProviderError",

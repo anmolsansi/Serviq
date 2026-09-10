@@ -17,6 +17,7 @@ class GatewayPurpose(StrEnum):
     CLASSIFICATION = "classification"
     GENERATION = "generation"
     EVALUATION = "evaluation"
+    EMBEDDING = "embedding"
 
 
 class MessageRole(StrEnum):
@@ -149,3 +150,20 @@ class GatewayProviderError(RuntimeError):
     @property
     def code(self) -> GatewayErrorCode:
         return self.error.code
+
+
+class GatewayEmbeddingRequest(_StrictContractModel):
+    tenant_id: UUID = Field(alias="tenantId")
+    model_alias: str = Field(alias="modelAlias", min_length=1)
+    purpose: GatewayPurpose = GatewayPurpose.EMBEDDING
+    inputs: list[str] = Field(min_length=1, max_length=100)
+    correlation_id: str = Field(alias="correlationId", min_length=1)
+
+
+class GatewayEmbeddingResponse(_ProviderOutputContractModel):
+    embeddings: list[list[float]] = Field(min_length=1)
+    provider: GatewayProvider
+    upstream_model: str = Field(alias="upstreamModel", min_length=1)
+    usage: GatewayUsage
+    request_id: str | None = Field(alias="requestId")
+

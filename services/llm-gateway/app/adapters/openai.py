@@ -29,6 +29,8 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from app.adapters.base import AdapterContext
 from app.schemas import (
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
     GatewayErrorCode,
     GatewayProvider,
     GatewayProviderError,
@@ -128,7 +130,11 @@ class OpenAIAdapter:
 
         return events()
 
-    def _client(self, request: GatewayRequest, context: AdapterContext) -> AsyncOpenAI:
+    def _client(
+        self,
+        request: GatewayRequest | GatewayEmbeddingRequest,
+        context: AdapterContext,
+    ) -> AsyncOpenAI:
         if context.provider is not GatewayProvider.OPENAI:
             raise _invalid_request("OpenAI adapter received a non-OpenAI provider context.")
         if context.api_key is None:
@@ -142,7 +148,16 @@ class OpenAIAdapter:
                 GatewayErrorCode.PROVIDER_AUTH_FAILED,
                 "OpenAI credentials are unavailable.",
             )
-        return self._client_factory(api_key, request.timeout_ms / 1000.0)
+        # Note: GatewayEmbeddingRequest doesn't have timeout_ms, we can default to 20_000 for it
+        timeout_ms = getattr(request, "timeout_ms", 20_000)
+        return self._client_factory(api_key, timeout_ms / 1000.0)
+
+    async def embed(
+        self,
+        request: GatewayEmbeddingRequest,
+        context: AdapterContext,
+    ) -> GatewayEmbeddingResponse:
+        raise NotImplementedError("Provider embedding not yet implemented for OpenAI")
 
 
 async def _create_completion(

@@ -12,6 +12,8 @@ import app.connectivity as connectivity
 from app.adapters import AdapterContext
 from app.main import app
 from app.schemas import (
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
     GatewayErrorCode,
     GatewayProvider,
     GatewayProviderError,
@@ -59,6 +61,13 @@ class RecordingAdapter:
                 yield GatewayStreamEvent(contentDelta="unused")
 
         return events()
+
+    async def embed(
+        self,
+        request: GatewayEmbeddingRequest,
+        context: AdapterContext,
+    ) -> GatewayEmbeddingResponse:
+        raise NotImplementedError("RecordingAdapter does not support embeddings yet")
 
 
 def _request(provider: GatewayProvider) -> connectivity.ProviderConnectivityRequest:

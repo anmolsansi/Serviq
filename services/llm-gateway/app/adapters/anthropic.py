@@ -24,6 +24,8 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from app.adapters.base import AdapterContext
 from app.schemas import (
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
     GatewayErrorCode,
     GatewayProvider,
     GatewayProviderError,
@@ -140,6 +142,13 @@ class AnthropicAdapter:
             )
 
         return events()
+
+    async def embed(
+        self,
+        request: GatewayEmbeddingRequest,
+        context: AdapterContext,
+    ) -> GatewayEmbeddingResponse:
+        raise NotImplementedError("Provider embedding not yet implemented for Anthropic")
 
     def _client(self, request: GatewayRequest, context: AdapterContext) -> AsyncAnthropic:
         if context.provider is not GatewayProvider.ANTHROPIC:
@@ -402,3 +411,5 @@ def _normalize_anthropic_error(exc: Exception) -> GatewayProviderError:
 
 def _invalid_request(message: str) -> GatewayProviderError:
     return GatewayProviderError(GatewayErrorCode.PROVIDER_INVALID_REQUEST, message)
+
+

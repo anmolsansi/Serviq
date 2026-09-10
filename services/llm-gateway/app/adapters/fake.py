@@ -13,6 +13,8 @@ from pydantic import JsonValue
 
 from app.adapters.base import AdapterContext
 from app.schemas import (
+    GatewayEmbeddingRequest,
+    GatewayEmbeddingResponse,
     GatewayErrorCode,
     GatewayProviderError,
     GatewayRequest,
@@ -133,6 +135,27 @@ class FakeLLMAdapter:
 
         return events()
 
+    async def embed(
+        self,
+        request: GatewayEmbeddingRequest,
+        context: AdapterContext,
+    ) -> GatewayEmbeddingResponse:
+        definition = FAKE_SCENARIOS[self._scenario]
+        _raise_if_failure(definition)
+        
+        # Simple deterministic 1536-dimensional array
+        # For a fake testing adapter, a static array is sufficient.
+        fake_embedding = [0.1] * 1536
+        embeddings = [fake_embedding for _ in request.inputs]
+        
+        return GatewayEmbeddingResponse(
+            embeddings=embeddings,
+            provider=context.provider,
+            upstreamModel=context.upstream_model,
+            usage=GatewayUsage(inputTokens=len(request.inputs) * 10, outputTokens=0),
+            requestId=_deterministic_request_id(request, context, self._scenario),
+        )
+
 
 def _raise_if_failure(definition: FakeScenarioDefinition) -> None:
     if definition.error_code is not None:
@@ -141,7 +164,7 @@ def _raise_if_failure(definition: FakeScenarioDefinition) -> None:
 
 
 def _deterministic_request_id(
-    request: GatewayRequest,
+    request: GatewayRequest | GatewayEmbeddingRequest,
     context: AdapterContext,
     scenario: FakeScenario,
 ) -> str:

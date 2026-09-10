@@ -13,8 +13,6 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from app.adapters.base import AdapterContext
 from app.schemas import (
-    GatewayEmbeddingRequest,
-    GatewayEmbeddingResponse,
     GatewayErrorCode,
     GatewayProvider,
     GatewayProviderError,
@@ -142,13 +140,6 @@ class GeminiAdapter:
                 await _close_client(client)
 
         return events()
-
-    async def embed(
-        self,
-        request: GatewayEmbeddingRequest,
-        context: AdapterContext,
-    ) -> GatewayEmbeddingResponse:
-        raise NotImplementedError("Provider embedding not yet implemented for Gemini")
 
     def _client(self, context: AdapterContext) -> genai.Client:
         if context.provider is not GatewayProvider.GEMINI:
@@ -361,5 +352,3 @@ async def _close_client(client: genai.Client) -> None:
 
 def _invalid_request(message: str) -> GatewayProviderError:
     return GatewayProviderError(GatewayErrorCode.PROVIDER_INVALID_REQUEST, message)
-
-

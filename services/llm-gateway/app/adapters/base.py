@@ -8,14 +8,7 @@ from typing import Protocol
 
 from pydantic import SecretStr
 
-from app.schemas import (
-    GatewayEmbeddingRequest,
-    GatewayEmbeddingResponse,
-    GatewayProvider,
-    GatewayRequest,
-    GatewayResponse,
-    GatewayStreamEvent,
-)
+from app.schemas import GatewayProvider, GatewayRequest, GatewayResponse, GatewayStreamEvent
 
 
 @dataclass(frozen=True, repr=False)
@@ -53,10 +46,3 @@ class LLMAdapter(Protocol):
         request: GatewayRequest,
         context: AdapterContext,
     ) -> AsyncIterator[GatewayStreamEvent]: ...
-
-    async def embed(
-        self,
-        request: GatewayEmbeddingRequest,
-        context: AdapterContext,
-    ) -> GatewayEmbeddingResponse: ...
-

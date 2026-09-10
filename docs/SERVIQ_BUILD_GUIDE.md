@@ -6711,3 +6711,21 @@ The chunker is pure in-process code. It does not consume `serviq.knowledge.parse
 
 Implementation PR #215 merged the deterministic chunker. Subsequent repository dependency-security remediation completed through PRs #217 and #218. The final V1.3.10 closeout state on main passed repository CI and Security. The rollback strategy is a simple revert of the pure-library change. Parse-event activation, persistence, embedding, indexing, and retrieval remain out of scope for this library step.
 
+---
+
+## V1.3.11 — Freeze embedding profile ADR and implement embedding adapter
+
+**GitHub issue:** #221  
+**Linear ticket:** OPE-319  
+**Architecture decision:** `docs/architecture-decisions/ADR-027-embedding-profile.md`  
+**Current status:** merged and acceptance-verified through implementation PR #222
+
+V1.3.11 freezes the V1 embedding profile and completes the smallest production-safe internal gateway path for deterministic embeddings.
+
+ADR-027 explicitly freezes the internal alias `serviq-embedding-v1`, an exact vector dimension of 1536, a maximum batch size of 100 input strings, and a maximum input size of 32,000 characters per input. The purpose is strictly `embedding`.
+
+The gateway boundary exposes this via a new internal route `POST /internal/v1/embeddings`, protected by the existing internal bearer token boundary. It accepts only the `serviq-embedding-v1` alias; undocumented aliases are rejected.
+
+The implementation relies solely on a new `FakeLLMAdapter` that generates deterministic 1536-dimensional vectors based on the input text. No real vendor network calls or credentials are required. This ensures repeatable CI and testing without claiming semantic quality. The system is designed to fail closed: batch size mismatches or provider errors will return safe `PROVIDER_UNAVAILABLE` errors, avoiding leakage of partial vectors, raw text, or upstream exceptions.
+
+Implementation PR #222 merged the deterministic gateway adapter. The final V1.3.11 closeout state on main passed repository CI and Security. Real provider integrations (OpenAI, Anthropic, Gemini, OpenRouter), vector indexing, retrieval, and worker orchestrations remain explicitly out of scope for this step.

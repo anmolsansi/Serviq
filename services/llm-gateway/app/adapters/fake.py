@@ -13,6 +13,7 @@ from pydantic import JsonValue
 
 from app.adapters.base import AdapterContext
 from app.schemas import (
+    EMBEDDING_DIMENSION,
     GatewayEmbeddingRequest,
     GatewayEmbeddingResponse,
     GatewayErrorCode,
@@ -30,6 +31,7 @@ _MALFORMED_STRUCTURED: dict[str, JsonValue] = {
     "answer": 123,
     "confidence": "not-a-number",
 }
+_EMBEDDING_DOMAIN = b"serviq-fake-embedding-v1\x00"
 
 
 class FakeScenario(StrEnum):
@@ -140,16 +142,12 @@ class FakeLLMAdapter:
         request: GatewayEmbeddingRequest,
         context: AdapterContext,
     ) -> GatewayEmbeddingResponse:
+        """Return input-sensitive deterministic vectors without calling a provider."""
+
         definition = FAKE_SCENARIOS[self._scenario]
         _raise_if_failure(definition)
-        
-        # Simple deterministic 1536-dimensional array
-        # For a fake testing adapter, a static array is sufficient.
-        fake_embedding = [0.1] * 1536
-        embeddings = [fake_embedding for _ in request.inputs]
-        
         return GatewayEmbeddingResponse(
-            embeddings=embeddings,
+            embeddings=[_deterministic_embedding(text) for text in request.inputs],
             provider=context.provider,
             upstreamModel=context.upstream_model,
             usage=GatewayUsage(inputTokens=len(request.inputs) * 10, outputTokens=0),
@@ -161,6 +159,21 @@ def _raise_if_failure(definition: FakeScenarioDefinition) -> None:
     if definition.error_code is not None:
         assert definition.error_message is not None
         raise GatewayProviderError(definition.error_code, definition.error_message)
+
+
+def _deterministic_embedding(text: str) -> list[float]:
+    """Expand SHA-256 blocks into a stable fake vector for one exact input string."""
+
+    encoded = text.encode("utf-8")
+    values: list[float] = []
+    block = 0
+    while len(values) < EMBEDDING_DIMENSION:
+        digest = hashlib.sha256(
+            _EMBEDDING_DOMAIN + block.to_bytes(4, "big") + encoded
+        ).digest()
+        values.extend((byte - 127.5) / 127.5 for byte in digest)
+        block += 1
+    return values[:EMBEDDING_DIMENSION]
 
 
 def _deterministic_request_id(

@@ -1,9 +1,8 @@
-"""Internal embedding generation path."""
+"""Private C-4 embedding path for the frozen V1 embedding profile."""
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import SecretStr
 
-from app.adapters import AdapterContext, FakeLLMAdapter, LLMAdapter
+from app.adapters import AdapterContext, FakeLLMAdapter
 from app.connectivity import _require_internal_token
 from app.schemas import (
     GatewayEmbeddingRequest,
@@ -13,18 +12,24 @@ from app.schemas import (
     GatewayProviderError,
 )
 
-router = APIRouter(prefix="/internal/v1", tags=["embeddings"])
+EMBEDDING_MODEL_ALIAS = "serviq-embedding-v1"
+
+router = APIRouter(prefix="/internal/v1", tags=["internal-embeddings"])
 
 
-def _resolve_adapter(model_alias: str) -> tuple[LLMAdapter, AdapterContext]:
-    """Stub resolver. In V1.4+ this will query the control plane for tenant policies."""
-    if model_alias == "serviq-embedding-v1" or model_alias == "fake-embedding":
-        return FakeLLMAdapter(), AdapterContext(
-            provider=GatewayProvider.OPENAI,  # FAKE uses any provider context
-            upstream_model="serviq-fake-v1",
-            api_key=SecretStr("fake-key-never-real"),
+def _resolve_adapter(model_alias: str) -> tuple[FakeLLMAdapter, AdapterContext]:
+    """Resolve the only architect-frozen V1 embedding profile."""
+
+    if model_alias != EMBEDDING_MODEL_ALIAS:
+        raise GatewayProviderError(
+            GatewayErrorCode.PROVIDER_UNAVAILABLE,
+            "Embedding profile is unavailable.",
         )
-    raise GatewayProviderError(GatewayErrorCode.PROVIDER_UNAVAILABLE, "No embedding route found")
+    return FakeLLMAdapter(), AdapterContext(
+        provider=GatewayProvider.OPENAI,
+        upstream_model="serviq-fake-v1",
+        api_key=None,
+    )
 
 
 @router.post(
@@ -38,14 +43,21 @@ async def generate_embeddings(
     request: GatewayEmbeddingRequest,
     authorization: str | None = Header(default=None),
 ) -> GatewayEmbeddingResponse:
-    """Generate deterministic or provider embeddings."""
+    """Generate deterministic V1 embeddings behind the existing internal auth boundary."""
+
     _require_internal_token(authorization)
 
     try:
         adapter, context = _resolve_adapter(request.model_alias)
-        return await adapter.embed(request, context)
-    except GatewayProviderError as e:
+        response = await adapter.embed(request, context)
+        if len(response.embeddings) != len(request.inputs):
+            raise GatewayProviderError(
+                GatewayErrorCode.PROVIDER_UNAVAILABLE,
+                "Embedding provider returned an invalid batch response.",
+            )
+        return response
+    except GatewayProviderError as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": e.code, "message": str(e)},
+            detail={"code": error.code, "message": str(error)},
         ) from None

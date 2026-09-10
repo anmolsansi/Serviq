@@ -5,12 +5,16 @@ between provider objects and these models at the adapter boundary.
 """
 
 from enum import StrEnum
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 MAX_OUTPUT_TOKENS = 1_500
 MAX_TIMEOUT_MS = 20_000
+EMBEDDING_DIMENSION = 1_536
+MAX_EMBEDDING_BATCH_SIZE = 100
+MAX_EMBEDDING_INPUT_CHARS = 32_000
 
 
 class GatewayPurpose(StrEnum):
@@ -155,15 +159,24 @@ class GatewayProviderError(RuntimeError):
 class GatewayEmbeddingRequest(_StrictContractModel):
     tenant_id: UUID = Field(alias="tenantId")
     model_alias: str = Field(alias="modelAlias", min_length=1)
-    purpose: GatewayPurpose = GatewayPurpose.EMBEDDING
-    inputs: list[str] = Field(min_length=1, max_length=100)
+    purpose: Literal[GatewayPurpose.EMBEDDING] = GatewayPurpose.EMBEDDING
+    inputs: list[
+        Annotated[
+            str,
+            Field(min_length=1, max_length=MAX_EMBEDDING_INPUT_CHARS),
+        ]
+    ] = Field(min_length=1, max_length=MAX_EMBEDDING_BATCH_SIZE)
     correlation_id: str = Field(alias="correlationId", min_length=1)
 
 
 class GatewayEmbeddingResponse(_ProviderOutputContractModel):
-    embeddings: list[list[float]] = Field(min_length=1)
+    embeddings: list[
+        Annotated[
+            list[float],
+            Field(min_length=EMBEDDING_DIMENSION, max_length=EMBEDDING_DIMENSION),
+        ]
+    ] = Field(min_length=1, max_length=MAX_EMBEDDING_BATCH_SIZE)
     provider: GatewayProvider
     upstream_model: str = Field(alias="upstreamModel", min_length=1)
     usage: GatewayUsage
     request_id: str | None = Field(alias="requestId")
-

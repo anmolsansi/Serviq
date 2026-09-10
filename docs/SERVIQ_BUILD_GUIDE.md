@@ -6729,3 +6729,217 @@ The gateway boundary exposes this via a new internal route `POST /internal/v1/em
 The implementation relies solely on a new `FakeLLMAdapter` that generates deterministic 1536-dimensional vectors based on the input text. No real vendor network calls or credentials are required. This ensures repeatable CI and testing without claiming semantic quality. The system is designed to fail closed: batch size mismatches or provider errors will return safe `PROVIDER_UNAVAILABLE` errors, avoiding leakage of partial vectors, raw text, or upstream exceptions.
 
 Implementation PR #222 merged the deterministic gateway adapter. The final V1.3.11 closeout state on main passed repository CI and Security. Real provider integrations (OpenAI, Anthropic, Gemini, OpenRouter), vector indexing, retrieval, and worker orchestrations remain explicitly out of scope for this step.
+Why this ticket exists
+
+Serviq's knowledge schema already has a PostgreSQL vector column, but earlier tickets intentionally avoided choosing a vector dimension or building a vector index. Creating an index before deciding the embedding profile would couple the database to an arbitrary model assumption.
+
+V1.3.11 resolves that dependency before V1.3.12 performs vector persistence or indexing.
+
+It also creates a real Serviq-owned internal embedding gateway contract that later ingestion work can call and test deterministically without requiring a real AI-provider credential or paid embedding request.
+
+Frozen V1 embedding profile
+
+ADR-027 freezes the first Serviq embedding profile as:
+
+alias               = serviq-embedding-v1
+dimension           = 1536
+maximum batch       = 100 inputs
+maximum input size  = 32,000 characters per input
+purpose             = embedding
+route               = POST /internal/v1/embeddings
+
+The 1536 dimension is now a Serviq-owned contract. V1.3.12 may safely build persistence and indexing around that exact dimension.
+
+Changing the alias, dimension, batch size, or input-size boundary later requires an explicit profile/architecture change instead of silently changing the behavior underneath stored vectors.
+
+Internal gateway boundary
+
+The new route is:
+
+POST /internal/v1/embeddings
+
+It reuses the LLM Gateway's existing internal bearer-token boundary through LLM_GATEWAY_INTERNAL_TOKEN.
+
+This is not a public customer endpoint, workforce endpoint, or tenant-console API.
+
+The C-4 request continues to require trusted Serviq context such as tenantId, modelAlias, purpose, inputs, and correlationId.
+
+Only:
+
+serviq-embedding-v1
+
+is accepted as the V1 embedding alias. The implementation does not support an undocumented test alias.
+
+Why the implementation uses a deterministic fake adapter
+
+V1.3.11 intentionally does not make a real embedding request to OpenAI, Anthropic, Gemini, or OpenRouter.
+
+The only embedding implementation in this ticket is FakeLLMAdapter.
+
+The fake adapter:
+
+performs no network request;
+requires no provider credential;
+generates exactly one vector for every input;
+preserves request input order;
+produces exactly 1536 floats per vector;
+generates the same output when the same complete request is repeated;
+produces input-sensitive vectors rather than one identical vector for every piece of text;
+produces a deterministic request ID.
+
+The fake vector implementation expands SHA-256-derived deterministic data into the frozen vector size. It exists so Serviq can test its embedding contract repeatably and without paid provider calls.
+
+These vectors are not semantic embeddings. Similar text is not expected to produce meaningfully similar vectors, and this implementation must not be used as evidence of retrieval quality.
+
+C-4 request validation
+
+The provider-neutral gateway contract now enforces the embedding profile directly.
+
+A request is rejected when:
+
+purpose is not exactly embedding;
+the input list is empty;
+a string becomes empty after normal C-4 normalization;
+more than 100 inputs are supplied;
+an individual input contains more than 32,000 characters.
+
+The response contract also requires every embedding vector to contain exactly 1536 floats.
+
+This puts the profile limits in the Serviq-owned contract instead of relying only on route implementation conventions.
+
+Fail-closed batch alignment
+
+Embedding order matters.
+
+If a caller sends:
+
+input 0
+input 1
+input 2
+
+the caller expects:
+
+embedding 0 -> input 0
+embedding 1 -> input 1
+embedding 2 -> input 2
+
+Returning fewer or more vectors could silently associate the wrong vector with the wrong chunk.
+
+The route therefore checks that:
+
+number of returned embeddings == number of request inputs
+
+A mismatch returns the safe normalized:
+
+PROVIDER_UNAVAILABLE
+
+failure instead of returning a partial or misaligned result.
+
+Safe failure behavior
+
+Provider-style adapter failures continue to use Serviq-owned C-4 error categories.
+
+The embedding route does not expose raw input content, provider exception details, API credentials, internal tokens, or prompts through its normalized failure contract.
+
+Regression coverage specifically includes a private-input sentinel and proves that the raw text is not returned when the adapter fails.
+
+Tests added
+
+services/llm-gateway/tests/test_embeddings_route.py verifies:
+
+successful embedding generation;
+exactly 1536 dimensions for every returned vector;
+preserved input ordering;
+different normal fixture inputs do not collapse to one fixed vector;
+exact deterministic repeat behavior;
+deterministic request IDs;
+acceptance of exactly 100 inputs;
+rejection of 101 inputs;
+acceptance of exactly 32,000 characters;
+rejection of 32,001 characters;
+empty-input rejection;
+whitespace-only input rejection;
+non-embedding-purpose rejection;
+existing internal-auth enforcement;
+unsupported-alias failure;
+normalized provider failure;
+raw-input non-disclosure;
+fail-closed adapter response-count mismatch.
+Provider scope
+
+Real provider embedding integrations are deliberately outside V1.3.11.
+
+The ticket does not add embedding implementations to:
+
+OpenAIAdapter
+AnthropicAdapter
+GeminiAdapter
+OpenRouterAdapter
+
+and it does not change the existing shared generation adapter contract.
+
+An earlier partial implementation on the feature branch had started extending those provider adapters. That work was removed before merge because it exceeded the frozen V1.3.11 scope.
+
+A later provider-embedding ticket can introduce real transport only after its provider/model/credential behavior is explicitly reviewed.
+
+No persistence or indexing yet
+
+V1.3.11 creates no database migration.
+
+It does not:
+
+store generated embeddings;
+update knowledge_chunks.embedding;
+create HNSW or IVFFlat indexes;
+choose a distance metric;
+consume parse/chunk events;
+orchestrate an embedding worker;
+implement hybrid retrieval;
+generate citations;
+change source lifecycle state.
+
+Those responsibilities remain later knowledge-ingestion and retrieval work.
+
+Validation and completion evidence
+
+The exact V1.3.11 implementation PR head was:
+
+49483743c4194046bbb24d5fb1087fbbc6c20a61
+
+That head passed:
+
+CI run #545       -> success
+Security run #529 -> success
+
+The implementation was merged through GitHub PR #222.
+
+Final merge commit:
+
+26784e7b8dc8825612ad81e638bbb0506b94941e
+
+GitHub issue #221 is closed as completed.
+
+Linear OPE-319 is Done.
+
+Rollback
+
+V1.3.11 owns no durable embedding state, database migration, vector index, provider credential, or external provider mutation.
+
+Rollback is therefore a code/documentation revert of the V1.3.11 implementation.
+
+If later tickets begin storing 1536-dimensional vectors, those later tickets must define their own data/index rollback rules rather than assuming this pure gateway rollback remains sufficient.
+
+What improves after V1.3.11
+
+Before this ticket, Serviq could normalize and deterministically chunk knowledge but still had no approved embedding dimension or stable embedding gateway contract.
+
+After V1.3.11:
+
+the first Serviq embedding profile is explicitly frozen;
+V1.3.12 no longer needs to guess the pgvector dimension;
+downstream code has one Serviq-owned embedding request/response contract;
+deterministic offline tests can exercise the gateway without provider credentials or paid calls;
+malformed batch/vector behavior fails closed;
+existing generation-provider contracts remain isolated from the embedding implementation.
+
+This completes the contract layer required before vector persistence and indexing begin.

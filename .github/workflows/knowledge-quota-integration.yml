@@ -2,50 +2,50 @@ name: Knowledge Quota Integration
 
 on:
   pull_request:
-    paths:
-      - '.github/workflows/knowledge-quota-integration.yml'
-      - 'services/api/app/core/object_storage.py'
-      - 'services/api/app/core/rate_limits.py'
-      - 'services/api/app/modules/knowledge/**'
-      - 'services/api/alembic/versions/**'
-      - 'services/api/tests/integration/test_knowledge_quota_*'
-      - 'services/api/tests/integration/test_knowledge_upload_rate_limit_valkey.py'
-      - 'services/api/tests/support/tenant_isolation.py'
-      - 'services/api/pyproject.toml'
-      - 'services/api/uv.lock'
-      - 'services/worker/app/core/object_storage.py'
-      - 'services/worker/app/jobs/knowledge_upload_cleanup.py'
-      - 'services/worker/app/main.py'
-      - 'services/worker/tests/integration/test_knowledge_upload_cleanup.py'
-      - 'services/worker/pyproject.toml'
-      - 'services/worker/uv.lock'
-      - 'infra/docker/compose.yml'
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/knowledge-quota-integration.yml'
-      - 'services/api/app/core/object_storage.py'
-      - 'services/api/app/core/rate_limits.py'
-      - 'services/api/app/modules/knowledge/**'
-      - 'services/api/alembic/versions/**'
-      - 'services/api/tests/integration/test_knowledge_quota_*'
-      - 'services/api/tests/integration/test_knowledge_upload_rate_limit_valkey.py'
-      - 'services/api/tests/support/tenant_isolation.py'
-      - 'services/api/pyproject.toml'
-      - 'services/api/uv.lock'
-      - 'services/worker/app/core/object_storage.py'
-      - 'services/worker/app/jobs/knowledge_upload_cleanup.py'
-      - 'services/worker/app/main.py'
-      - 'services/worker/tests/integration/test_knowledge_upload_cleanup.py'
-      - 'services/worker/pyproject.toml'
-      - 'services/worker/uv.lock'
-      - 'infra/docker/compose.yml'
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.filter.outputs.integration }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check for path changes
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            integration:
+              - '.github/workflows/knowledge-quota-integration.yml'
+              - 'services/api/app/core/object_storage.py'
+              - 'services/api/app/core/rate_limits.py'
+              - 'services/api/app/modules/knowledge/**'
+              - 'services/api/alembic/versions/**'
+              - 'services/api/tests/integration/test_knowledge_quota_*'
+              - 'services/api/tests/integration/test_knowledge_upload_rate_limit_valkey.py'
+              - 'services/api/tests/support/tenant_isolation.py'
+              - 'services/api/pyproject.toml'
+              - 'services/api/uv.lock'
+              - 'services/worker/app/core/object_storage.py'
+              - 'services/worker/app/jobs/knowledge_upload_cleanup.py'
+              - 'services/worker/app/main.py'
+              - 'services/worker/tests/integration/test_knowledge_upload_cleanup.py'
+              - 'services/worker/pyproject.toml'
+              - 'services/worker/uv.lock'
+              - 'infra/docker/compose.yml'
+
   real-dependencies:
+    needs: changes
+    if: needs.changes.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -156,3 +156,34 @@ jobs:
       - name: Stop local S3-compatible storage
         if: always()
         run: docker compose -f infra/docker/compose.yml down --volumes
+
+  knowledge-quota-gate:
+    name: Knowledge Quota Integration Gate
+    needs: [changes, real-dependencies]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate gate status
+        run: |
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "Gate failed. Path classification did not succeed."
+            exit 1
+          fi
+
+          if [ "${{ needs.changes.outputs.should_run }}" = "true" ]; then
+            if [ "${{ needs.real-dependencies.result }}" = "success" ]; then
+              echo "Gate passed. Required integration job succeeded."
+              exit 0
+            fi
+            echo "Gate failed. Required integration job did not succeed."
+            exit 1
+          fi
+
+          if [ "${{ needs.changes.outputs.should_run }}" = "false" ] && [ "${{ needs.real-dependencies.result }}" = "skipped" ]; then
+            echo "Gate passed. Integration paths were not changed and the heavyweight job was safely skipped."
+            exit 0
+          fi
+
+          echo "Gate failed. Classifier output or integration job state was unexpected."
+          exit 1

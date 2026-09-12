@@ -56,7 +56,7 @@ def test_cleanup_loop_reuses_fresh_session_boundary_and_propagates_cancellation(
         raise asyncio.CancelledError
 
     monkeypatch.setattr(cleanup_job, "reconcile_due_upload_cleanups", fake_reconcile)
-    monkeypatch.setattr(cleanup_job.asyncio, "sleep", stop_after_first_cycle)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_first_cycle)
 
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(
@@ -91,7 +91,7 @@ def test_cleanup_loop_does_not_log_infrastructure_exception_text(
         raise asyncio.CancelledError
 
     monkeypatch.setattr(cleanup_job, "reconcile_due_upload_cleanups", failing_reconcile)
-    monkeypatch.setattr(cleanup_job.asyncio, "sleep", stop_after_failure)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_failure)
 
     with caplog.at_level(logging.ERROR), pytest.raises(asyncio.CancelledError):
         asyncio.run(

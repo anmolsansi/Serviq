@@ -80,8 +80,6 @@ Reuse these boundaries:
 - `services/api/app/core/rate_limits.py`: shared Valkey limiters, not provider-owned copies.
 - `services/api/app/core/object_storage.py`: typed tenant/source keys and object operations.
 - `services/api/app/modules/knowledge/cleanup.py`: bounded durable cleanup replay.
-- `services/api/app/modules/knowledge/cleanup_scheduler.py`: API-lifespan-owned bounded
-  cleanup scheduling; failures remain durable and are retried on later sweeps.
 - `services/worker/app/core/public_knowledge_fetch.py`: bounded SSRF-safe fetch.
 - `services/worker/app/core/knowledge_normalization.py`: pure immutable segments.
 - `services/worker/app/core/knowledge_chunking.py`: pure deterministic chunk/provenance policy.
@@ -99,8 +97,7 @@ identity rather than trusting tenant/permission JWT claims.
 
 **Composition gap:** no production caller writes `serviq_user_id`,
 `serviq_workforce_identity` or `serviq_tenant_id` on request state. `app/main.py`
-owns error handlers, routers, and the upload-cleanup background lifecycle, but no
-workforce session composition. Route tests override principal dependencies;
+only installs error handlers and routers. Route tests override principal dependencies;
 Keycloak integration tests call the validator directly. V1.1.16 owns the missing
 session/principal handoff. Do not add a user-controlled identity header to make
 protected routes work. Customer and platform trust surfaces remain unimplemented.
@@ -161,14 +158,10 @@ uses manual offsets, bounded retry delays and DLQ. It fetches URL/file bytes and
 commits a versioned document plus parse event. It keeps the source `syncing` until
 later indexing succeeds. Sitemap sync is deliberately unsupported (ADR-023).
 
-Upload durability/quota primitives now have a process-owned scheduler that invokes
-the existing durable cleanup reconciler in bounded batches every 30 seconds. Each
-sweep uses a fresh async database session, preserves the existing tenant/key/lease
-checks, surfaces exhausted outcomes through safe aggregate logging, and survives
-transient database/storage failures for later replay. Pre-parser multipart resource
-admission and URL raw-version accounting remain missing. V1.3.09A explicitly owns
-parse-event consumption/persistence/index handoff. ADR-024/025 normalizers and
-ADR-026 chunker must be reused, not reimplemented.
+Upload durability/quota primitives exist, but the cleanup sweep is unscheduled;
+pre-parser resource admission and URL raw-version accounting are missing.
+V1.3.09A explicitly owns parse-event consumption/persistence/index handoff.
+ADR-024/025 normalizers and ADR-026 chunker must be reused, not reimplemented.
 
 ADR-027 fixes alias `serviq-embedding-v1`, 1536 dimensions, at most 100 inputs,
 32,000 characters per input. Only `FakeLLMAdapter` implements the route. Its
@@ -209,8 +202,8 @@ and limits; green CI is not deployed acceptance.
 - Explicit `sqlalchemy[asyncio]` dependency ensures greenlet is available across all environments including macOS arm64 (V1.0.28 resolved).
 - Workforce auth primitives are not wired into requests (V1.1.16).
 - Multipart parsing precedes file-byte/concurrency enforcement (V1.3.04C).
-- Durable upload cleanup now has a bounded API-lifespan scheduler (V1.3.04D resolved);
-  URL fetch bytes still lack equivalent accounting/recovery (V1.3.07A).
+- Upload cleanup lacks a runtime scheduler; URL fetch bytes lack equivalent
+  accounting/recovery (V1.3.04D / V1.3.07A).
 - Private gateway validation is redacted and authenticated before body parsing
   (V1.3.11A resolved); real semantic embedding transport remains V1.3.11B.
 - Main has no branch protection/rulesets; reuse GitHub #205 (V1.0.29).

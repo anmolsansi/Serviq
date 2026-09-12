@@ -1,190 +1,128 @@
 # Serviq Product Status and Roadmap Reconciliation
 
-> Evidence snapshot: 2026-08-22, repository `main` at `258d189`. Sources:
-> current code/tests, repository specifications, the supplied engineering
-> playbook and staged ticket file, live Linear, and live GitHub.
-
-## Product intent
-
-Serviq is a multi-tenant AI customer-operations platform, not a generic
-chatbot. A complete flow retrieves grounded tenant knowledge, identifies the
-customer, invokes only typed customer-specific tools, applies deterministic
-policy, requests confirmation or approval, executes idempotently, reconciles
-side effects, escalates with context, and leaves an audit record.
-
-The product has three trust surfaces: a tenant/workforce console, an
-end-customer experience, and a separately controlled platform console. V1 uses
-a synthetic delivery-support journey plus a separate synthetic payment/refund
-integration. V2 broadens channels and integrations; V3 focuses on enterprise
-controls; V4 explores global scale and ecosystem features. V2–V4 are roadmap
-intent, not implemented capabilities.
+> Evidence snapshot: 2026-09-12, `main` / `origin/main` at `3e1b9aa`.
+> Detailed source, diagnostic and CI evidence: [system audit](SYSTEM_AUDIT_2026-09-12.md).
 
 ## Current truth
 
-### Done
+**Backend foundations are implemented; the complete V1 application is not.**
+The three Next.js apps remain scaffold pages. A customer cannot yet ask a
+question, receive a grounded streamed answer, approve an action, or reach a
+human inbox. The intended demo uses synthetic delivery support and separate
+synthetic payment/refund data, with no real-money movement.
 
-- Monorepo, quality tooling, Compose infrastructure, CI, security workflows,
-  and release-source reconciliation.
-- Workforce OIDC, users, organizations, memberships, invitations, roles, and
-  permission enforcement.
-- Provider/model CRUD and connectivity foundations with protected credentials.
-- Knowledge URL/sitemap registration and PDF/Markdown/text uploads.
-- Nine migrations through knowledge permissions.
-- Substantial focused Python tests/static checks for implemented behavior.
+Completed implementation slices include tooling/CI/security, workforce and tenant
+primitives, organization/member/invitation APIs, provider/model management and
+adapters, knowledge registration/uploads and durability/quota controls, transactional
+outbox/sync publication, URL/file fetch with parse handoff, pure normalization and
+chunking, and the deterministic fake embedding gateway/profile.
 
-### Partial
+The last milestone is V1.3.11 / OPE-319 (merged PR #222). It fixes vector dimension
+1536 but does not provide semantic embeddings or an index. The next original
+roadmap step is V1.3.12; its index/operator/migration decisions remain open.
 
-| Capability | Existing evidence | Missing acceptance evidence |
-|---|---|---|
-| Knowledge | records, uploads, storage, schema | safe fetch, parse, embed, index, retrieval quality |
-| Providers | normalized adapters/connectivity tests | production routing, budgets, fallback in agent flows |
-| Worker | service and health foundation | durable jobs, retries, idempotent recovery |
-| Web apps | three separated Next.js apps | workflows, accessibility, frontend tests, browser E2E |
-| Observability | optional local stack | app traces/metrics, SLOs, alerts, runbooks |
-| Delivery | quality/security workflows | staging acceptance, rollback/recovery evidence |
+## Integration gaps that change the execution order
 
-### Left for V1
+1. The API has no runtime session/principal composition. Trusted user/tenant state
+   is read but never populated; integration tests inject it. V1.1.16 must connect
+   the existing OIDC/upsert/membership boundaries before usable authenticated APIs.
+2. Frozen async SQLAlchemy dependencies fail on macOS arm64 because greenlet is
+   omitted. V1.0.28 must make runtime dependencies portable.
+3. Gateway validation 422s reflect raw embedding input, including unauthenticated
+   malformed requests. V1.3.11A must satisfy the existing privacy contract.
+4. File size/concurrency controls apply after multipart spooling; durable upload
+   cleanup has no scheduled caller. V1.3.04C/D cover resource admission and recovery.
+5. URL sync raw versions bypass file-byte accounting; stale/crashed writes and
+   concurrent raw-object identity need recovery evidence (V1.3.07A).
+6. No parse consumer persists normalized artifacts or produces the index handoff
+   assumed by V1.3.13 (V1.3.09A). Successful fetch leaves a source `syncing`.
+7. Sitemap support and real semantic embedding transport have no active runtime
+   implementation (V1.3.07B / V1.3.11B); their product/contract decisions are explicit.
+8. Main is unprotected with no rulesets. Existing [GitHub #205](https://github.com/anmolsansi/Serviq/issues/205)
+   remains the single administrative work item (V1.0.29).
 
-- ingestion, embeddings, indexing, hybrid retrieval, and citation quality;
-- customer identity, conversations/messages, SSE, and bounded agent runtime;
-- synthetic tools with policy, confirmation, approvals, reconciliation, and
-  compensation;
-- support inbox, takeover, ownership, notes, tags, and resume;
-- tenant, customer, and platform product interfaces;
-- analytics, audit, privacy, retention, and operational controls;
-- app observability, E2E/load testing, deployment, and launch evidence.
+These are missing connections and failure paths, not a reason to rebuild the
+working validators, parsers, chunker or outbox publisher.
 
-The honest status is **foundation implemented; end-to-end V1 not yet built**.
+## Reconciled inventory and tracker
 
-## Tracker reconciliation
+| Phase | Remaining implementation/backlog records |
+|---|---:|
+| V1 | 80 |
+| V2 | 38 |
+| V3 | 41 |
+| V4 | 42 |
+| **Total** | **201** |
 
-Linear displayed V1 at 95% and V2–V4 at 0%. Its 55 created issues were 51 Done,
-one In Progress, and three In Review. OPE-300, OPE-302, OPE-303, and OPE-304
-were non-terminal even though their relevant changes were merged. Those
-statuses should be reconciled. OPE-305 is historical execution evidence, not a
-new product feature.
+The [canonical inventory](SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md) has 215 total
+records: 14 implemented records retained for traceability and 201 backlog records.
+It adds the previously omitted implemented V1.3.06A publisher and 10 audit follow-ups.
+This is a record count, not effort, a completion percentage or a Linear issue count.
 
-The V1 percentage is not product completion: it covers only the created
-foundation/history set and excludes the staged backlog, including 77 V1 items.
+The live Serviq project query returned 17 issues: 12 Done, 3 In Progress and 2 In
+Review. OPE-306/307 are implemented with closed GitHub issues but remain In Progress;
+OPE-303/304/305 also remain nonterminal. Those states were recorded, not changed.
+GitHub had no open PRs and one open issue (#205) at audit time. Earlier 55-issue/95%
+claims describe an old tracker snapshot and must not be used as current status.
 
-GitHub had no open pull requests or issues. Local and remote `main` agreed at
-the latest OPE-304 reconciliation merge. GitHub agrees with the source; Linear
-has workflow-status debt.
+## Remaining V1 product work
 
-The supplied backlog contains 198 tickets not yet represented in Linear:
+- Durable normalization/index pipeline, semantic embeddings, vector migration and
+  tenant/access-scoped retrieval with measured relevance and citations.
+- Customer identity/ownership, conversations/messages, SSE and bounded agent state.
+- Typed synthetic tools, policy, confirmation, human approval and idempotent side effects.
+- Support queues, escalation, human messages/notes/assignment/resolution.
+- Authenticated console, provider/knowledge management, customer chat and operator UI.
+- Audit/usage, analytics, privacy export/deletion, retention and dead-letter operations.
+- App telemetry, isolation/E2E/load/security gates, benchmarks, release acceptance.
 
-| Phase | Tickets | Character |
-|---|---:|---|
-| V1 | 77 | ingestion, runtime, tools, support, UI, operations, launch |
-| V2 | 38 | channels, integrations, product breadth |
-| V3 | 41 | enterprise controls, governance, scale |
-| V4 | 42 | global scale, ecosystem, advanced platform |
-| **Total** | **198** | planning inventory, not an accepted estimate |
+V2–V4 remain staged product/architecture work. Do not bulk-create or execute those
+phases before the preceding phase's accepted scope and evidence justify it.
 
-V1 breakdown: V1.3 9, V1.4 5, V1.5 8, V1.6 9, V1.7 9, V1.8 5,
-V1.9 12, V1.10 10, V1.11 10.
+## Verification and limits
 
-The compact tickets are useful as a dependency map, but are not uniformly
-builder-ready. Several nominal 1–3 hour items contain deployment, high-scale
-performance, multi-region recovery, security review, or game-day programs.
-Re-estimate demonstrated scope and risk rather than counting tickets.
+- 315 local tests passed: API 87, worker 120, gateway 104, frontend 4.
+- 84 local integration tests skipped because their infrastructure was unavailable.
+- All Python/web lint and typechecks passed; all frozen Python locks checked.
+- All three web apps built with webpack. Default Turbopack builds were blocked by
+  subprocess port binding even after elevated retry; default build acceptance remains unverified.
+- Compose config passed; Docker daemon/socket was absent locally.
+- `make e2e` and `make load-test` failed as explicit unimplemented targets.
+- Local production dependency audits found no known vulnerabilities.
+- Current-main CI/Security passed; DB migration/integration, object storage and
+  Keycloak validator checks ran there. Worker/quota integration evidence is from
+  earlier PR heads; see the audit for exact jobs, SHA and counts.
+- No deployed application, real provider call, browser support flow, load result,
+  backup/restore or production rollback was verified.
 
-## Recommended execution sequence
+## Staff Engineer assessment and next tranche
 
-1. Reconcile the four stale Linear statuses with merged evidence.
-2. Decide the embedding provider/model, dimension, index/distance choice,
-   hybrid ranking formula, and retrieval benchmark before schema hardens.
-3. Build the ingestion spine: SSRF-safe fetch, extraction, normalization,
-   chunking, embeddings, indexing, durable jobs, deletion, and visible errors.
-4. Prove tenant-isolated hybrid retrieval with deterministic citations and a
-   non-empty end-to-end ingestion benchmark.
-5. Build customer auth, conversation/message state, resumable SSE, execution
-   budgets, and durable agent semantics.
-6. Complete one vertical synthetic delivery/refund flow through typed tools,
-   policy, confirmation/approval, idempotency, reconciliation, compensation,
-   handoff, and audit.
-7. Add UI and operations around behavior already proven.
-8. Earn V1 with integration, browser, load, security, privacy, backup/restore,
-   rollback, and deployed staging acceptance before V2.
+Release risk is high despite passing component tests. The weakest assumption is
+that individually tested helpers are already connected through real trust and
+persistence boundaries. The runtime probes disproved that for authentication and
+portable async dependencies; code composition shows the ingestion gap.
 
-Do not bulk-create all 198 Linear issues now. Create the next dependency tranche
-only when decisions and acceptance contracts are ready. Keep V2–V4 at theme
-level until V1 evidence changes the design. This prevents the planning system
-from becoming a second product.
+Keep the current modular API, durable worker, gateway, PostgreSQL and object-store
+architecture. Fix proven runtime/privacy failures and enforce merge checks, then
+freeze session composition and ingestion handoffs. Decide vector operator/index,
+semantic model/profile compatibility and reindex cutover. Prove one non-empty,
+tenant-isolated upload/fetch → normalize → chunk → embed/index → retrieve path.
+Then implement the customer/agent/support journey with thin product UIs around it.
 
-## Decisions required
+A fake-only vertical slice is a viable low-cost contract test. It cannot replace
+semantic relevance evaluation. Adding another service would increase operational
+work without resolving the missing composition; no new service is recommended.
 
-| Decision | Why | Latest responsible point |
-|---|---|---|
-| Embedding profile/index | fixes vector schema, cost, retrieval behavior | before embedding migration |
-| Hybrid ranking/benchmark | prevents unmeasurable tuning | before retrieval acceptance |
-| Customer identity/session | defines tenancy, privacy, ownership | before customer APIs |
-| Customer attachments | changes malware, storage, privacy, retention, UI | before conversation schema freezes |
-| Production secret store | credentials need a production boundary | before real staging vendors |
-| Deployment/ownership | determines migration, rollback, incidents | before staging release work |
-| E2E/load harnesses | release gates need executable proof | before feature-complete claims |
-| Retention/deletion | crosses messages, documents, audit, backups | before persistent customer data |
-
-## Staff Engineer devil's-advocate assessment
-
-### Verdict
-
-The foundation is credible and the next vertical tranche is buildable, but the
-full roadmap is **not ready for blind execution**. It mixes executable work,
-unresolved architecture choices, aspirational scale targets, and operational
-programs under one uniform small-ticket estimate.
-
-### Principal risks
-
-- **Security/privacy:** SSRF, trust-surface separation, exfiltration, credential
-  storage, attachment safety, and derived-data deletion need threat evidence.
-- **Tenant isolation:** every query, job, cache key, vector lookup, stream, and
-  telemetry signal—not only routes—must preserve organization scope.
-- **Idempotency:** agent/tool/payment/refund/approval/reconciliation retries need
-  stable operation keys and replay tests.
-- **Migration/rollback:** production backup, restore, expand/contract rollout,
-  and rollback proof are absent.
-- **Observability:** app traces, redaction, cardinality limits, SLOs, alerts, and
-  runbooks are future work.
-- **Deployment:** no accepted staging/production topology or ownership exists. A
-  source release is not a product release.
-- **Testing:** 61 API integration tests were skipped in this audit, frontend
-  suites do not exist, and E2E/load targets intentionally fail.
-- **Scope economics:** 198 uniformly small tickets hide high variance and risk
-  premature V2–V4 work before V1 evidence.
-
-Keep the selected modular monolith, durable worker, gateway, PostgreSQL, and
-S3-compatible boundaries. Prove one support journey before adding services,
-general orchestration, extra channels, or global abstractions. Prefer database
-constraints, stable operation IDs, and explicit states over new infrastructure.
-
-## Verification performed
-
-- local and remote `main` alignment and clean starting worktree;
-- architecture graph and repository-wide source inventory;
-- supplied and repository product/architecture documents against code;
-- live Linear and GitHub state;
-- TypeScript lint/type-check passed; its test command ran no tests;
-- API: 78 passed, 61 skipped; worker: 5 passed; gateway: 93 passed;
-- Ruff and mypy passed for all Python services;
-- Compose configuration rendered successfully.
-
-Not verified: security scanners, enabled PostgreSQL/object-storage integration,
-browser flows, load, external providers, deployment, backup/restore, rollback,
-or real-device acceptance.
+Needs Architect Decision: server session/cookie/CSRF/tenant-switch contract;
+normalized persistence/index event; URL/sitemap lifecycle; vector metric/index and
+provider compatibility; production secrets, deployment and incident ownership.
+Recovery acceptance needs a disposable staging database, guarded migration plan,
+backup/restore, pending-job preservation and rollback evidence. Existing CI
+migration reversibility is useful but does not prove data recovery in production.
 
 ## Source-of-truth order
 
-1. deployed acceptance evidence;
-2. current code, migrations, and tests;
-3. live GitHub merge state;
-4. live Linear state;
-5. approved PRD/architecture/ADRs;
-6. staged tickets and planning playbooks.
-
-Planning documents describe intent. They do not override code or prove a
-capability shipped.
-
-The ticket-level evidence, tracker reconciliation, audit-discovered follow-up
-issues, and complete staged V1–V4 inventory are maintained in
-`OPE_251_304_COMPLETION_AUDIT_AND_REMAINING_LINEAR_TICKETS.md`.
+Current deployed acceptance, current source/tests, live GitHub, live tracker state,
+then accepted PRD/ADRs and staged plans. A planning document never proves a feature
+shipped. The [Build Guide](SERVIQ_BUILD_GUIDE.md) explains actual behavior and usage;
+[repo_context.md](repo_context.md) records paths and implementation boundaries.

@@ -1,24 +1,34 @@
 # Serviq — Complete Remaining Linear-Style Tickets
 
-> **Combined:** 2026-08-22
+> **Combined:** 2026-08-22; reconciled 2026-09-12 at `3e1b9aa`.
 > **Repository:** https://github.com/anmolsansi/Serviq
 > **Linear project:** Serviq
 > **Canonical source:** This file contains every remaining ticket in full Linear-style format.
-> **Status reconciliation:** V1.3.05 / OPE-311 completed on 2026-09-01 and is retained below as a completion record for traceability; it is excluded from current remaining-ticket counts.
+> **Status reconciliation:** 14 implemented records are retained below and excluded from implementation backlog counts. OPE-306/OPE-307 still need Linear closeout; known defects have separate follow-ups. See [audit evidence](SYSTEM_AUDIT_2026-09-12.md).
 > **Reference format:** [OPE-286](https://linear.app/openclaw-neutron/issue/OPE-286/v1112-implement-invitation-acceptance-api).
 
 ## Inventory
 
 | Source | V1 | V2 | V3 | V4 | Total |
 |---|---:|---:|---:|---:|---:|
-| Supplied staged roadmap | 77 | 38 | 41 | 42 | 198 |
-| Repository/acceptance audit discoveries | 6 | 0 | 0 | 0 | 6 |
-| Completed since consolidation | 1 | 0 | 0 | 0 | 1 |
-| **Current remaining tickets** | **82** | **38** | **41** | **42** | **203** |
+| Original staged roadmap | 77 | 38 | 41 | 42 | 198 |
+| Original audit discoveries | 6 | 0 | 0 | 0 | 6 |
+| Previously omitted publisher record V1.3.06A | 1 | 0 | 0 | 0 | 1 |
+| New 2026-09-12 audit follow-ups | 10 | 0 | 0 | 0 | 10 |
+| **All records in this file** | **94** | **38** | **41** | **42** | **215** |
+| Implemented records (subtract) | 14 | 0 | 0 | 0 | 14 |
+| **Remaining implementation/backlog records** | **80** | **38** | **41** | **42** | **201** |
+
+Counts are planning records, not effort, product-completion percentages, or live
+Linear issue totals. Two implemented records retain tracker-closeout debt.
+The live project query returned 17 issues (12 Done, 3 In Progress, 2 In Review).
+New audit IDs are local candidates; no new external issues were created. V1.0.29
+maps to existing GitHub #205. The 70 unimplemented original V1 phase tickets plus
+10 audit follow-ups make the 80 remaining V1 records.
 
 ## Intake rules
 
-- One ticket heading below equals one proposed Linear issue.
+- One remaining ticket heading is one local candidate; reuse existing issues before creating anything. Implemented records are historical references, not new issues.
 - Each staged ticket preserves its original compact requirement under **Frozen source requirements**.
 - Tickets marked **FAIL** or **BLOCKED** must not be handed to a builder.
 - Resolve every `Needs Architect Decision`, freeze exact contracts and file paths, verify merged dependencies, and rerun intake before implementation.
@@ -28,7 +38,7 @@
 
 ## Table of contents
 
-### Audit-discovered V1 tickets (6)
+### Audit-discovered V1 records (6 implemented + 10 open follow-ups)
 
 - [V1.0.26 — Lock LLM Gateway Dependencies and Make Local Audits Reproducible](#v1026-lock-llm-gateway-dependencies-and-make-local-audits-reproducible)
 - [V1.0.27 — Pin Every GitHub Action to an Immutable Commit](#v1027-pin-every-github-action-to-an-immutable-commit)
@@ -37,10 +47,22 @@
 - [V1.3.04B — Add Knowledge Upload Quota and Abuse Controls](#v1304b-add-knowledge-upload-quota-and-abuse-controls)
 - [V1.9.00 — Establish Frontend Component and Browser Test Harnesses](#v1900-establish-frontend-component-and-browser-test-harnesses)
 
-### Phase 1 — V1 Production Foundation (76 remaining + 1 completed record)
+- [V1.0.28 — Declare portable SQLAlchemy asyncio dependencies](#v1028-declare-portable-sqlalchemy-asyncio-dependencies)
+- [V1.0.29 — Enforce main branch quality and security checks](#v1029-enforce-main-branch-quality-and-security-checks)
+- [V1.1.16 — Connect workforce sessions to trusted API request context](#v1116-connect-workforce-sessions-to-trusted-api-request-context)
+- [V1.3.04C — Bound upload bodies before multipart spooling](#v1304c-bound-upload-bodies-before-multipart-spooling)
+- [V1.3.04D — Activate durable upload cleanup reconciliation](#v1304d-activate-durable-upload-cleanup-reconciliation)
+- [V1.3.07A — Bound and reconcile knowledge sync raw objects](#v1307a-bound-and-reconcile-knowledge-sync-raw-objects)
+- [V1.3.07B — Resolve sitemap registration versus ingestion support](#v1307b-resolve-sitemap-registration-versus-ingestion-support)
+- [V1.3.09A — Consume parse events and persist normalized handoff](#v1309a-consume-parse-events-and-persist-normalized-handoff)
+- [V1.3.11A — Redact gateway validation errors and bound authenticated requests](#v1311a-redact-gateway-validation-errors-and-bound-authenticated-requests)
+- [V1.3.11B — Implement approved semantic embedding transport](#v1311b-implement-approved-semantic-embedding-transport)
 
-- [V1.3.05 — Implement SSRF-safe public knowledge fetch helper — COMPLETED 2026-09-01](#v1305-implement-ssrf-safe-public-knowledge-fetch-helper)
+### Phase 1 — V1 Production Foundation (70 remaining + 8 implemented records)
+
+- [V1.3.05 — Implement SSRF-safe public knowledge fetch helper — implemented](#v1305-implement-ssrf-safe-public-knowledge-fetch-helper)
 - [V1.3.06 — Implement source sync command and durable outbox event](#v1306-implement-source-sync-command-and-durable-outbox-event)
+- [V1.3.06A — Publish transactional outbox events to Kafka — implemented](#v1306a-publish-transactional-outbox-events-to-kafka)
 - [V1.3.07 — Implement knowledge sync fetch worker](#v1307-implement-knowledge-sync-fetch-worker)
 - [V1.3.08 — Implement PDF/Markdown/text normalization parser](#v1308-implement-pdfmarkdowntext-normalization-parser)
 - [V1.3.09 — Implement HTML/help-center normalization parser](#v1309-implement-htmlhelp-center-normalization-parser)
@@ -250,2241 +272,1007 @@
 
 ## Audit-discovered V1 tickets
 
+<a id="v1026-lock-llm-gateway-dependencies-and-make-local-audits-reproducible"></a>
+
 ### V1.0.26 — Lock LLM Gateway Dependencies and Make Local Audits Reproducible
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Source:** Repository/acceptance audit performed 2026-08-22.
-> **Ticket format:** Full Serviq Linear-style ticket modeled on OPE-286.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** No matching issue in current project query; GitHub #166 and follow-ups closed.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
-Make LLM gateway installs and all local Python vulnerability audits deterministic
-under the repository's required Python 3.14 runtime.
+#### Accepted implementation scope
 
-#### Why This Exists
-The API and worker have committed uv locks, but the LLM gateway does not. Its
-dependency export resolves current registry versions on every run. The unmodified
-local audit command also allowed `uvx` to select Python 3.13, which failed on
-Python 3.14-specific requirement hashes until the interpreter was forced.
+Frozen dependency installation and audit commands across all three Python services.
 
-#### Estimated Effort
-1–2 focused engineering hours.
+#### Source and validation
 
-#### Read before coding
+`Makefile`; `services/api/uv.lock`; `services/worker/uv.lock`; `services/llm-gateway/uv.lock`.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md` and `docs/ARCHITECTURE.md` for the owning boundary.
-3. Every exact file under **Files to Inspect First** below.
-4. Applicable backend/frontend/database/API/testing/security/product-quality rules.
+All three uv lock checks and frozen service syncs passed; dependency audits passed. This does not solve the separate arm64 asyncio-extra defect (V1.0.28).
 
-If current code or a merged dependency differs from this ticket, stop with
-`Needs Architect Decision`; do not silently rewrite the contract.
-
-#### User-Facing Behavior
-None; developer/release reliability.
-
-#### Scope
-- Commit and enforce `services/llm-gateway/uv.lock`.
-- Change setup, CI, security, and release dependency commands to use frozen
-  gateway resolution.
-- Ensure pip-audit runs under Python 3.14 on supported developer machines.
-- Add a check that dependency commands leave the worktree clean.
-
-#### Out of Scope
-- Upgrading provider SDK major versions.
-- Replacing uv or pip-audit.
-- Adding a dependency-management service.
-
-#### Files to Inspect First
-- `services/llm-gateway/pyproject.toml` — dependency contract.
-- `Makefile` — local setup/security commands.
-- `.github/workflows/ci.yml` — install path.
-- `.github/workflows/security.yml` — audit path.
-- `.github/workflows/release.yml` — release install path.
-
-#### Files to Create or Edit
-- `services/llm-gateway/uv.lock`
-- `Makefile`
-- `.github/workflows/ci.yml`
-- `.github/workflows/security.yml`
-- `.github/workflows/release.yml`
-- `CONTRIBUTING.md`
-
-#### Data Model
-None.
-
-#### API Contract
-None.
-
-#### UI States
-None.
-
-#### Validation Rules
-Python must be 3.14.x; all three exported dependency sets must audit without
-modifying tracked files.
-
-#### Error Handling
-Wrong Python or stale lock fails with a concise actionable error before audit.
-
-#### Auth & Permissions
-No new permissions or secrets.
-
-#### Dependencies
-OPE-261, OPE-272, OPE-304.
-
-#### Integration Contract
-`make setup` and `make security` become frozen, clean-worktree commands.
-
-#### Implementation Steps
-1. Generate/review the gateway lock under Python 3.14.
-2. Freeze all gateway sync/export calls.
-3. Force the audit interpreter to 3.14 without a machine-specific path.
-4. Add clean-worktree verification in CI.
-5. Update contributor documentation.
-
-#### Test Cases
-1. Fresh frozen gateway sync succeeds.
-2. Stale pyproject/lock fails.
-3. All three pip-audits run under Python 3.14.
-4. Commands create no untracked lockfile.
-5. npm and Python audits retain non-zero failure behavior.
-
-#### Manual QA
-Run setup/security from a clean checkout and verify `git status --short` stays
-empty.
-
-#### Acceptance Criteria
-- [ ] Gateway lock is committed and frozen everywhere.
-- [ ] Local security command selects Python 3.14 deterministically.
-- [ ] All dependency audits pass on a clean checkout.
-- [ ] CI and release paths use the same lock contract.
-- [ ] No provider SDK behavior changes.
-
-#### Definition of Done
-All tests above, full CI/Security, documentation, and clean-worktree check pass.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant/actor context and existing trust-surface boundaries.
-- Do not log or return secrets, raw tokens, unrestricted PII, prompts, documents,
-  tool payloads, or chain-of-thought.
-- Prove authorization, cross-tenant denial, replay/idempotency, and safe failure
-  behavior wherever those boundaries apply.
-
-#### Observability and operations
-
-Use bounded IDs, counts, outcomes, retry state, correlation IDs, and timings only.
-Record rollback/recovery and real integration evidence in proportion to risk;
-do not treat documentation or a narrow unit test as deployed acceptance.
-
-#### Stop conditions
-
-Stop with `Needs Architect Decision: [specific decision]` if an exact path,
-contract, limit, permission, dependency, migration/rollback behavior, or manual
-acceptance environment is missing or differs from current code. Also stop for
-unapproved credentials, vendor/cloud spend, production data, destructive work,
-or scope that no longer fits one focused ticket.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Initial state:** Backlog
-- **Estimate/priority/labels:** Reconfirm during intake against current risk and dependencies
-- **Human Needed:** Yes where credentials, architecture, security, or operational evidence is required
-
-#### Ticket intake result
-
-**REVIEW REQUIRED.** Re-run the full ticket intake checklist against the current
-checkout and merged dependency evidence. Builder handoff requires zero FAIL items.
-
-#### Do Not Change
-Provider adapter contracts, model names, API schemas, or runtime behavior.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1027-pin-every-github-action-to-an-immutable-commit"></a>
+
 ### V1.0.27 — Pin Every GitHub Action to an Immutable Commit
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Source:** Repository/acceptance audit performed 2026-08-22.
-> **Ticket format:** Full Serviq Linear-style ticket modeled on OPE-286.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-306 — In Progress; GitHub #173 closed, PR #174 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
-Remove mutable action-tag supply-chain risk from CI and release workflows.
+#### Accepted implementation scope
 
-#### Why This Exists
-The Security workflow pins actions by commit SHA, while CI and Release still use
-mutable tags such as `actions/checkout@v4`.
+Immutable action references and executable CI policy guard.
 
-#### Estimated Effort
-1 focused engineering hour.
+#### Source and validation
 
-#### Read before coding
+`.github/workflows/ci.yml`; `.github/workflows/security.yml`; `.github/workflows/release.yml`.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md` and `docs/ARCHITECTURE.md` for the owning boundary.
-3. Every exact file under **Files to Inspect First** below.
-4. Applicable backend/frontend/database/API/testing/security/product-quality rules.
+Current-main quality/security jobs passed. Linear closeout remains pending. Repository branch protection is a different open item, GitHub #205 / V1.0.29.
 
-If current code or a merged dependency differs from this ticket, stop with
-`Needs Architect Decision`; do not silently rewrite the contract.
-
-#### User-Facing Behavior
-None.
-
-#### Scope
-Pin every third-party action in permanent workflows to reviewed commit SHAs and
-retain readable version comments.
-
-#### Out of Scope
-Changing job behavior, permissions, runner OS, or adopting a new scanner.
-
-#### Files to Inspect First
-- `.github/workflows/ci.yml`
-- `.github/workflows/release.yml`
-- `.github/workflows/security.yml`
-
-#### Files to Create or Edit
-- `.github/workflows/ci.yml`
-- `.github/workflows/release.yml`
-
-#### Data Model
-None.
-
-#### API Contract
-None.
-
-#### UI States
-None.
-
-#### Validation Rules
-No permanent workflow may contain an unpinned `uses:` reference.
-
-#### Error Handling
-CI fails a repository check when a mutable action reference is introduced.
-
-#### Auth & Permissions
-Existing least-privilege job permissions remain unchanged.
-
-#### Dependencies
-OPE-269, OPE-272, OPE-304.
-
-#### Integration Contract
-Workflow behavior and inputs remain frozen; only action resolution changes.
-
-#### Implementation Steps
-1. Resolve each current action tag to its official reviewed commit.
-2. Replace tags with SHAs and add version comments.
-3. Add a lightweight workflow-source assertion.
-4. Run CI and Security.
-
-#### Test Cases
-1. Repository scan finds zero mutable `uses:` entries.
-2. CI jobs pass.
-3. Release validation jobs pass without publishing a release.
-
-#### Manual QA
-Inspect each action owner/repository and SHA against its official release.
-
-#### Acceptance Criteria
-- [ ] CI and Release actions are immutable.
-- [ ] Version comments remain readable.
-- [ ] Permissions and job behavior are unchanged.
-- [ ] Automated regression check exists.
-
-#### Definition of Done
-Exact-head CI and Security are green.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant/actor context and existing trust-surface boundaries.
-- Do not log or return secrets, raw tokens, unrestricted PII, prompts, documents,
-  tool payloads, or chain-of-thought.
-- Prove authorization, cross-tenant denial, replay/idempotency, and safe failure
-  behavior wherever those boundaries apply.
-
-#### Observability and operations
-
-Use bounded IDs, counts, outcomes, retry state, correlation IDs, and timings only.
-Record rollback/recovery and real integration evidence in proportion to risk;
-do not treat documentation or a narrow unit test as deployed acceptance.
-
-#### Stop conditions
-
-Stop with `Needs Architect Decision: [specific decision]` if an exact path,
-contract, limit, permission, dependency, migration/rollback behavior, or manual
-acceptance environment is missing or differs from current code. Also stop for
-unapproved credentials, vendor/cloud spend, production data, destructive work,
-or scope that no longer fits one focused ticket.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Initial state:** Backlog
-- **Estimate/priority/labels:** Reconfirm during intake against current risk and dependencies
-- **Human Needed:** Yes where credentials, architecture, security, or operational evidence is required
-
-#### Ticket intake result
-
-**REVIEW REQUIRED.** Re-run the full ticket intake checklist against the current
-checkout and merged dependency evidence. Builder handoff requires zero FAIL items.
-
-#### Do Not Change
-Release tags, published releases, secrets, or product code.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1115-add-live-keycloak-workforce-oidc-integration-coverage"></a>
+
 ### V1.1.15 — Add Live Keycloak Workforce OIDC Integration Coverage
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Source:** Repository/acceptance audit performed 2026-08-22.
-> **Ticket format:** Full Serviq Linear-style ticket modeled on OPE-286.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-307 — In Progress; GitHub #175 closed, PR #176 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
-Prove the configured local Keycloak realm can issue a token that the current API
-validator accepts and that invalid audience/issuer cases fail closed.
+#### Accepted implementation scope
 
-#### Why This Exists
-OIDC cryptographic and discovery behavior has strong mocked tests, but the staged
-backlog does not explicitly test the real Keycloak configuration against the API.
+Real Keycloak token/discovery/JWKS validation with invalid-issuer/audience and disabled/unknown-user tests.
 
-#### Estimated Effort
-2–3 focused engineering hours.
+#### Source and validation
 
-#### Read before coding
+`infra/keycloak/serviq-test-realm.json`; `services/api/tests/integration/test_keycloak_oidc_integration.py`; `.github/workflows/ci.yml`.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md` and `docs/ARCHITECTURE.md` for the owning boundary.
-3. Every exact file under **Files to Inspect First** below.
-4. Applicable backend/frontend/database/API/testing/security/product-quality rules.
+Current-main Keycloak job passed six tests. Linear closeout remains pending. This tests the validator directly; HTTP session/principal wiring is missing and belongs to V1.1.16.
 
-If current code or a merged dependency differs from this ticket, stop with
-`Needs Architect Decision`; do not silently rewrite the contract.
-
-#### User-Facing Behavior
-None; authentication integration evidence.
-
-#### Scope
-Add an opt-in CI integration test that starts Keycloak, obtains a test workforce
-token using a non-production test client, validates it through the real validator,
-and tests wrong audience/issuer.
-
-#### Out of Scope
-Browser login UI, production IdP configuration, customer authentication, or
-persisting real credentials.
-
-#### Files to Inspect First
-- `infra/docker/compose.yml`
-- `services/api/app/core/auth.py`
-- `services/api/tests/test_workforce_oidc.py`
-- `.github/workflows/ci.yml`
-
-#### Files to Create or Edit
-- `infra/keycloak/serviq-test-realm.json` — new deterministic test realm/client fixture.
-- `services/api/tests/integration/test_keycloak_oidc_integration.py`
-- `.github/workflows/ci.yml`
-- `docs/repo_context.md`
-
-#### Data Model
-None.
-
-#### API Contract
-No public route change; consumes the existing workforce OIDC validator contract.
-
-#### UI States
-None.
-
-#### Validation Rules
-Test credentials are placeholders; logs and failure artifacts contain no token.
-
-#### Error Handling
-Keycloak readiness timeout fails the integration job with container diagnostics
-but redacts tokens and client secrets.
-
-#### Auth & Permissions
-Test-only realm/client; no production secret or broad GitHub permission.
-
-#### Dependencies
-OPE-265, OPE-280.
-
-#### Integration Contract
-The Compose Keycloak issuer/audience/client settings must match API configuration.
-
-#### Implementation Steps
-1. Freeze a test realm/client fixture.
-2. Start Keycloak and wait on readiness.
-3. Obtain and validate one token.
-4. Execute negative issuer/audience cases.
-5. Add safe CI cleanup and documentation.
-
-#### Test Cases
-1. Real issued token validates.
-2. Wrong audience fails.
-3. Wrong issuer fails.
-4. Disabled/unknown subject behavior remains safe.
-5. Token is absent from captured logs.
-
-#### Manual QA
-Run the opt-in integration job locally with Docker and inspect safe output.
-
-#### Acceptance Criteria
-- [ ] Real Keycloak-to-validator path passes.
-- [ ] Negative trust-boundary cases fail closed.
-- [ ] No token/secret leakage.
-- [ ] CI cleanup always runs.
-
-#### Definition of Done
-Integration job and existing auth suite pass.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant/actor context and existing trust-surface boundaries.
-- Do not log or return secrets, raw tokens, unrestricted PII, prompts, documents,
-  tool payloads, or chain-of-thought.
-- Prove authorization, cross-tenant denial, replay/idempotency, and safe failure
-  behavior wherever those boundaries apply.
-
-#### Observability and operations
-
-Use bounded IDs, counts, outcomes, retry state, correlation IDs, and timings only.
-Record rollback/recovery and real integration evidence in proportion to risk;
-do not treat documentation or a narrow unit test as deployed acceptance.
-
-#### Stop conditions
-
-Stop with `Needs Architect Decision: [specific decision]` if an exact path,
-contract, limit, permission, dependency, migration/rollback behavior, or manual
-acceptance environment is missing or differs from current code. Also stop for
-unapproved credentials, vendor/cloud spend, production data, destructive work,
-or scope that no longer fits one focused ticket.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Initial state:** Backlog
-- **Estimate/priority/labels:** Reconfirm during intake against current risk and dependencies
-- **Human Needed:** Yes where credentials, architecture, security, or operational evidence is required
-
-#### Ticket intake result
-
-**REVIEW REQUIRED.** Re-run the full ticket intake checklist against the current
-checkout and merged dependency evidence. Builder handoff requires zero FAIL items.
-
-#### Do Not Change
-OIDC public claims contract, customer identity, or platform-console auth.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1304a-freeze-and-implement-durable-knowledge-upload-consistency"></a>
+
 ### V1.3.04A — Freeze and Implement Durable Knowledge Upload Consistency
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Source:** Repository/acceptance audit performed 2026-08-22.
-> **Ticket format:** Full Serviq Linear-style ticket modeled on OPE-286.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-308 — Done; PR #180 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
-Guarantee that every uploaded raw object is either referenced by a durable source
-record or discoverable by a durable cleanup/reconciliation process.
+#### Accepted implementation scope
 
-#### Why This Exists
-OPE-303 uploads the object before committing its database row. On database
-failure it attempts deletion, but suppresses `ObjectStorageError`; simultaneous
-DB and delete failure can leave an untracked object.
+Pre-PUT cleanup intent, atomic source/reference ownership, bounded durable cleanup replay and protected downgrade.
 
-#### Estimated Effort
-Architect decision plus 2–3 focused implementation hours.
+#### Source and validation
 
-#### Read before coding
+`services/api/app/modules/knowledge/cleanup.py`; `services/api/alembic/versions/20260824_0010_knowledge_upload_cleanups.py`.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md` and `docs/ARCHITECTURE.md` for the owning boundary.
-3. Every exact file under **Files to Inspect First** below.
-4. Applicable backend/frontend/database/API/testing/security/product-quality rules.
+Durability service and integration tests exist. No automatic cleanup caller is composed; V1.3.04D owns activation. Preserve unresolved obligations during rollback.
 
-If current code or a merged dependency differs from this ticket, stop with
-`Needs Architect Decision`; do not silently rewrite the contract.
-
-#### User-Facing Behavior
-A failed upload remains failed; operators can detect and repair residual cleanup
-work without exposing object keys to tenant users.
-
-#### Scope
-- Record an ADR selecting the cross-store consistency strategy.
-- Implement durable cleanup state or a deterministic reconciliation sweep.
-- Retry deletion idempotently with bounded backoff/DLQ.
-- Emit safe metrics/logs for pending, succeeded, and exhausted cleanup.
-- Cover the double-failure path.
-
-#### Out of Scope
-Knowledge parsing/indexing, customer attachments, lifecycle policies, or a new
-storage service.
-
-#### Files to Inspect First
-- `services/api/app/modules/knowledge/service.py`
-- `services/api/app/core/object_storage.py`
-- `services/api/tests/integration/test_knowledge_file_upload_api.py`
-- `services/worker/app/jobs/`
-- `services/api/alembic/versions/20260819_0008_knowledge_schema.py`
-
-#### Files to Create or Edit
-Needs Architect Decision: select record-first state transition versus durable
-cleanup record/sweeper before freezing exact files and migration contract.
-
-#### Data Model
-Needs Architect Decision: durable upload state/cleanup intent and retention.
-
-#### API Contract
-Existing upload response/error contract must remain compatible.
-
-#### UI States
-None in this ticket; operator surfacing may be consumed by V1.10 platform work.
-
-#### Validation Rules
-Tenant ID and generated key are server-owned; retries are idempotent and bounded.
-
-#### Error Handling
-Double failure persists a safe cleanup obligation and never reports success.
-
-#### Auth & Permissions
-Cleanup runs only as a trusted worker/platform operation.
-
-#### Dependencies
-OPE-301, OPE-303; coordinate with V1.3.06 durable outbox design.
-
-#### Integration Contract
-Expose one durable cleanup job/state that V1.10.09 DLQ operations can inspect.
-
-#### Implementation Steps
-1. Write and approve the ADR.
-2. Add the minimal durable state/contract.
-3. Change upload failure handling.
-4. Implement idempotent cleanup/reconciliation.
-5. Add double-failure tests and safe telemetry.
-
-#### Test Cases
-1. Storage success + DB success leaves one referenced object.
-2. Storage success + DB failure + delete success leaves no object.
-3. Storage success + DB failure + delete failure creates durable cleanup work.
-4. Cleanup replay deletes once and marks success.
-5. Foreign-tenant cleanup is rejected.
-6. Exhausted retry is operator-visible without leaking credentials.
-
-#### Manual QA
-Inject DB and storage-delete failures, restore storage, replay cleanup, and verify
-no unreferenced object remains.
-
-#### Acceptance Criteria
-- [ ] Double failure is durable and observable.
-- [ ] Cleanup is idempotent, bounded, and tenant-safe.
-- [ ] Existing upload API remains compatible.
-- [ ] Real PostgreSQL and S3 integration tests pass.
-- [ ] Premium security/reliability review passes.
-
-#### Definition of Done
-ADR, implementation, migration if selected, tests, metrics, runbook, CI/Security.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant/actor context and existing trust-surface boundaries.
-- Do not log or return secrets, raw tokens, unrestricted PII, prompts, documents,
-  tool payloads, or chain-of-thought.
-- Prove authorization, cross-tenant denial, replay/idempotency, and safe failure
-  behavior wherever those boundaries apply.
-
-#### Observability and operations
-
-Use bounded IDs, counts, outcomes, retry state, correlation IDs, and timings only.
-Record rollback/recovery and real integration evidence in proportion to risk;
-do not treat documentation or a narrow unit test as deployed acceptance.
-
-#### Stop conditions
-
-Stop with `Needs Architect Decision: [specific decision]` if an exact path,
-contract, limit, permission, dependency, migration/rollback behavior, or manual
-acceptance environment is missing or differs from current code. Also stop for
-unapproved credentials, vendor/cloud spend, production data, destructive work,
-or scope that no longer fits one focused ticket.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Initial state:** Backlog
-- **Estimate/priority/labels:** Reconfirm during intake against current risk and dependencies
-- **Human Needed:** Yes where credentials, architecture, security, or operational evidence is required
-
-#### Ticket intake result
-
-**REVIEW REQUIRED.** Re-run the full ticket intake checklist against the current
-checkout and merged dependency evidence. Builder handoff requires zero FAIL items.
-
-#### Do Not Change
-Generated object-key layout, supported file types/sizes, or customer attachment
-scope.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1304b-add-knowledge-upload-quota-and-abuse-controls"></a>
+
 ### V1.3.04B — Add Knowledge Upload Quota and Abuse Controls
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Source:** Repository/acceptance audit performed 2026-08-22.
-> **Ticket format:** Full Serviq Linear-style ticket modeled on OPE-286.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-309 — Done; PR #185 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
-Prevent an authorized or compromised knowledge manager from exhausting tenant or
-platform object storage and request capacity.
+#### Accepted implementation scope
 
-#### Why This Exists
-OPE-303 bounds each file but does not define per-tenant storage quota, upload
-rate, concurrent upload limit, or safe quota-exceeded behavior. V1.10.05 covers
-general platform rate policies but does not explicitly own knowledge bytes.
+Tenant file-byte/source/concurrency reservations and a fail-closed Valkey upload-attempt limiter.
 
-#### Estimated Effort
-Needs Architect Decision, then 2–3 focused engineering hours.
+#### Source and validation
 
-#### Read before coding
+`services/api/app/modules/knowledge/quota.py`; `services/api/app/core/rate_limits.py`; `services/api/alembic/versions/20260828_0011_knowledge_upload_quotas.py`.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md` and `docs/ARCHITECTURE.md` for the owning boundary.
-3. Every exact file under **Files to Inspect First** below.
-4. Applicable backend/frontend/database/API/testing/security/product-quality rules.
+Current unit suite passed; earlier real-stack quota workflow passed. Pre-parser resource admission and URL fetched-byte accounting are separate gaps (V1.3.04C/V1.3.07A).
 
-If current code or a merged dependency differs from this ticket, stop with
-`Needs Architect Decision`; do not silently rewrite the contract.
-
-#### User-Facing Behavior
-Uploads over the frozen limit return a stable, safe error and do not store an
-object or create a source row.
-
-#### Scope
-Freeze and enforce per-user request rate, per-tenant concurrent uploads, and
-per-tenant stored-byte/source-count quotas with safe usage accounting.
-
-#### Out of Scope
-Billing, paid overages, customer attachments, or production cloud lifecycle.
-
-#### Files to Inspect First
-- `services/api/app/modules/knowledge/router.py`
-- `services/api/app/modules/knowledge/service.py`
-- `services/api/app/modules/providers/rate_limits.py`
-- `services/api/app/core/object_storage.py`
-- V1.10.05 staged ticket.
-
-#### Files to Create or Edit
-Needs Architect Decision: exact quota ownership, counters, limits, and migration.
-
-#### Data Model
-Needs Architect Decision: authoritative stored-byte/source-count accounting and
-reconciliation rule.
-
-#### API Contract
-Freeze stable 429 rate-limit and 409/413 quota-exceeded codes before coding.
-
-#### UI States
-None; V1.9.05 will consume safe errors and remaining quota when exposed.
-
-#### Validation Rules
-All limits require exact numbers; fail closed when the authoritative limiter or
-quota store is unavailable.
-
-#### Error Handling
-Rejected uploads perform no object write. Races cannot exceed quota without a
-bounded documented tolerance.
-
-#### Auth & Permissions
-Existing `knowledge.sources.manage` remains required; platform overrides are
-outside this ticket unless explicitly frozen.
-
-#### Dependencies
-OPE-303; coordinate with V1.10.05.
-
-#### Integration Contract
-Expose only safe usage/limit metadata; never storage credentials or raw keys.
-
-#### Implementation Steps
-1. Approve quota/rate policy.
-2. Implement atomic reservation before upload.
-3. Commit or release reservation after final outcome.
-4. Add reconciliation for leaked reservations.
-5. Add tests and safe metrics.
-
-#### Test Cases
-1. Within-limit upload succeeds.
-2. Per-file limit still applies.
-3. Request rate exceeded returns 429.
-4. Tenant byte/source quota returns frozen error.
-5. Concurrent requests cannot bypass reservation.
-6. Failed upload releases reservation.
-7. Foreign tenant cannot inspect or consume another quota.
-
-#### Manual QA
-Exercise limit, failure, retry, and concurrent cases against real Valkey,
-PostgreSQL, and S3-compatible storage.
-
-#### Acceptance Criteria
-- [ ] Exact quota/rate numbers are architect-approved.
-- [ ] Reservations are atomic/idempotent.
-- [ ] Rejected uploads create no object/source.
-- [ ] Safe errors and metrics exist.
-- [ ] Integration/security tests pass.
-
-#### Definition of Done
-Policy decision, implementation, tests, runbook, CI/Security.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant/actor context and existing trust-surface boundaries.
-- Do not log or return secrets, raw tokens, unrestricted PII, prompts, documents,
-  tool payloads, or chain-of-thought.
-- Prove authorization, cross-tenant denial, replay/idempotency, and safe failure
-  behavior wherever those boundaries apply.
-
-#### Observability and operations
-
-Use bounded IDs, counts, outcomes, retry state, correlation IDs, and timings only.
-Record rollback/recovery and real integration evidence in proportion to risk;
-do not treat documentation or a narrow unit test as deployed acceptance.
-
-#### Stop conditions
-
-Stop with `Needs Architect Decision: [specific decision]` if an exact path,
-contract, limit, permission, dependency, migration/rollback behavior, or manual
-acceptance environment is missing or differs from current code. Also stop for
-unapproved credentials, vendor/cloud spend, production data, destructive work,
-or scope that no longer fits one focused ticket.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Initial state:** Backlog
-- **Estimate/priority/labels:** Reconfirm during intake against current risk and dependencies
-- **Human Needed:** Yes where credentials, architecture, security, or operational evidence is required
-
-#### Ticket intake result
-
-**REVIEW REQUIRED.** Re-run the full ticket intake checklist against the current
-checkout and merged dependency evidence. Builder handoff requires zero FAIL items.
-
-#### Do Not Change
-General billing or unrelated platform rate-policy contracts.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1900-establish-frontend-component-and-browser-test-harnesses"></a>
+
 ### V1.9.00 — Establish Frontend Component and Browser Test Harnesses
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Source:** Repository/acceptance audit performed 2026-08-22.
-> **Ticket format:** Full Serviq Linear-style ticket modeled on OPE-286.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-310 — Done.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
-Give the three Next.js applications a real test command before interactive V1
-screens are built.
+#### Accepted implementation scope
 
-#### Why This Exists
-The current recursive TypeScript test command succeeds while running zero tests.
-The staged V1.9 UI tickets require loading, empty, error, permission, form, and
-streaming coverage but do not explicitly establish the harness.
+Root Vitest/Testing Library scaffold checks and Playwright configuration.
 
-#### Estimated Effort
-2–3 focused engineering hours.
+#### Source and validation
 
-#### Read before coding
+`package.json`; `tests/frontend/app-smoke.test.tsx`; `playwright.config.ts`.
 
-1. `docs/repo_context.md`.
-2. `docs/PRD.md` and `docs/ARCHITECTURE.md` for the owning boundary.
-3. Every exact file under **Files to Inspect First** below.
-4. Applicable backend/frontend/database/API/testing/security/product-quality rules.
+Four smoke/config tests passed. Browser list contains zero tests. V1.11.03 still owns full browser journeys; this record does not claim E2E completion.
 
-If current code or a merged dependency differs from this ticket, stop with
-`Needs Architect Decision`; do not silently rewrite the contract.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
-#### User-Facing Behavior
-None directly; prevents untested UI regressions.
+---
 
-#### Scope
-Select the smallest repository-compatible component test runner and browser E2E
-foundation, add one smoke test per app, and make zero-test execution fail.
+<a id="v1028-declare-portable-sqlalchemy-asyncio-dependencies"></a>
 
-#### Out of Scope
-Testing future product screens, visual-regression SaaS, Storybook, or broad
-cross-browser matrices.
+### V1.0.28 — Declare portable SQLAlchemy asyncio dependencies
 
-#### Files to Inspect First
-- `package.json`
-- `pnpm-workspace.yaml`
-- `apps/client-console/package.json`
-- `apps/customer-web/package.json`
-- `apps/platform-console/package.json`
-- `.github/workflows/ci.yml`
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Ready for focused implementation after dependency diff review; no architecture change required.
 
-#### Files to Create or Edit
-Needs Architect Decision: choose the exact component runner and E2E tool before
-freezing app-local config/test paths.
+#### Goal and why
 
-#### Data Model
-None.
+Frozen macOS arm64 environments omit greenlet and API AsyncSession cleanup returns a 500 instead of the intended authentication response.
 
-#### API Contract
-None.
+#### Exact scope and intended behavior
 
-#### UI States
-Each smoke fixture must prove render success and one accessible landmark/name.
+Use the supported SQLAlchemy asyncio dependency surface in both services and refresh only affected lock entries. Add a session open/close smoke test without a database so Linux-only integration cannot hide optional dependency omissions.
 
-#### Validation Rules
-`pnpm test` fails when no tests are discovered.
+#### Dependencies and contracts
 
-#### Error Handling
-Browser artifacts must be bounded and redact tokens, cookies, and response data.
+None; prerequisite to local API/worker runtime validation.
 
-#### Auth & Permissions
-No production credentials; fake/local services only.
+Ready for focused implementation after dependency diff review; no architecture change required. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
 
-#### Dependencies
-OPE-253, OPE-254, OPE-255. Must complete before V1.9.01–V1.9.12.
+#### Files to inspect first
 
-#### Integration Contract
-Root `pnpm test` runs component tests; the future V1.11.03 E2E command consumes
-the same browser foundation without duplicating configuration.
+`services/api/pyproject.toml`; `services/api/uv.lock`; `services/worker/pyproject.toml`; `services/worker/uv.lock`; `services/api/tests/test_database.py`; `services/worker/tests/test_database.py`.
 
-#### Implementation Steps
-1. Record the minimal tool decision.
-2. Add shared config only where genuinely shared.
-3. Add one accessible smoke test per app.
-4. Add a zero-test failure guard.
-5. Wire CI and safe artifacts.
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
 
-#### Test Cases
-1. Each app smoke test passes.
-2. Intentional render failure fails.
-3. Zero discovered tests fails.
-4. Browser artifact contains no seeded fake secret.
+#### Required validation and manual acceptance
 
-#### Manual QA
-Run tests from a clean checkout at the pinned Node/pnpm versions.
+Frozen installs on macOS arm64 and Linux; async session open/close succeeds; API unauthorized response is no longer masked by greenlet failure; locks, Ruff, mypy and service suites pass.
 
-#### Acceptance Criteria
-- [ ] Three app smoke tests execute.
-- [ ] Root test command cannot be falsely green with zero tests.
-- [ ] CI runs the harness.
-- [ ] Accessibility-first queries are demonstrated.
-- [ ] No paid service or production secret is required.
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
 
-#### Definition of Done
-Decision, harness, smoke tests, CI, and contributor docs pass.
+#### Out of scope and stop conditions
 
-#### Security and privacy requirements
+Keep SQLAlchemy/Psycopg public contracts and versions within existing constraints. No schema or feature change.
 
-- Preserve server-owned tenant/actor context and existing trust-surface boundaries.
-- Do not log or return secrets, raw tokens, unrestricted PII, prompts, documents,
-  tool payloads, or chain-of-thought.
-- Prove authorization, cross-tenant denial, replay/idempotency, and safe failure
-  behavior wherever those boundaries apply.
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
 
-#### Observability and operations
+#### Definition of done
 
-Use bounded IDs, counts, outcomes, retry state, correlation IDs, and timings only.
-Record rollback/recovery and real integration evidence in proportion to risk;
-do not treat documentation or a narrow unit test as deployed acceptance.
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
 
-#### Stop conditions
+---
 
-Stop with `Needs Architect Decision: [specific decision]` if an exact path,
-contract, limit, permission, dependency, migration/rollback behavior, or manual
-acceptance environment is missing or differs from current code. Also stop for
-unapproved credentials, vendor/cloud spend, production data, destructive work,
-or scope that no longer fits one focused ticket.
+<a id="v1029-enforce-main-branch-quality-and-security-checks"></a>
 
-#### Suggested Linear metadata
+### V1.0.29 — Enforce main branch quality and security checks
 
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Initial state:** Backlog
-- **Estimate/priority/labels:** Reconfirm during intake against current risk and dependencies
-- **Human Needed:** Yes where credentials, architecture, security, or operational evidence is required
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Reuse GitHub #205; no duplicate issue.
+> **Ticket intake:** Needs Architect Decision: required contexts, conditional integration gate design and administrator bypass policy.
 
-#### Ticket intake result
+#### Goal and why
 
-**REVIEW REQUIRED.** Re-run the full ticket intake checklist against the current
-checkout and merged dependency evidence. Builder handoff requires zero FAIL items.
+GitHub reports main unprotected and an empty ruleset list. Existing GitHub #205 already represents this work.
 
-#### Do Not Change
-Product UI behavior or future V1.9 feature contracts.
+#### Exact scope and intended behavior
+
+Reuse https://github.com/anmolsansi/Serviq/issues/205. Configure required PR/check enforcement and force-push restrictions. Use exact job contexts; account for path-filtered workflows so unrelated changes can merge safely.
+
+#### Dependencies and contracts
+
+Repository administration; approved emergency/bypass policy.
+
+Needs Architect Decision: required contexts, conditional integration gate design and administrator bypass policy. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`.github/workflows/ci.yml`; `.github/workflows/security.yml`; `.github/workflows/knowledge-sync-integration.yml`; `.github/workflows/outbox-publisher-integration.yml`; `.github/workflows/knowledge-quota-integration.yml`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Read back protection/rulesets; demonstrate failing required checks block merge and relevant passing checks permit it; verify unrelated documentation PRs are not stuck on never-created path-filtered jobs.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+Do not manufacture another issue, bypass checks, or change runtime contracts.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1116-connect-workforce-sessions-to-trusted-api-request-context"></a>
+
+### V1.1.16 — Connect workforce sessions to trusted API request context
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: session persistence, exact routes, cookies/CSRF, logout and active-tenant selection contract.
+
+#### Goal and why
+
+The API reads trusted request state that no production entrypoint populates. Validator-only Keycloak tests and overridden principals conceal this missing connection.
+
+#### Exact scope and intended behavior
+
+Connect architecture-owned PKCE/server session identity to workforce user and active membership resolution. Populate trusted context only after verification. Define login/callback/logout/tenant switching and cookie/CSRF/session-expiry behavior before implementation.
+
+#### Dependencies and contracts
+
+V1.0.28 for portable runtime; existing OIDC/upsert/membership services. V1.9.02 depends on this API/session contract.
+
+Needs Architect Decision: session persistence, exact routes, cookies/CSRF, logout and active-tenant selection contract. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/api/app/main.py`; `services/api/app/core/auth.py`; `services/api/app/core/principal.py`; `services/api/app/core/tenancy.py`; `services/api/app/modules/workforce/service.py`; `services/api/app/modules/tenancy/service.py`; `services/api/tests/integration/test_keycloak_oidc_integration.py`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Real issued identity reaches organization/provider/knowledge HTTP APIs without principal overrides; missing/expired/wrong issuer/disabled/foreign-tenant paths fail safely; concurrent initial provisioning and tenant switching preserve isolation.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+No browser token storage, client-supplied permissions, test-only identity header, customer auth or platform-operator shortcut.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1304c-bound-upload-bodies-before-multipart-spooling"></a>
+
+### V1.3.04C — Bound upload bodies before multipart spooling
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: total request/overhead cap, pre-body admission lease ownership and error precedence.
+
+#### Goal and why
+
+File validation and durable concurrency reservation occur after request.form has consumed and spooled the body. max_part_size limits non-file parts, not file bytes.
+
+#### Exact scope and intended behavior
+
+Implement byte-counting/admission before unbounded spooling. Cover absent or dishonest Content-Length and multipart overhead. Preserve existing per-type 5/25 MiB limits, safe quota failures and cleanup invariants; close form/files on every outcome.
+
+#### Dependencies and contracts
+
+V1.1.16 trust context; existing V1.3.04A/B accounting.
+
+Needs Architect Decision: total request/overhead cap, pre-body admission lease ownership and error precedence. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/api/app/modules/knowledge/router.py`; `services/api/app/modules/knowledge/uploads.py`; `services/api/app/modules/knowledge/quota.py`; `services/api/tests/integration/test_knowledge_file_upload_api.py`; `services/api/tests/integration/test_knowledge_quota_api.py`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Streamed over-limit request aborts within bounded bytes; concurrent slow uploads cannot exceed admitted capacity; 413/429/503 behavior is stable; permission-denied/invalid/cancelled requests release resources and never PUT an object.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+No limit increase or quota bypass; no reliance on Content-Length alone.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1304d-activate-durable-upload-cleanup-reconciliation"></a>
+
+### V1.3.04D — Activate durable upload cleanup reconciliation
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: packaging/runtime ownership, cadence and operational alert owner; coordinate V1.10.09/10.
+
+#### Goal and why
+
+reconcile_due_upload_cleanups exists but no production process schedules it. Failed uploads may retain raw objects and quota obligations indefinitely without operator invocation.
+
+#### Exact scope and intended behavior
+
+Freeze runtime ownership and schedule the existing bounded sweep without copying its business rules. Preserve replay leases, validate object identifiers exactly, and retain retry/exhaustion state and reservation release. Add restart behavior and bounded operator visibility.
+
+#### Dependencies and contracts
+
+Existing V1.3.04A/B contracts; V1.0.28 async runtime.
+
+Needs Architect Decision: packaging/runtime ownership, cadence and operational alert owner; coordinate V1.10.09/10. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/api/app/modules/knowledge/cleanup.py`; `services/api/app/modules/knowledge/repository.py`; `services/api/app/modules/knowledge/quota.py`; `services/worker/app/main.py`; `services/api/tests/integration/test_knowledge_upload_cleanup.py`; `docs/KNOWLEDGE_UPLOAD_CONSISTENCY_RUNBOOK.md`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Real DB/S3 double failure then restart/recovery deletes orphan and releases quota; duplicate scheduler workers do not cross tenant boundaries; exhaustion remains visible; shutdown and cadence are tested.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+No public unauthenticated cleanup endpoint, blanket object deletion or unresolved-state purge.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1307a-bound-and-reconcile-knowledge-sync-raw-objects"></a>
+
+### V1.3.07A — Bound and reconcile knowledge sync raw objects
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: retention, quota source of truth, object immutability/write strategy and ownership of migration/reconciliation.
+
+#### Goal and why
+
+URL versions bypass file-byte quota and durable upload cleanup. PUT precedes final version lock; stale/crashed jobs can retain raw objects, and competing same-version fetches require immutable-write evidence. S3 reads are unbounded.
+
+#### Exact scope and intended behavior
+
+Freeze fetched-version byte accounting, bounded object reads, raw-object identity/immutability and retention/recovery semantics. Account for DB failure after PUT and stale source version before persistence. Reuse durability patterns after ownership is explicit.
+
+#### Dependencies and contracts
+
+ADR-023; existing upload accounting/cleanup primitives; coordinate V1.3.09A and V1.10.10.
+
+Needs Architect Decision: retention, quota source of truth, object immutability/write strategy and ownership of migration/reconciliation. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/worker/app/jobs/knowledge_sync.py`; `services/worker/app/core/object_storage.py`; `services/worker/tests/integration/test_knowledge_sync_postgres.py`; `services/worker/tests/integration/test_knowledge_sync_end_to_end.py`; `services/api/app/modules/knowledge/quota.py`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Repeated syncs remain within agreed budget; DB failure after PUT is discoverable/recoverable; stale events cannot leak objects; concurrent/rebalanced same-version different-content runs cannot alter committed raw bytes; oversized S3 object reads abort.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+No broad object-store sweep or silent loss of pending parse inputs. Race is a review finding requiring deterministic reproduction before claiming a fix.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1307b-resolve-sitemap-registration-versus-ingestion-support"></a>
+
+### V1.3.07B — Resolve sitemap registration versus ingestion support
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P2.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: V1 support policy and exact source contract before builder handoff.
+
+#### Goal and why
+
+Sitemap metadata is accepted but sync deliberately fails terminally as unsupported. No remaining ticket explicitly owns traversal.
+
+#### Exact scope and intended behavior
+
+Decide whether to retain clearly unsupported metadata registration, reject/defer it in V1, or implement explicitly permitted bounded traversal. Freeze public error/status behavior and, if enabled, URL/depth/page/byte limits and approval policy.
+
+#### Dependencies and contracts
+
+ADR-020/023; V1.3.07A resource budgets if traversal enabled.
+
+Needs Architect Decision: V1 support policy and exact source contract before builder handoff. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/api/app/modules/knowledge/schemas.py`; `services/api/app/modules/knowledge/service.py`; `services/worker/app/jobs/knowledge_sync.py`; `services/worker/app/core/public_knowledge_fetch.py`; `services/worker/tests/test_public_knowledge_fetch.py`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Registration and sync communicate the same supported feature set; if traversal enabled, disallowed hosts, cycles, huge XML, redirects, partial failures and retries are bounded and tenant-safe.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+No broad crawler, automatic permission to crawl, anti-bot bypass or hidden change to the accepted source-type contract.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1309a-consume-parse-events-and-persist-normalized-handoff"></a>
+
+### V1.3.09A — Consume parse events and persist normalized handoff
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: normalized artifact layout, storage ownership, index event contract, retries/DLQ and rollback.
+
+#### Goal and why
+
+The durable serviq.knowledge.parse.v1 event has no consumer. Pure parsers are complete, while V1.3.13 assumes normalized/index work that no runtime producer creates.
+
+#### Exact scope and intended behavior
+
+Freeze a tenant/version-safe parse consumer, content-hash verification, normalized artifact schema/storage and atomic index handoff. Add exact new file allowlist and ADR/CCR before implementation; reuse pure parsers rather than rewriting them.
+
+#### Dependencies and contracts
+
+V1.3.07–10; V1.3.07A raw lifecycle contract. Required before V1.3.13.
+
+Needs Architect Decision: normalized artifact layout, storage ownership, index event contract, retries/DLQ and rollback. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/worker/app/main.py`; `services/worker/app/consumers/knowledge_sync.py`; `services/worker/app/core/knowledge_normalization.py`; `services/worker/app/core/object_storage.py`; `services/worker/app/jobs/knowledge_sync.py`; `services/api/alembic/versions/20260819_0008_knowledge_schema.py`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Real broker/S3/DB file and URL inputs yield deterministic persisted normalized output and one logical index obligation; replay/crash/stale version/wrong tenant/hash mismatch/parse failure behave safely.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+Do not mark a source ready at parse completion; do not put raw document content in logs or invent an event contract in builder code.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1311a-redact-gateway-validation-errors-and-bound-authenticated-requests"></a>
+
+### V1.3.11A — Redact gateway validation errors and bound authenticated requests
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: exact safe 422 envelope, aggregate body cap and authentication/error precedence; record any contract change.
+
+#### Goal and why
+
+Default FastAPI 422 responses echo invalid embedding inputs; route-body authentication happens after model parsing. A synthetic oversized input reproduces reflection even without a token.
+
+#### Exact scope and intended behavior
+
+Use a safe validation-error boundary and pre-body authentication/resource enforcement for private gateway routes. Preserve accepted C-4 success shape/profile and exclude input/apiKey/token values from all validation errors.
+
+#### Dependencies and contracts
+
+ADR-027 privacy rule and existing internal token boundary; no provider call needed.
+
+Needs Architect Decision: exact safe 422 envelope, aggregate body cap and authentication/error precedence; record any contract change. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/llm-gateway/app/main.py`; `services/llm-gateway/app/connectivity.py`; `services/llm-gateway/app/routing/embeddings.py`; `services/llm-gateway/app/schemas/c4.py`; `services/llm-gateway/tests/test_embeddings_route.py`; `services/llm-gateway/tests/test_provider_connectivity.py`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Oversized/invalid/extra-field requests with and without auth never reflect sentinel content or credentials; auth precedes expensive parsing; input/body limits and response cardinality remain enforced; full gateway suite/static checks pass.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+Do not weaken schema validation or expose a new public gateway API.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
+
+---
+
+<a id="v1311b-implement-approved-semantic-embedding-transport"></a>
+
+### V1.3.11B — Implement approved semantic embedding transport
+
+> **Record status:** BACKLOG — audit follow-up, 2026-09-12.
+> **Priority:** P1 before semantic retrieval acceptance.
+> **Tracker:** Local candidate; search current Linear/GitHub before issue creation.
+> **Ticket intake:** Needs Architect Decision: provider/model, profile compatibility, secret boundary, budget and reindex/cutover strategy.
+
+#### Goal and why
+
+Current fake hashes are deterministic but not semantic embeddings. No active provider embedding transport or meaningful retrieval evaluation exists.
+
+#### Exact scope and intended behavior
+
+Choose one supported semantic model/profile with credential resolution, input normalization, timeout/retry/cost bounds and response validation. Preserve fake offline tests. Define how fake or previous-model data is identified and reindexed; do not mix vector spaces under one alias without migration.
+
+#### Dependencies and contracts
+
+ADR-027; coordinate V1.3.12/13 persistence and V1.4 evaluation.
+
+Needs Architect Decision: provider/model, profile compatibility, secret boundary, budget and reindex/cutover strategy. Any new public API, database, event, error, resource-limit or
+cross-service contract must be captured in an ADR/CCR and exact file allowlist
+before coding. This audit does not approve unspecified contract changes.
+
+#### Files to inspect first
+
+`services/llm-gateway/app/routing/embeddings.py`; `services/llm-gateway/app/adapters/base.py`; `services/llm-gateway/app/adapters/fake.py`; `services/llm-gateway/app/schemas/c4.py`; `docs/architecture-decisions/ADR-027-embedding-profile.md`.
+
+The edit allowlist is limited to the inspected boundary and its focused tests
+once intake resolves any new paths. Update this inventory, `repo_context.md`
+and the relevant Build Guide section with final behavior and evidence.
+
+#### Required validation and manual acceptance
+
+Deterministic fake tests pass; mocked provider timeout/auth/rate-limit/malformed/nonfinite/count/dimension cases pass; approved non-empty real-provider integration and relevance benchmark recorded without sensitive content.
+
+Record commands, environment, expected and actual outcome, and current commit.
+Infrastructure skips and mocked boundaries must be labeled. Use synthetic data
+and bounded error codes; never retain raw tokens, credentials, documents or
+provider responses in evidence. Run affected Ruff/mypy/pytest or web quality
+checks and applicable real integration gates. Review tenant isolation, duplicate
+execution, partial failure and cancellation at the changed boundary.
+
+#### Out of scope and stop conditions
+
+No paid/provider calls until environment and access are configured; do not infer semantics from dimension equality.
+
+Stop implementation of any unresolved contract and return the exact missing
+architect decision. Preserve unrelated work and existing accepted contracts.
+
+#### Definition of done
+
+- [ ] Intake resolves exact contracts, dependencies, allowed edits and owner.
+- [ ] The stated behavior and focused failure/replay/security tests pass.
+- [ ] Required integration/manual evidence is attached; no skipped check is counted as a pass.
+- [ ] Deployment sequence and rollback preserve pending state and secrets; demonstrate recovery where state changes.
+- [ ] Safe observability and operational ownership are defined for runtime changes.
+- [ ] Documentation describes what/why/how/where/usage/verification and remaining limits.
+- [ ] Reviewed diff and applicable CI pass; existing tracker is reconciled only after acceptance.
 
 ---
 
 ## Phase 1 — V1 Production Foundation
 
+<a id="v1305-implement-ssrf-safe-public-knowledge-fetch-helper"></a>
+
 ### V1.3.05 — Implement SSRF-safe public knowledge fetch helper
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Completed — OPE-311
-> **Ticket intake:** PASS — architect intake resolved the draft blockers before implementation.
-> **GitHub issue:** #191 — closed as completed.
-> **Implementation PR:** #192 — merged to `main` on 2026-09-01.
-> **Architecture decision:** `docs/architecture-decisions/ADR-020-public-knowledge-fetch-safety.md`.
-> **Source:** Original staged requirement captured 2026-08-13, reconciled against merged repository evidence on 2026-09-01.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-311 — Done; PR #192 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-Provide a worker-owned HTTPS fetch boundary for approved public knowledge sources without allowing requests to reach private, loopback, link-local, metadata, CGNAT, multicast, reserved, unspecified, documentation/benchmark, or other non-global IPv4/IPv6 destinations.
+Bounded SSRF-safe public fetch helper, approved exact-host policy, redirects and stable retryable failures.
 
-#### Completion evidence
+#### Source and validation
 
-- Architect intake was completed in GitHub issue #191 and Linear OPE-311. The exact file allowlist, numeric bounds, redirect behavior, error contract, and security boundary were frozen before implementation.
-- PR #192, `feat(worker): add SSRF-safe public knowledge fetch helper`, merged the implementation to `main` at merge commit `a9269dc82c8e7d31e2250fb06c1e46b9f09a80a2`.
-- The merged helper lives in `services/worker/app/core/public_knowledge_fetch.py` and its focused regression suite lives in `services/worker/tests/test_public_knowledge_fetch.py`.
-- ADR-020 records the selected resolve, validate, pin, and revalidate design and its rollback/compatibility consequences.
-- PR-head CI run 445 completed successfully. Lint, type check, tests, Compose validation, PostgreSQL integration, Keycloak OIDC integration, and object-storage integration all passed.
-- PR-head Security run 429 completed successfully. Dependency audits, Gitleaks, Python CodeQL, JavaScript/TypeScript CodeQL, and Trivy all passed.
-- Post-merge Staff Engineer review found no Critical or High issue within the V1.3.05 scope. This is an engineering review of the merged change, not a claim of an independent human penetration test.
-- No database migration, public API, permission surface, broker contract, UI, new service, or third-party runtime dependency was introduced.
+`services/worker/app/core/public_knowledge_fetch.py`; `services/worker/tests/test_public_knowledge_fetch.py`.
 
-#### Why this exists
+Worker suite passed. Helper is active in URL sync. Crawl permission, sitemap traversal and aggregate storage budgets are not implied by SSRF safety.
 
-Registering a public URL is not enough to make arbitrary outbound fetching safe. An unrestricted HTTP client can be redirected to localhost, private services, cloud metadata endpoints, or another non-public destination. DNS can also change between validation and connection. Large or compressed responses create a separate resource-exhaustion risk.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
-V1.3.05 establishes the reusable security primitive that later crawl and ingestion jobs must use. It does not authorize a source for crawling and does not implement the crawler itself.
+---
 
-#### Frozen implementation contract
-
-- HTTPS only.
-- Port 443 only, whether implicit or explicit.
-- GET only.
-- Reject malformed or relative URLs, credentials, fragments, whitespace/control characters, and unsupported ports.
-- Normalize hostnames through IDNA, lowercase conversion, and trailing-dot removal.
-- Require an explicit exact-host allowlist. Wildcards and suffix matching are not supported.
-- Resolve DNS before the first request and again before every redirect request.
-- Fail closed if resolution is empty, fails, or returns any non-global address.
-- Block loopback, RFC1918/private, link-local, CGNAT, metadata, multicast, reserved, unspecified, documentation/benchmark, and other non-global IPv4/IPv6 space.
-- Connect directly to one validated resolved IP, preserving TLS SNI and certificate hostname verification for the original hostname.
-- Verify that the connected peer exactly matches the selected validated address before transmitting the GET.
-- Handle redirects manually for 301, 302, 303, 307, and 308 only.
-- Allow at most five redirects.
-- Re-run URL, host allowlist, DNS, address classification, TLS, and peer validation for every redirect target.
-- Send `Accept-Encoding: identity` and reject non-identity content encoding.
-- Allow `text/html`, `application/xhtml+xml`, `text/plain`, `text/markdown`, `application/xml`, `text/xml`, `application/rss+xml`, and `application/atom+xml` only.
-- Default response body limit: 5 MiB. Hard configurable ceiling: 50 MiB.
-- Default socket/request timeout: 10 seconds. Hard configurable ceiling: 30 seconds.
-- Reject an over-limit `Content-Length` before body reads and enforce the same limit while streaming.
-- Return final URL, status code, normalized MIME type, and raw body bytes on success.
-- Expose failures as a stable error code plus a `retryable` boolean without raw remote/network detail.
-- Do not automatically retry. HTTP 408, 425, 429, 5xx, DNS, timeout, TLS, and transport failures are retryable classifications for a later bounded job policy. Other non-2xx final statuses are terminal.
-
-#### Exact file allowlist
-
-The implementation ticket was frozen to these files:
-
-1. `services/worker/app/core/public_knowledge_fetch.py`
-2. `services/worker/tests/test_public_knowledge_fetch.py`
-3. `docs/architecture-decisions/ADR-020-public-knowledge-fetch-safety.md`
-4. `docs/SERVIQ_BUILD_GUIDE.md`
-
-The post-merge reconciliation additionally updates this canonical remaining-ticket file to remove the obsolete draft/FAIL state.
-
-#### Data model
-
-None. V1.3.05 owns no database schema, migration, cache key, or durable state.
-
-#### API contract
-
-None. The helper is an internal worker boundary and exposes no public HTTP route.
-
-#### Event, job, cache, and integration contracts
-
-None are created by this ticket. A later crawler/job layer owns scheduling, rate controls, retries, persistence, and source-status transitions. Such callers may narrow this security policy but must not bypass it.
-
-#### UI states
-
-None.
-
-#### Authorization and trust boundary
-
-This helper does not create a new user-facing authorization surface. The caller must supply only explicitly approved exact hostnames from the accepted source policy/manifest. Untrusted URL input never grants broad crawl permission, and the helper never forwards caller credentials, cookies, or authorization headers.
-
-#### Error behavior
-
-- Fail closed on invalid URL, disallowed host, unsafe DNS result, peer mismatch, excessive/malformed redirects, unsupported MIME or encoding, oversized responses, and malformed response metadata.
-- Keep retryable and terminal failures distinguishable through bounded typed codes.
-- Do not include response bodies, credentials, tokens, DNS internals, socket details, or raw remote error strings in the exposed error text.
-
-#### Out of scope
-
-- Crawl scheduling or per-source crawl-rate policy.
-- Robots/terms evaluation.
-- Sitemap traversal.
-- Parsing, normalization, chunking, embedding, indexing, or retrieval.
-- Knowledge-source persistence or status transitions.
-- Broker consumers or retry orchestration.
-- Public routes, tenant permission changes, schema/migrations, UI, provider integrations, or new services.
-- Broad DoorDash, Stripe, or other third-party crawling. A later caller must provide an explicitly approved exact-host policy.
-
-#### Required automated coverage
-
-The focused suite covers:
-
-1. Public HTTPS success.
-2. Loopback rejection, including `127.0.0.1`.
-3. Metadata/link-local rejection, including `169.254.169.254`.
-4. RFC1918/private IPv4 rejection.
-5. CGNAT rejection.
-6. Private/unique-local IPv6 rejection.
-7. Multicast, reserved, unspecified, and other non-global address rejection.
-8. Mixed public/private DNS answers failing closed.
-9. HTTP, malformed URL, credentials, fragments, unsupported ports, and unallowlisted hosts.
-10. Allowed public redirect success with full revalidation.
-11. Redirect-to-private and redirect-to-unallowlisted-host rejection.
-12. Five-hop redirect ceiling and missing `Location` handling.
-13. MIME and content-encoding rejection.
-14. Declared and streamed oversized-response rejection.
-15. Connected-peer mismatch rejection before request transmission.
-16. Safe DNS/network/TLS/timeout failure mapping.
-17. HTTP retryability classification.
-18. Error-text redaction behavior.
-19. Policy-constructor bounds.
-
-#### Security and privacy review
-
-- DNS rebinding is addressed by resolving and validating the destination, connecting to the selected validated IP, preserving TLS hostname verification, and verifying the connected peer.
-- Every redirect repeats the complete destination-validation sequence.
-- The full request fails closed when any DNS answer is non-global.
-- Response memory is bounded and compressed payload expansion is rejected through identity-only encoding.
-- Safe typed failures avoid leaking raw remote content or transport details.
-- The ticket owns no credential storage, durable customer data, public API, or tenant-query path.
-- Repository Security run 429 passed dependency audits, secret scanning, CodeQL for Python and JavaScript/TypeScript, and Trivy.
-- Post-merge Staff Engineer review has no open Critical or High finding for this scope.
-
-#### Operational behavior and rollback
-
-V1.3.05 is additive and owns no durable state. Before any caller integrates it, rollback is removal of the helper. After a later crawler depends on it, rollback must disable the caller or revert that integration. It must never replace this boundary with an unrestricted HTTP client.
-
-The helper itself does not perform retries or emit high-cardinality/raw remote telemetry. Later job-layer observability must use bounded identifiers, outcome codes, timings, and retry counts without logging secrets or raw knowledge payloads.
-
-#### Acceptance criteria
-
-- [x] Every redirect target is fully revalidated.
-- [x] DNS rebinding is addressed through validated-IP connection pinning plus peer verification.
-- [x] Required SSRF, redirect, DNS, response-bound, MIME, and safe-failure automated coverage exists.
-- [x] Worker lint, strict type checking, and tests passed in PR CI.
-- [x] ADR-020 documents the security decision, tradeoffs, compatibility, and rollback behavior.
-- [x] `docs/SERVIQ_BUILD_GUIDE.md` documents usage, limits, failure behavior, verification, rollback, and non-goals.
-- [x] Repository security gates passed.
-- [x] No Critical or High Staff Engineer review finding remains open.
-- [x] PR #192 contains the scoped implementation and is merged.
-
-#### Definition of done
-
-- [x] Architect intake has zero unresolved V1.3.05 decisions.
-- [x] Exact scope, file allowlist, limits, redirects, error behavior, and non-goals were frozen before coding.
-- [x] Code, focused tests, ADR, and build-guide documentation are merged.
-- [x] CI and Security workflows are green for the implementation PR head.
-- [x] Rollback is documented and proportionate to the additive, stateless change.
-- [x] GitHub issue #191 is closed as completed.
-- [x] Linear OPE-311 is the canonical tracking issue and is reconciled to the completed state during this closeout.
-- [x] This canonical remaining-ticket entry has been reconciled with the merged repository state.
-
-#### Final ticket intake result
-
-**PASS — COMPLETED.** The earlier draft/FAIL text represented pre-intake uncertainty and is obsolete. GitHub issue #191 and Linear OPE-311 froze the missing contracts before implementation. PR #192 is merged, required CI and repository security checks are green, documentation is present, rollback is defined, and no Critical or High Staff Engineer finding remains open. V1.3.05 must not be handed to a builder again as new work.
+<a id="v1306-implement-source-sync-command-and-durable-outbox-event"></a>
 
 ### V1.3.06 — Implement source sync command and durable outbox event
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-312 — Done; PR #195 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-`POST /api/v1/knowledge-sources/{sourceId}/sync` increments `sync_version`, sets syncing, and writes `serviq.knowledge.sync.v1` outbox event atomically.
+Tenant/source row lock, monotonic sync_version, syncing state and serviq.knowledge.sync.v1 insertion in one transaction; HTTP 202.
 
-#### Why this exists
+#### Source and validation
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+`services/api/app/modules/knowledge/service.py`; `services/api/alembic/versions/20260902_0012_outbox_events.py`; `services/api/tests/integration/test_knowledge_source_sync_api.py`.
 
-#### Estimated effort
+Current-main PostgreSQL job passed. Route tests inject trusted principal dependencies; production auth composition remains V1.1.16.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
-
-#### Read before coding
-
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
-
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
-
-#### User-facing behavior
-
-None directly (internal capability or delivery evidence).
-
-#### Frozen source requirements
-
-**Goal:** `POST /api/v1/knowledge-sources/{sourceId}/sync` increments `sync_version`, sets syncing, and writes `serviq.knowledge.sync.v1` outbox event atomically.
-**Tests:** URL/file source, disabled conflict, concurrent requests, transaction rollback.
-**Acceptance:** no FastAPI in-process background task.
-
-#### Exact scope
-
-**Goal:** `POST /api/v1/knowledge-sources/{sourceId}/sync` increments `sync_version`, sets syncing, and writes `serviq.knowledge.sync.v1` outbox event atomically.
-**Tests:** URL/file source, disabled conflict, concurrent requests, transaction rollback.
-**Acceptance:** no FastAPI in-process background task.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-- `services/api/app/main.py` — active API composition root; use it to locate the owning module through the code graph.
-- `services/worker/app/main.py` — active worker composition root; trace the relevant handler before freezing edit paths.
-- `.github/workflows/ci.yml` and `.github/workflows/security.yml` — current quality and security gates.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
-
-#### Data model
-
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
-
-#### API contract
-
-`POST /api/v1/knowledge-sources/{sourceId}/sync`
-
-Needs Architect Decision: before builder handoff, paste the complete auth rule, request fields and validation, response bodies for every status, and standard error envelope from the accepted architecture/current code.
-
-#### Event, job, cache, and integration contracts
-
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
-
-#### UI states
-
-None (internal/non-UI ticket).
-
-#### Validation rules
-
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
-
-#### Error handling
-
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
-
-#### Auth and permissions
-
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
-
-#### Dependencies
-
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
-
-#### Do not change
-
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
-
-#### Step-by-step implementation
-
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
-
-#### Required automated tests
-
-URL/file source, disabled conflict, concurrent requests, transaction rollback.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-- Re-resolve and revalidate every outbound destination and redirect; block private, loopback, link-local, metadata, multicast, reserved, and disallowed targets.
-- Use stable operation identities and prove replay/idempotency behavior before enabling retries.
-
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
-
-#### Acceptance criteria
-
-- [ ] no FastAPI in-process background task.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
-
-#### Definition of done
-
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: Backend, Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1306a-publish-transactional-outbox-events-to-kafka"></a>
+
+### V1.3.06A — Publish transactional outbox events to Kafka
+
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-314 — Done; PR #200 merged as 2c8d1716.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
+
+#### Accepted implementation scope
+
+Generic PostgreSQL outbox publisher using FOR UPDATE SKIP LOCKED and at-least-once Kafka delivery; broker acknowledgement before published state.
+
+#### Source and validation
+
+`services/worker/app/jobs/outbox_publisher.py`; `services/worker/app/core/broker.py`; `services/worker/tests/integration/test_outbox_publisher_postgres.py`.
+
+Current worker suite passed and earlier publisher integration passed. Broker outages retry with bounded delay; duplicate delivery remains possible and consumers must remain idempotent.
+
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
+
+---
+
+<a id="v1307-implement-knowledge-sync-fetch-worker"></a>
 
 ### V1.3.07 — Implement knowledge sync fetch worker
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-313 — Done; PRs #201/#202 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-consume sync event idempotently, fetch URL/file raw content, create versioned document/content hash, emit parse event.
+Consume URL/file sync work, preserve tenant/version/replay semantics, store raw content, commit document plus parse outbox, retry and DLQ safely.
 
-#### Why this exists
+#### Source and validation
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+`services/worker/app/consumers/knowledge_sync.py`; `services/worker/app/jobs/knowledge_sync.py`; `services/worker/tests/integration/test_knowledge_sync_end_to_end.py`.
 
-#### Estimated effort
+Current worker suite passed; earlier PR-head integration passed. Success intentionally leaves syncing. Sitemap unsupported. Raw-object budget/recovery risks are separately tracked in V1.3.07A/B.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
-
-#### Read before coding
-
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
-
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
-
-#### User-facing behavior
-
-None directly (internal capability or delivery evidence).
-
-#### Frozen source requirements
-
-**Goal:** consume sync event idempotently, fetch URL/file raw content, create versioned document/content hash, emit parse event.
-**Tests:** URL/file success, stale version ignored, tenant mismatch, retry/DLQ behavior.
-**Acceptance:** source failure visible with safe code and bounded retries.
-
-#### Exact scope
-
-**Goal:** consume sync event idempotently, fetch URL/file raw content, create versioned document/content hash, emit parse event.
-**Tests:** URL/file success, stale version ignored, tenant mismatch, retry/DLQ behavior.
-**Acceptance:** source failure visible with safe code and bounded retries.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-- `services/api/app/main.py` — active API composition root; use it to locate the owning module through the code graph.
-- `services/worker/app/main.py` — active worker composition root; trace the relevant handler before freezing edit paths.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
-
-#### Data model
-
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
-
-#### API contract
-
-None directly, unless the accepted architecture delta assigns this ticket an API surface. If it does, paste the complete contract here before builder handoff.
-
-#### Event, job, cache, and integration contracts
-
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
-
-#### UI states
-
-None (internal/non-UI ticket).
-
-#### Validation rules
-
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
-
-#### Error handling
-
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
-
-#### Auth and permissions
-
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
-
-#### Dependencies
-
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
-
-#### Do not change
-
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
-
-#### Step-by-step implementation
-
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
-
-#### Required automated tests
-
-URL/file success, stale version ignored, tenant mismatch, retry/DLQ behavior.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-- Re-resolve and revalidate every outbound destination and redirect; block private, loopback, link-local, metadata, multicast, reserved, and disallowed targets.
-- Use stable operation identities and prove replay/idempotency behavior before enabling retries.
-
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
-
-#### Acceptance criteria
-
-- [ ] source failure visible with safe code and bounded retries.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
-
-#### Definition of done
-
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: Backend, Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1308-implement-pdfmarkdowntext-normalization-parser"></a>
+
 ### V1.3.08 — Implement PDF/Markdown/text normalization parser
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-315 — Done.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-produce safe plain-text segments plus provenance/page metadata.
+Pure bounded PDF/Markdown/text normalization into deterministic segments with provenance; no I/O or persistence.
 
-#### Why this exists
+#### Source and validation
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+`services/worker/app/core/knowledge_normalization.py`; `services/worker/tests/test_knowledge_normalization.py`.
 
-#### Estimated effort
+Current worker suite passed. No parse consumer was activated by this ticket; V1.3.09A now explicitly owns durable orchestration.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
-
-#### Read before coding
-
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
-
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
-
-#### User-facing behavior
-
-None directly (internal capability or delivery evidence).
-
-#### Frozen source requirements
-
-**Goal:** produce safe plain-text segments plus provenance/page metadata.
-**Scope:** PDF text extraction, UTF-8 md/txt, bounded output; no OCR.
-**Tests:** PDF pages, headings, malformed/encrypted PDF, invalid encoding.
-**Acceptance:** parser never executes embedded content and logs no raw sensitive document text.
-
-#### Exact scope
-
-PDF text extraction, UTF-8 md/txt, bounded output; no OCR.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-- `.github/workflows/ci.yml` and `.github/workflows/security.yml` — current quality and security gates.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
-
-#### Data model
-
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
-
-#### API contract
-
-None directly, unless the accepted architecture delta assigns this ticket an API surface. If it does, paste the complete contract here before builder handoff.
-
-#### Event, job, cache, and integration contracts
-
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
-
-#### UI states
-
-None (internal/non-UI ticket).
-
-#### Validation rules
-
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
-
-#### Error handling
-
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
-
-#### Auth and permissions
-
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
-
-#### Dependencies
-
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
-
-#### Do not change
-
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
-
-#### Step-by-step implementation
-
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
-
-#### Required automated tests
-
-PDF pages, headings, malformed/encrypted PDF, invalid encoding.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
-
-#### Acceptance criteria
-
-- [ ] parser never executes embedded content and logs no raw sensitive document text.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
-
-#### Definition of done
-
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1309-implement-htmlhelp-center-normalization-parser"></a>
+
 ### V1.3.09 — Implement HTML/help-center normalization parser
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-316 — Done; PR #212 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-extract title/headings/article paragraphs/lists while stripping script/style/form/navigation noise.
+Pure inert HTML/help-center normalization with title, heading, paragraph/list extraction and noise removal.
 
-#### Why this exists
+#### Source and validation
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+`services/worker/app/core/knowledge_normalization.py`; `services/worker/tests/test_knowledge_normalization.py`.
 
-#### Estimated effort
+Current worker suite passed. Reuses url source type; does not crawl links or persist normalized artifacts.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
-
-#### Read before coding
-
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
-
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
-
-#### User-facing behavior
-
-None directly (internal capability or delivery evidence).
-
-#### Frozen source requirements
-
-**Goal:** extract title/headings/article paragraphs/lists while stripping script/style/form/navigation noise.
-**Tests:** normal article, list, script removal, noisy nav, empty content failure.
-**Acceptance:** no headless-browser/anti-bot bypass in V1.
-
-#### Exact scope
-
-**Goal:** extract title/headings/article paragraphs/lists while stripping script/style/form/navigation noise.
-**Tests:** normal article, list, script removal, noisy nav, empty content failure.
-**Acceptance:** no headless-browser/anti-bot bypass in V1.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
-
-#### Data model
-
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
-
-#### API contract
-
-None directly, unless the accepted architecture delta assigns this ticket an API surface. If it does, paste the complete contract here before builder handoff.
-
-#### Event, job, cache, and integration contracts
-
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
-
-#### UI states
-
-None (internal/non-UI ticket).
-
-#### Validation rules
-
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
-
-#### Error handling
-
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
-
-#### Auth and permissions
-
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
-
-#### Dependencies
-
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
-
-#### Do not change
-
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
-
-#### Step-by-step implementation
-
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
-
-#### Required automated tests
-
-normal article, list, script removal, noisy nav, empty content failure.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
-
-#### Acceptance criteria
-
-- [ ] no headless-browser/anti-bot bypass in V1.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
-
-#### Definition of done
-
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1310-implement-deterministic-heading-aware-chunker"></a>
+
 ### V1.3.10 — Implement deterministic heading-aware chunker
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-317 — Done; PR #215 merged.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-split normalized text into ordered bounded chunks with overlap/token_count/provenance using the frozen chunk policy.
+Deterministic heading-aware chunking with frozen whitespace token units, overlap and ordered segment provenance (ADR-026).
 
-#### Why this exists
+#### Source and validation
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+`services/worker/app/core/knowledge_chunking.py`; `services/worker/tests/test_knowledge_chunking.py`.
 
-#### Estimated effort
+Current worker suite passed. Pure library, no DB/index/event activation; token counts are not vendor billing-token evidence.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
-
-#### Read before coding
-
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
-
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
-
-#### User-facing behavior
-
-split normalized text into ordered bounded chunks with overlap/token_count/provenance using the frozen chunk policy.
-
-#### Frozen source requirements
-
-**Goal:** split normalized text into ordered bounded chunks with overlap/token_count/provenance using the frozen chunk policy.
-**Tests:** short/long/headings/lists/ties; repeat input gives identical output; no empty chunks.
-**Acceptance:** chunk policy changes require evaluation/ADR.
-
-#### Exact scope
-
-**Goal:** split normalized text into ordered bounded chunks with overlap/token_count/provenance using the frozen chunk policy.
-**Tests:** short/long/headings/lists/ties; repeat input gives identical output; no empty chunks.
-**Acceptance:** chunk policy changes require evaluation/ADR.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-- `services/api/app/main.py` — active API composition root; use it to locate the owning module through the code graph.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
-
-#### Data model
-
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
-
-#### API contract
-
-None directly, unless the accepted architecture delta assigns this ticket an API surface. If it does, paste the complete contract here before builder handoff.
-
-#### Event, job, cache, and integration contracts
-
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
-
-#### UI states
-
-None (internal/non-UI ticket).
-
-#### Validation rules
-
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
-
-#### Error handling
-
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
-
-#### Auth and permissions
-
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
-
-#### Dependencies
-
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
-
-#### Do not change
-
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
-
-#### Step-by-step implementation
-
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
-
-#### Required automated tests
-
-short/long/headings/lists/ties; repeat input gives identical output; no empty chunks.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-- Use the approved secret/crypto boundary; credentials remain write-only and must not be persisted or serialized in plaintext.
-
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
-
-#### Acceptance criteria
-
-- [ ] chunk policy changes require evaluation/ADR.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
-
-#### Definition of done
-
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: AI, Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1311-freeze-embedding-profile-adr-and-implement-embedding-adapter"></a>
+
 ### V1.3.11 — Freeze embedding profile ADR and implement embedding adapter
 
-> **Milestone:** Phase 1 — V1 Production Foundation
-> **Linear status:** Backlog candidate
-> **Ticket intake:** DRAFT — full Linear structure supplied; architect intake is still required before builder handoff.
-> **Source:** `Serviq_Remaining_Linear_Tickets_V1.3.05_to_V4.md` captured 2026-08-13.
+> **Record status:** IMPLEMENTED at audited main `3e1b9aa`; excluded from remaining implementation counts.
+> **Tracker snapshot (2026-09-12):** OPE-319 — Done; PR #222 merged as 26784e7.
+> **Intake:** Historical implementation record; do not re-create as new work. Follow-ups remain open where named.
 
-#### Goal
+#### Accepted implementation scope
 
-architect records one V1 embedding alias/dimension/batch policy, then implement fake deterministic embeddings plus real gateway embedding path.
+ADR-027 profile and private deterministic fake embedding path: alias serviq-embedding-v1, 1536 dimensions, 100 inputs, 32,000 characters/input.
 
-#### Why this exists
+#### Source and validation
 
-This item closes one bounded part of the remaining V1 roadmap. It is intentionally isolated so implementation, review, rollback, and acceptance evidence can be evaluated without silently absorbing adjacent roadmap work.
+`services/llm-gateway/app/routing/embeddings.py`; `services/llm-gateway/app/adapters/fake.py`; `services/llm-gateway/tests/test_embeddings_route.py`.
 
-#### Estimated effort
+104 gateway tests passed. Fake vectors are not semantic; raw-input reflection on validation is an open regression gap (V1.3.11A), and real embedding transport is V1.3.11B.
 
-Needs re-estimation during architect intake. The source backlog's general 1–3 hour target is not repeated as a commitment; split the ticket if the accepted scope cannot fit one focused session and roughly five edited files.
-
-#### Read before coding
-
-1. `docs/repo_context.md`.
-2. `docs/PRD.md`.
-3. `docs/ARCHITECTURE.md`.
-4. Every ADR/CCR and predecessor contract explicitly named in the frozen source requirements below.
-5. The repository's backend, frontend, database, API, testing, security, execution, and product-quality rules that apply to the accepted scope.
-
-If current code differs from a frozen contract, stop with `Needs Architect Decision`.
-
-#### User-facing behavior
-
-architect records one V1 embedding alias/dimension/batch policy, then implement fake deterministic embeddings plus real gateway embedding path.
-
-#### Frozen source requirements
-
-**Goal:** architect records one V1 embedding alias/dimension/batch policy, then implement fake deterministic embeddings plus real gateway embedding path.
-**Tests:** correct dimension, deterministic fake, batch mismatch, provider failure.
-**Acceptance:** vector dimension is explicitly documented before indexing.
-**Human/Architect decision:** required before implementation.
-
-#### Exact scope
-
-**Goal:** architect records one V1 embedding alias/dimension/batch policy, then implement fake deterministic embeddings plus real gateway embedding path.
-**Tests:** correct dimension, deterministic fake, batch mismatch, provider failure.
-**Acceptance:** vector dimension is explicitly documented before indexing.
-**Human/Architect decision:** required before implementation.
-
-Before builder handoff, this section must be converted into an exhaustive list of exact behaviors and bounded outputs. The frozen source requirements above may be clarified but not weakened.
-
-#### Out of scope
-
-- Any other numbered roadmap ticket.
-- Unnamed API, database, event, provider, permission, security, deployment, or UX contract changes.
-- A new service, framework, dependency, or abstraction unless the accepted architecture explicitly requires it.
-- Production vendor access, real customer data, real payment movement, or public launch unless this ticket explicitly owns that evidence.
-
-#### Files to inspect first
-
-- `docs/repo_context.md` — current implemented boundaries, conventions, and evidence gaps.
-- `docs/PRD.md` — frozen product intent and trust-surface rules.
-- `docs/ARCHITECTURE.md` — current contracts, sequencing, and system boundaries.
-- `services/api/alembic/versions/20260819_0009_knowledge_permissions.py` — current Alembic revision style and downgrade expectations.
-- `services/api/app/main.py` — active API composition root; use it to locate the owning module through the code graph.
-- `services/llm-gateway/app/main.py` — active gateway composition root and internal boundary.
-- `.github/workflows/ci.yml` and `.github/workflows/security.yml` — current quality and security gates.
-
-Use the codebase knowledge graph to trace active callers/consumers from these roots. Do not treat similarly named dead code or design documents as runtime evidence.
-
-#### Files to create or edit
-
-Needs Architect Decision: freeze the complete, exact allowlist after repository/graph inspection. A builder must not start with guessed paths, wildcard directories, or an open-ended permission to refactor.
-
-#### Data model
-
-None expected. Stop if implementation would require a schema, migration, cache-key, or persistence-contract change not explicitly frozen in this ticket.
-
-#### API contract
-
-None directly, unless the accepted architecture delta assigns this ticket an API surface. If it does, paste the complete contract here before builder handoff.
-
-#### Event, job, cache, and integration contracts
-
-Preserve every event name, contract identifier, idempotency key, ordering rule, consistency boundary, and dependency named in the frozen source requirements. For every missing payload/schema/error/retry detail: `Needs Architect Decision`; do not invent it.
-
-#### UI states
-
-None (internal/non-UI ticket).
-
-#### Validation rules
-
-Apply exact numeric and field-level limits from the frozen source requirements. Any missing size, timeout, retry, concurrency, pagination, rate, retention, or copy limit is a blocking architect decision—not a builder default.
-
-#### Error handling
-
-- Fail closed for authorization, tenant scope, policy, placement, and contract-validation failures.
-- Keep retryable and terminal failures distinguishable with bounded safe codes.
-- Do not acknowledge durable work before its required state/event/object transaction boundary is satisfied.
-- Preserve a recoverable user/operator-visible state for partial failure; do not suppress cleanup, rollback, or reconciliation failures.
-
-#### Auth and permissions
-
-Use the existing trust-surface-specific authentication boundary and server-resolved tenant/actor context. Paste the exact guard/dependency and required permission into this ticket before builder handoff. Customer, workforce, and platform-operator authority are never interchangeable.
-
-#### Dependencies
-
-Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-Every dependency must be merged and acceptance-verified. A written ticket, design document, or Linear status alone is not implementation evidence.
-
-#### Do not change
-
-- Existing public contracts outside this ticket.
-- Historical migrations already applied; add a new reversible migration when required.
-- Provider credential write-only behavior and current trust-surface separation.
-- Demo non-affiliation, synthetic-data, and no-real-money constraints.
-- Unrelated user changes in the working tree.
-
-#### Step-by-step implementation
-
-1. Run ticket intake against current code and dependency evidence.
-2. Resolve every `Needs Architect Decision`; paste exact contracts and an exact file allowlist into this ticket.
-3. Re-run intake; stop unless every item passes.
-4. Add the smallest failing automated tests that prove the frozen happy path, boundary failures, tenant isolation, and replay/failure behavior.
-5. Implement only the exact scope using existing repository patterns and dependencies.
-6. Run focused tests, then the affected service's lint/type-check/full suite.
-7. Run the required real integration, browser, load, security, migration, or recovery evidence for this ticket; record anything environment-blocked as not verified.
-8. Perform a Staff Engineer review for security/privacy, idempotency, migrations, observability, rollback, deployment, and real integration evidence.
-9. Update source-of-truth documentation and attach evidence without changing contracts silently.
-
-#### Required automated tests
-
-correct dimension, deterministic fake, batch mismatch, provider failure.
-
-Also include authorization/permission failure, cross-tenant isolation, malformed input/contract, dependency failure, and replay/idempotency cases wherever those boundaries exist. Name exact test files during intake.
-
-#### Security and privacy requirements
-
-- Preserve server-owned tenant and actor context; never trust organization, customer, region, or ownership identifiers supplied by an untrusted caller.
-- Do not log or return secrets, raw tokens, unrestricted PII, raw prompts, raw knowledge content, tool payloads, or chain-of-thought.
-- Deny cross-tenant and cross-trust-surface access in the data query/operation itself, not only in UI filtering.
-
-
-#### Observability and operations
-
-Emit bounded identifiers, outcome codes, retry counts, timings, and correlation IDs only. Define alert/metric ownership, cardinality bounds, rollback/recovery, and deployment evidence when this ticket changes production behavior. Logs and traces are not a secondary data store.
-
-#### Manual QA
-
-1. Exercise the accepted happy path through the real boundary named by this ticket.
-2. Exercise the highest-risk authorization/tenant/security/failure path.
-3. Verify user/operator-visible state and observability contain no prohibited data.
-4. Verify rollback, retry, reconnect, replay, or recovery behavior if applicable.
-5. Record environment, command/request, expected result, actual result, and evidence link.
-
-Needs Architect Decision: replace these categories with exact commands or click paths and expected output before builder handoff.
-
-#### Acceptance criteria
-
-- [ ] vector dimension is explicitly documented before indexing.
-- [ ] Every frozen source requirement above is implemented or explicitly removed through architect-approved contract change control.
-- [ ] Exact file paths, contracts, limits, permissions, and failure behavior are frozen before coding.
-- [ ] Named automated tests pass, including tenant/security and replay/failure boundaries where applicable.
-- [ ] Required real integration/UI/load/security/migration/recovery evidence is attached; skipped checks remain explicit blockers.
-- [ ] No Critical or High Staff Engineer review finding remains open.
-- [ ] Linear status reflects merged and acceptance-verified evidence, not file presence or a green narrow unit test.
-
-#### Stop conditions
-
-Stop and return `Needs Architect Decision: [specific decision]` if:
-
-- a route, payload, schema, permission, event, cache key, provider behavior, UX state, numeric limit, data-placement rule, or file allowlist is missing;
-- the repository differs from the frozen source requirement;
-- a dependency is not merged and acceptance-verified;
-- the ticket requires more than one focused session or crosses frontend/backend/service boundaries without an already frozen contract;
-- credentials, vendor/cloud spend, legal/privacy judgment, production data, or destructive migration/recovery work lacks explicit human authorization;
-- implementation would weaken tenant isolation, security, privacy, idempotency, rollback, observability, or release evidence.
-
-#### Definition of done
-
-- [ ] Ticket intake has zero FAIL items.
-- [ ] Scope and out-of-scope boundaries are preserved.
-- [ ] Code, migrations, tests, documentation, and contract records are complete.
-- [ ] Focused and affected full quality checks pass.
-- [ ] Real integration/deployment/operational evidence required by this ticket is recorded.
-- [ ] Rollback/recovery is documented and demonstrated in proportion to risk.
-- [ ] Staff Engineer review is resolved.
-- [ ] PR contains only this ticket and is merged.
-- [ ] Linear status and dependencies are reconciled after acceptance.
-
-#### Suggested Linear metadata
-
-- **Milestone:** Phase 1 — V1 Production Foundation
-- **Labels:** Serviq: Backend, Serviq: AI, Serviq: Testing, Human Needed
-- **Priority:** Needs Architect Decision during tranche planning
-- **Estimate:** Re-estimate after intake; split if not one focused session
-- **Initial state:** Backlog
-- **blockedBy:** Current V1 foundations and every explicitly named predecessor must be merged and acceptance-verified.
-
-#### Ticket intake result
-
-**FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
+See [current system audit](SYSTEM_AUDIT_2026-09-12.md) for local versus CI evidence,
+release limits and tracker closeout. The [Build Guide](SERVIQ_BUILD_GUIDE.md)
+retains the behavior, usage, design and rollback explanation. Historical DRAFT
+intake checklists have been replaced by this verified implementation record;
+unrelated downstream requirements have not been marked complete.
 
 ---
+
+<a id="v1312-add-pgvector-index-migration"></a>
+
 ### V1.3.12 — Add pgvector index migration
+
+> **2026-09-12 dependency correction:** ADR-027 now freezes dimension 1536. Do not reopen that resolved choice; freeze distance/operator/index, constraints, existing-data handling and safe migration/downgrade. Coordinate V1.3.11B so fake and semantic vectors are never mixed silently.
 
 > **Milestone:** Phase 1 — V1 Production Foundation
 > **Linear status:** Backlog candidate
@@ -2686,7 +1474,11 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1313-implement-chunkembedindex-worker"></a>
+
 ### V1.3.13 — Implement chunk/embed/index worker
+
+> **2026-09-12 dependency correction:** Explicit prerequisite: V1.3.09A must produce persisted normalized artifacts and the frozen index handoff. V1.3.11 is fake-only; semantic acceptance additionally requires V1.3.11B. Source ready must wait for complete committed indexing.
 
 > **Milestone:** Phase 1 — V1 Production Foundation
 > **Linear status:** Backlog candidate
@@ -2892,6 +1684,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1401-implement-tenant-scoped-lexical-fts-repository"></a>
+
 ### V1.4.01 — Implement tenant-scoped lexical FTS repository
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -3090,6 +1884,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v1402-implement-tenant-scoped-pgvector-repository"></a>
 
 ### V1.4.02 — Implement tenant-scoped pgvector repository
 
@@ -3291,6 +2087,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1403-implement-deterministic-hybrid-ranker"></a>
+
 ### V1.4.03 — Implement deterministic hybrid ranker
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -3489,6 +2287,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1404-implement-retrieval-contract-c-3-service"></a>
+
 ### V1.4.04 — Implement Retrieval Contract C-3 service
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -3692,6 +2492,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1405-implement-retrieval-debugger-api"></a>
+
 ### V1.4.05 — Implement retrieval debugger API
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -3896,6 +2698,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1501-create-customerconversationmessagefeedback-migration"></a>
+
 ### V1.5.01 — Create customer/conversation/message/feedback migration
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -4094,6 +2898,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1502-implement-public-support-tenantdeployment-resolver"></a>
+
 ### V1.5.02 — Implement public support tenant/deployment resolver
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -4291,6 +3097,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1503-implement-signed-anonymous-customer-session"></a>
+
 ### V1.5.03 — Implement signed anonymous customer session
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -4485,6 +3293,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1504-implement-customer-conversation-create-api"></a>
+
 ### V1.5.04 — Implement customer conversation create API
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -4683,6 +3493,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v1505-implement-customer-message-append-c-2-outbox-event"></a>
 
 ### V1.5.05 — Implement customer message append + C-2 outbox event
 
@@ -4884,6 +3696,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1506-implement-customer-conversation-history-api"></a>
+
 ### V1.5.06 — Implement customer conversation history API
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -5081,6 +3895,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1507-implement-authenticated-customer-sse-stream"></a>
+
 ### V1.5.07 — Implement authenticated customer SSE stream
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -5282,6 +4098,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1508-implement-customer-human-request-and-feedback-apis"></a>
+
 ### V1.5.08 — Implement customer human-request and feedback APIs
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -5477,6 +4295,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1601-create-agent-runstepretrieval-persistence-migration"></a>
+
 ### V1.6.01 — Create agent run/step/retrieval persistence migration
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -5676,6 +4496,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1602-consume-c-2-and-create-agent-run-idempotently"></a>
+
 ### V1.6.02 — Consume C-2 and create agent run idempotently
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -5873,6 +4695,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1603-implement-central-agent-budget-tracker"></a>
+
 ### V1.6.03 — Implement central agent budget tracker
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -6071,6 +4895,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1604-implement-strict-request-classifier"></a>
+
 ### V1.6.04 — Implement strict request classifier
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -6271,6 +5097,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v1605-implement-budgeted-retrieval-agent-step"></a>
+
 ### V1.6.05 — Implement budgeted retrieval agent step
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -6467,6 +5295,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1606-implement-budgeted-generation-agent-step"></a>
+
 ### V1.6.06 — Implement budgeted generation agent step
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -6667,6 +5497,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1607-implement-ordered-provider-fallback-router"></a>
+
 ### V1.6.07 — Implement ordered provider fallback router
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -6863,6 +5695,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1608-implement-grounded-output-guardrail"></a>
+
 ### V1.6.08 — Implement grounded output guardrail
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -7061,6 +5895,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1609-implement-end-to-end-knowledge-question-state-path"></a>
+
 ### V1.6.09 — Implement end-to-end knowledge-question state path
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -7260,6 +6096,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1701-create-toolpolicyexecutionconfirmationapproval-migration"></a>
+
 ### V1.7.01 — Create tool/policy/execution/confirmation/approval migration
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -7459,6 +6297,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1702-implement-typed-tool-registry-json-schema-validation"></a>
+
 ### V1.7.02 — Implement typed tool registry + JSON Schema validation
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -7658,6 +6498,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1703-implement-policy-engine-c-6"></a>
+
 ### V1.7.03 — Implement policy engine C-6
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -7855,6 +6697,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v1704-implement-selected-synthetic-read-only-demo-tool"></a>
+
 ### V1.7.04 — Implement selected synthetic read-only demo tool
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -8051,6 +6895,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1705-implement-selected-synthetic-protected-mutation-tool"></a>
+
 ### V1.7.05 — Implement selected synthetic protected mutation tool
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -8247,6 +7093,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1706-implement-customer-confirmation-lifecycle"></a>
+
 ### V1.7.06 — Implement customer confirmation lifecycle
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -8446,6 +7294,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1707-implement-human-approval-lifecycle-and-c-7-event"></a>
+
 ### V1.7.07 — Implement human approval lifecycle and C-7 event
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -8643,6 +7493,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1708-implement-policy-enforced-tool-execution-coordinator"></a>
+
 ### V1.7.08 — Implement policy-enforced tool execution coordinator
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -8839,6 +7691,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1709-implement-transactional-agent-state-path"></a>
+
 ### V1.7.09 — Implement transactional agent state path
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -9037,6 +7891,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1801-create-support-queueescalationinternal-note-migration"></a>
+
 ### V1.8.01 — Create support queue/escalation/internal-note migration
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -9235,6 +8091,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1802-create-default-support-queue-for-new-tenant"></a>
+
 ### V1.8.02 — Create default support queue for new tenant
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -9430,6 +8288,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v1803-implement-escalation-service-c-8"></a>
 
 ### V1.8.03 — Implement escalation service C-8
 
@@ -9627,6 +8487,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1804-implement-support-queueescalation-listdetailassign-apis"></a>
+
 ### V1.8.04 — Implement support queue/escalation list/detail/assign APIs
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -9821,6 +8683,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1805-implement-human-messageinternal-noteresolvereopen-apis"></a>
+
 ### V1.8.05 — Implement human message/internal note/resolve/reopen APIs
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -10019,6 +8883,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1901-build-shared-serviq-design-tokens-and-base-ui-primitives"></a>
+
 ### V1.9.01 — Build shared Serviq design tokens and base UI primitives
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -10214,7 +9080,11 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1902-build-authenticated-client-console-application-shell"></a>
+
 ### V1.9.02 — Build authenticated client-console application shell
+
+> **2026-09-12 dependency correction:** Explicit prerequisite: V1.1.16 must establish the real server session and trusted API context. The existing OIDC validator and injected-principal API tests are not an authenticated application shell.
 
 > **Milestone:** Phase 1 — V1 Production Foundation
 > **Linear status:** Backlog candidate
@@ -10411,6 +9281,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1903-build-organization-onboarding-checklist-ui"></a>
+
 ### V1.9.03 — Build organization onboarding checklist UI
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -10608,6 +9480,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1904-build-providermodel-management-ui"></a>
+
 ### V1.9.04 — Build provider/model management UI
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -10805,6 +9679,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1905-build-knowledge-source-management-ui"></a>
+
 ### V1.9.05 — Build knowledge source management UI
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -11007,6 +9883,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v1906-build-retrieval-debugger-ui"></a>
+
 ### V1.9.06 — Build retrieval debugger UI
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -11203,6 +10081,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1907-build-customer-support-chat-shell-and-history"></a>
+
 ### V1.9.07 — Build customer support chat shell and history
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -11398,6 +10278,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1908-add-customer-sse-streaming-citations-confirmation-approval-cards"></a>
+
 ### V1.9.08 — Add customer SSE streaming, citations, confirmation, approval cards
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -11597,6 +10479,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1909-build-client-conversation-review-listdetail"></a>
+
 ### V1.9.09 — Build client conversation review list/detail
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -11795,6 +10679,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1910-build-human-support-inbox-and-case-workspace"></a>
+
 ### V1.9.10 — Build human support inbox and case workspace
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -11991,6 +10877,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1911-build-agent-configurationversionpublish-ui"></a>
+
 ### V1.9.11 — Build agent configuration/version/publish UI
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -12190,6 +11078,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v1912-build-teamaccess-management-ui"></a>
+
 ### V1.9.12 — Build team/access management UI
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -12385,6 +11275,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11001-create-usageauditplatform-controlprivacy-migration"></a>
+
 ### V1.10.01 — Create usage/audit/platform-control/privacy migration
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -12587,6 +11479,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v11002-implement-immutable-audit-writer-query-api"></a>
+
 ### V1.10.02 — Implement immutable audit writer + query API
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -12787,6 +11681,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11003-implement-usage-event-ingestion-overview-analytics-api"></a>
+
 ### V1.10.03 — Implement usage event ingestion + overview analytics API
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -12985,6 +11881,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11004-build-analytics-and-audit-client-console-screens"></a>
+
 ### V1.10.04 — Build analytics and audit client-console screens
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -13182,6 +12080,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11005-implement-platform-feature-flagrate-policy-apis-and-valkey-cache"></a>
+
 ### V1.10.05 — Implement platform feature-flag/rate-policy APIs and Valkey cache
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -13381,6 +12281,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11006-implement-privacy-export-requestjob"></a>
+
 ### V1.10.06 — Implement privacy export request/job
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -13580,6 +12482,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11007-implement-privacy-deletionpseudonymization-job"></a>
+
 ### V1.10.07 — Implement privacy deletion/pseudonymization job
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -13779,6 +12683,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11008-build-platform-operator-console-v1-screens"></a>
+
 ### V1.10.08 — Build platform-operator console V1 screens
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -13978,6 +12884,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11009-implement-dead-letter-listreplay-platform-apis"></a>
+
 ### V1.10.09 — Implement dead-letter list/replay platform APIs
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -14174,6 +13082,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v11010-implement-retention-cleanup-scheduler"></a>
 
 ### V1.10.10 — Implement retention cleanup scheduler
 
@@ -14372,6 +13282,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11101-add-end-to-end-opentelemetry-trace-propagation"></a>
+
 ### V1.11.01 — Add end-to-end OpenTelemetry trace propagation
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -14571,6 +13483,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11102-add-structured-json-logging-secretpii-redaction"></a>
+
 ### V1.11.02 — Add structured JSON logging + secret/PII redaction
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -14769,6 +13683,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11103-add-required-v1-10-scenario-e2e-suite"></a>
+
 ### V1.11.03 — Add required V1 10-scenario E2E suite
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -14968,6 +13884,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11104-add-adversarial-tenant-isolation-api-suite"></a>
+
 ### V1.11.04 — Add adversarial tenant-isolation API suite
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -15166,6 +14084,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11105-add-baseline-k6-restsse-load-scenarios"></a>
+
 ### V1.11.05 — Add baseline k6 REST/SSE load scenarios
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -15364,6 +14284,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11106-implement-outbound-webhook-hmac-delivery-with-ssrf-protections"></a>
+
 ### V1.11.06 — Implement outbound webhook HMAC delivery with SSRF protections
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -15560,6 +14482,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11107-add-release-securityquality-ci-gate"></a>
+
 ### V1.11.07 — Add release security/quality CI gate
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -15760,6 +14684,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v11108-publish-v1-benchmark-evidence-report"></a>
+
 ### V1.11.08 — Publish V1 benchmark evidence report
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -15955,6 +14881,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11109-complete-v1-public-demo-readme-and-non-affiliation-disclosure"></a>
+
 ### V1.11.09 — Complete V1 public-demo README and non-affiliation disclosure
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -16149,6 +15077,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v11110-run-v1-release-readiness-review-and-create-fix-only-backlog"></a>
+
 ### V1.11.10 — Run V1 release readiness review and create fix-only backlog
 
 > **Milestone:** Phase 1 — V1 Production Foundation
@@ -16345,6 +15275,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 ---
 
 ## Phase 2 — V2 Integrations & Omnichannel Scale
+
+<a id="v2001-run-post-v1-repository-audit-for-v2"></a>
 
 ### V2.0.01 — Run post-V1 repository audit for V2
 
@@ -16545,6 +15477,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2002-write-v2-prd-delta"></a>
+
 ### V2.0.02 — Write V2 PRD delta
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -16743,6 +15677,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2003-write-v2-architectureccr-delta"></a>
+
 ### V2.0.03 — Write V2 architecture/CCR delta
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -16944,6 +15880,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2101-create-shopify-development-store-integration-metadata-migration"></a>
+
 ### V2.1.01 — Create Shopify development-store integration metadata migration
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -17144,6 +16082,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2102-implement-shopify-secretauth-adapter"></a>
+
 ### V2.1.02 — Implement Shopify secret/auth adapter
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -17338,6 +16278,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v2103-implement-shopify-connection-createtestdisconnect-apis"></a>
 
 ### V2.1.03 — Implement Shopify connection create/test/disconnect APIs
 
@@ -17534,6 +16476,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2104-implement-shopify-customerorder-read-adapter"></a>
+
 ### V2.1.04 — Implement Shopify customer/order read adapter
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -17730,6 +16674,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2105-implement-shopify-cancel-order-action-adapter"></a>
+
 ### V2.1.05 — Implement Shopify cancel-order action adapter
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -17926,6 +16872,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2106-implement-shopify-refundrequest-action-adapter"></a>
+
 ### V2.1.06 — Implement Shopify refund/request action adapter
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -18122,6 +17070,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2107-add-shopify-integration-ui"></a>
+
 ### V2.1.07 — Add Shopify integration UI
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -18317,6 +17267,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2108-add-shopify-v2-e2e-scenarios"></a>
+
 ### V2.1.08 — Add Shopify V2 E2E scenarios
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -18513,6 +17465,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2201-freeze-generic-help-deskcrm-connector-interface"></a>
+
 ### V2.2.01 — Freeze generic help-desk/CRM connector interface
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -18710,6 +17664,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2202-create-generic-integration-registry-and-credential-metadata-schema"></a>
+
 ### V2.2.02 — Create generic integration registry and credential metadata schema
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -18912,6 +17868,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v2203-implement-connector-healthtest-framework"></a>
+
 ### V2.2.03 — Implement connector health/test framework
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -19108,6 +18066,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2204-implement-zendesk-style-ticket-adapter-against-sandboxdev-account"></a>
+
 ### V2.2.04 — Implement Zendesk-style ticket adapter against sandbox/dev account
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -19302,6 +18262,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2205-implement-external-ticket-handoff-mapping"></a>
+
 ### V2.2.05 — Implement external ticket handoff mapping
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -19499,6 +18461,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2206-build-integration-management-ui"></a>
+
 ### V2.2.06 — Build integration management UI
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -19694,6 +18658,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2301-freeze-omnichannel-inboundoutbound-message-contract"></a>
+
 ### V2.3.01 — Freeze omnichannel inbound/outbound message contract
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -19889,6 +18855,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2302-add-channel-connection-metadata-migration"></a>
+
 ### V2.3.02 — Add channel connection metadata migration
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -20089,6 +19057,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2303-implement-inbound-email-adapter-using-test-mailboxprovider"></a>
+
 ### V2.3.03 — Implement inbound email adapter using test mailbox/provider
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -20289,6 +19259,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2304-implement-outbound-email-response-adapter"></a>
+
 ### V2.3.04 — Implement outbound email response adapter
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -20485,6 +19457,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v2305-implement-sms-like-channel-adapter-against-sandbox-provider"></a>
 
 ### V2.3.05 — Implement SMS-like channel adapter against sandbox provider
 
@@ -20683,6 +19657,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2306-implement-whatsapp-like-channel-adapter-against-sandbox-provider"></a>
+
 ### V2.3.06 — Implement WhatsApp-like channel adapter against sandbox provider
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -20878,6 +19854,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2307-add-omnichannel-conversation-indicators-to-support-inbox"></a>
+
 ### V2.3.07 — Add omnichannel conversation indicators to support inbox
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -21074,6 +20052,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2401-add-exact-response-cache-layer"></a>
+
 ### V2.4.01 — Add exact response cache layer
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -21272,6 +20252,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2402-add-semantic-cache-candidate-lookup"></a>
+
 ### V2.4.02 — Add semantic cache candidate lookup
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -21470,6 +20452,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2403-add-semantic-cache-safety-verifier"></a>
+
 ### V2.4.03 — Add semantic cache safety verifier
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -21668,6 +20652,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2404-implement-capability-aware-model-router"></a>
+
 ### V2.4.04 — Implement capability-aware model router
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -21863,6 +20849,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2405-add-shadow-evaluation-mode-for-candidate-modelconfig"></a>
+
 ### V2.4.05 — Add shadow evaluation mode for candidate model/config
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -22063,6 +21051,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v2406-build-evaluation-comparison-ui"></a>
+
 ### V2.4.06 — Build evaluation comparison UI
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -22260,6 +21250,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2501-containerize-apiworkergateway-with-production-images"></a>
+
 ### V2.5.01 — Containerize API/worker/gateway with production images
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -22457,6 +21449,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2502-add-local-multi-replica-load-profile"></a>
+
 ### V2.5.02 — Add local multi-replica load profile
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -22653,6 +21647,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2503-add-clustered-valkey-test-profile"></a>
+
 ### V2.5.03 — Add clustered Valkey test profile
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -22847,6 +21843,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2504-add-kafka-partitioningconsumer-group-scale-tests"></a>
+
 ### V2.5.04 — Add Kafka partitioning/consumer-group scale tests
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -23045,6 +22043,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2505-create-first-aws-single-region-terraform-foundation"></a>
+
 ### V2.5.05 — Create first AWS single-region Terraform foundation
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -23243,6 +22243,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2506-deploy-v2-staging-in-one-aws-region"></a>
+
 ### V2.5.06 — Deploy V2 staging in one AWS region
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -23442,6 +22444,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v2507-add-horizontal-autoscaling-policy-and-test"></a>
+
 ### V2.5.07 — Add horizontal autoscaling policy and test
 
 > **Milestone:** Phase 2 — V2 Integrations & Omnichannel Scale
@@ -23638,6 +22642,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v2508-publish-v2-single-region-benchmark-report"></a>
 
 ### V2.5.08 — Publish V2 single-region benchmark report
 
@@ -23839,6 +22845,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ## Phase 3 — V3 Autonomous Enterprise Operations
 
+<a id="v3001-run-post-v2-repository-audit"></a>
+
 ### V3.0.01 — Run post-V2 repository audit
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -24035,6 +23043,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3002-write-v3-prd-delta"></a>
+
 ### V3.0.02 — Write V3 PRD delta
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -24231,6 +23241,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3003-write-v3-architecturecontract-delta"></a>
+
 ### V3.0.03 — Write V3 architecture/contract delta
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -24429,6 +23441,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3101-create-proactive-workflow-definitionversion-schema"></a>
+
 ### V3.1.01 — Create proactive workflow definition/version schema
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -24628,6 +23642,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3102-implement-proactive-trigger-evaluator"></a>
+
 ### V3.1.02 — Implement proactive trigger evaluator
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -24823,6 +23839,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3103-implement-proactive-workflow-run-persistence"></a>
+
 ### V3.1.03 — Implement proactive workflow run persistence
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -25021,6 +24039,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3104-implement-workflow-step-executor-shell"></a>
+
 ### V3.1.04 — Implement workflow step executor shell
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -25221,6 +24241,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v3105-implement-proactive-outbound-notification-gate"></a>
+
 ### V3.1.05 — Implement proactive outbound notification gate
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -25417,6 +24439,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3106-add-proactive-workflow-client-ui"></a>
+
 ### V3.1.06 — Add proactive workflow client UI
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -25614,6 +24638,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3107-add-proactive-workflow-e2e-suite"></a>
+
 ### V3.1.07 — Add proactive workflow E2E suite
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -25811,6 +24837,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3201-freeze-specialist-agent-registry-contract"></a>
+
 ### V3.2.01 — Freeze specialist-agent registry contract
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -26008,6 +25036,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3202-add-specialist-agent-configuration-schema"></a>
+
 ### V3.2.02 — Add specialist-agent configuration schema
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -26210,6 +25240,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3203-implement-agent-to-agent-handoff-contract"></a>
+
 ### V3.2.03 — Implement agent-to-agent handoff contract
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -26406,6 +25438,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3204-implement-child-run-budget-inheritance"></a>
+
 ### V3.2.04 — Implement child-run budget inheritance
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -26603,6 +25637,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3205-implement-parallel-read-only-specialist-execution"></a>
+
 ### V3.2.05 — Implement parallel read-only specialist execution
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -26799,6 +25835,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v3206-implement-multi-agent-trace-visualization"></a>
 
 ### V3.2.06 — Implement multi-agent trace visualization
 
@@ -26999,6 +26037,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3207-add-multi-agent-regressionevaluation-suite"></a>
+
 ### V3.2.07 — Add multi-agent regression/evaluation suite
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -27194,6 +26234,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3301-add-tenant-localelanguage-configuration-schema"></a>
+
 ### V3.3.01 — Add tenant locale/language configuration schema
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -27391,6 +26433,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3302-implement-language-detection-contract"></a>
+
 ### V3.3.02 — Implement language detection contract
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -27586,6 +26630,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3303-add-multilingual-knowledge-ingestion-metadata"></a>
+
 ### V3.3.03 — Add multilingual knowledge ingestion metadata
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -27785,6 +26831,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3304-implement-language-aware-retrieval"></a>
+
 ### V3.3.04 — Implement language-aware retrieval
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -27979,6 +27027,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3305-implement-localized-response-generation-guard"></a>
+
 ### V3.3.05 — Implement localized response generation guard
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -28176,6 +27226,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3306-internationalize-customerclient-ui-framework"></a>
+
 ### V3.3.06 — Internationalize customer/client UI framework
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -28373,6 +27425,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v3307-add-multilingual-e2eevaluation-suite"></a>
+
 ### V3.3.07 — Add multilingual E2E/evaluation suite
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -28566,6 +27620,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3401-add-tenant-isolation-mode-configuration"></a>
+
 ### V3.4.01 — Add tenant isolation mode configuration
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -28764,6 +27820,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3402-implement-tenant-data-source-routing-interface"></a>
+
 ### V3.4.02 — Implement tenant data-source routing interface
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -28958,6 +28016,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3403-implement-dedicated-worker-pool-routing"></a>
+
 ### V3.4.03 — Implement dedicated worker-pool routing
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -29155,6 +28215,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3404-add-per-tenant-encryption-key-reference-support"></a>
+
 ### V3.4.04 — Add per-tenant encryption-key reference support
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -29351,6 +28413,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3405-implement-enterprise-data-retention-overrides-within-platform-bounds"></a>
+
 ### V3.4.05 — Implement enterprise data-retention overrides within platform bounds
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -29549,6 +28613,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3406-build-enterprise-isolation-controls-in-platform-console"></a>
+
 ### V3.4.06 — Build enterprise isolation controls in platform console
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -29745,6 +28811,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3407-add-enterprise-isolation-adversarial-test-suite"></a>
+
 ### V3.4.07 — Add enterprise isolation adversarial test suite
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -29941,6 +29009,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v3501-create-quality-review-sample-schema"></a>
 
 ### V3.5.01 — Create quality-review sample schema
 
@@ -30139,6 +29209,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3502-implement-deterministic-conversation-sampling-job"></a>
+
 ### V3.5.02 — Implement deterministic conversation sampling job
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -30336,6 +29408,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3503-implement-ai-quality-evaluator-with-strict-rubric-output"></a>
+
 ### V3.5.03 — Implement AI quality evaluator with strict rubric output
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -30532,6 +29606,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3504-implement-human-qa-review-api"></a>
+
 ### V3.5.04 — Implement human QA review API
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -30727,6 +29803,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3505-build-qa-review-workspace"></a>
+
 ### V3.5.05 — Build QA review workspace
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -30922,6 +30000,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3506-implement-support-agent-coaching-summary-job"></a>
+
 ### V3.5.06 — Implement support-agent coaching summary job
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -31118,6 +30198,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3507-extract-retrieval-service-behind-stable-network-contract"></a>
+
 ### V3.5.07 — Extract retrieval service behind stable network contract
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -31312,6 +30394,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3508-extract-tool-execution-service-behind-stable-network-contract"></a>
+
 ### V3.5.08 — Extract tool execution service behind stable network contract
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -31508,6 +30592,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v3509-introduce-partition-key-routing-for-high-volume-tenant-data"></a>
 
 ### V3.5.09 — Introduce partition-key routing for high-volume tenant data
 
@@ -31708,6 +30794,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v3510-publish-v3-partitioned-single-region-benchmark"></a>
+
 ### V3.5.10 — Publish V3 partitioned single-region benchmark
 
 > **Milestone:** Phase 3 — V3 Autonomous Enterprise Operations
@@ -31910,6 +30998,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ## Phase 4 — V4 Hyperscale & Multi-Region
 
+<a id="v4001-run-post-v3-hyperscale-repositoryinfrastructure-audit"></a>
+
 ### V4.0.01 — Run post-V3 hyperscale repository/infrastructure audit
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -32109,6 +31199,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4002-write-v4-scale-prd-with-explicit-capacity-definitions"></a>
+
 ### V4.0.02 — Write V4 scale PRD with explicit capacity definitions
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -32308,6 +31400,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4003-write-multi-region-architecture-and-data-placement-contracts"></a>
+
 ### V4.0.03 — Write multi-region architecture and data-placement contracts
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -32507,6 +31601,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4101-add-tenant-regionplacement-metadata-migration"></a>
+
 ### V4.1.01 — Add tenant region/placement metadata migration
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -32707,6 +31803,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4102-implement-region-aware-tenant-placement-resolver"></a>
+
 ### V4.1.02 — Implement region-aware tenant placement resolver
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -32904,6 +32002,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4103-add-signed-global-routing-token-contract"></a>
+
 ### V4.1.03 — Add signed global routing token contract
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -33103,6 +32203,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v4104-implement-region-aware-api-ingress-middleware"></a>
+
 ### V4.1.04 — Implement region-aware API ingress middleware
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -33301,6 +32403,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4105-implement-region-aware-customer-sse-routing"></a>
+
 ### V4.1.05 — Implement region-aware customer SSE routing
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -33498,6 +32602,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4106-add-regional-service-discovery-configuration-to-iac"></a>
+
 ### V4.1.06 — Add regional service-discovery configuration to IaC
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -33693,6 +32799,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4107-build-platform-placement-view"></a>
+
 ### V4.1.07 — Build platform placement view
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -33893,6 +33001,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4201-freeze-conversationdatabase-shard-key-adr"></a>
+
 ### V4.2.01 — Freeze conversation/database shard key ADR
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -34092,6 +33202,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4202-implement-shard-routing-library-with-shadow-validation"></a>
+
 ### V4.2.02 — Implement shard routing library with shadow validation
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -34288,6 +33400,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4203-add-shard-placement-metadata-and-migration-tooling"></a>
+
 ### V4.2.03 — Add shard-placement metadata and migration tooling
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -34487,6 +33601,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4204-implement-online-tenant-shard-migration-copy-phase"></a>
+
 ### V4.2.04 — Implement online tenant shard migration copy phase
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -34688,6 +33804,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v4205-implement-shard-migration-change-capturereplay-phase"></a>
+
 ### V4.2.05 — Implement shard migration change-capture/replay phase
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -34887,6 +34005,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4206-implement-shard-cutover-and-rollback-switch"></a>
+
 ### V4.2.06 — Implement shard cutover and rollback switch
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -35085,6 +34205,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4207-add-hot-tenant-workload-isolation"></a>
+
 ### V4.2.07 — Add hot-tenant workload isolation
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -35281,6 +34403,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4208-partition-kafka-topicsconsumer-groups-for-hyperscale-load"></a>
+
 ### V4.2.08 — Partition Kafka topics/consumer groups for hyperscale load
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -35478,6 +34602,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4209-add-distributed-sse-connection-registrymetrics"></a>
+
 ### V4.2.09 — Add distributed SSE connection registry/metrics
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -35676,6 +34802,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4210-implement-edge-safe-deterministicsemantic-cache-strategy"></a>
+
 ### V4.2.10 — Implement edge-safe deterministic/semantic cache strategy
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -35877,6 +35005,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4301-define-and-test-regional-healthfailover-decision-contract"></a>
+
 ### V4.3.01 — Define and test regional health/failover decision contract
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -36076,6 +35206,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4302-implement-regional-control-plane-configuration-replication"></a>
+
 ### V4.3.02 — Implement regional control-plane configuration replication
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -36276,6 +35408,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+
+<a id="v4303-implement-regional-knowledgeindex-replication-workflow"></a>
 
 ### V4.3.03 — Implement regional knowledge/index replication workflow
 
@@ -36479,6 +35613,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4304-implement-regional-conversation-failover-policy"></a>
+
 ### V4.3.04 — Implement regional conversation failover policy
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -36675,6 +35811,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4305-implement-provider-routing-by-region"></a>
+
 ### V4.3.05 — Implement provider-routing by region
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -36872,6 +36010,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4306-add-backuprestore-automation-and-deletion-replay-verification"></a>
+
 ### V4.3.06 — Add backup/restore automation and deletion replay verification
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -37069,6 +36209,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4307-add-controlled-regional-failover-runbook-automation"></a>
+
 ### V4.3.07 — Add controlled regional failover runbook automation
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -37268,6 +36410,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4308-run-scheduled-disaster-recovery-game-day"></a>
+
 ### V4.3.08 — Run scheduled disaster-recovery game day
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -37463,6 +36607,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4401-create-distributed-load-generator-architecture"></a>
+
 ### V4.4.01 — Create distributed load-generator architecture
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -37658,6 +36804,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4402-add-staged-sse-concurrency-test-100k-connections"></a>
+
 ### V4.4.02 — Add staged SSE concurrency test: 100k connections
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -37855,6 +37003,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v4403-add-staged-sse-concurrency-test-500k-connections"></a>
+
 ### V4.4.03 — Add staged SSE concurrency test: 500k connections
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -38049,6 +37199,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4404-add-staged-sse-concurrency-test-1m-connections"></a>
+
 ### V4.4.04 — Add staged SSE concurrency test: 1M connections
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -38243,6 +37395,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4405-add-staged-concurrency-tests-beyond-1m-toward-10m"></a>
+
 ### V4.4.05 — Add staged concurrency tests beyond 1M toward 10M
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -38437,6 +37591,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4406-add-restapi-high-throughput-cached-path-benchmark"></a>
+
 ### V4.4.06 — Add REST/API high-throughput cached-path benchmark
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -38632,6 +37788,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4407-add-agent-worker-throughput-benchmark-with-fake-providers"></a>
+
 ### V4.4.07 — Add agent-worker throughput benchmark with fake providers
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -38832,6 +37990,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4408-add-retrieval-hyperscale-benchmark"></a>
+
 ### V4.4.08 — Add retrieval hyperscale benchmark
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -39028,6 +38188,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4409-add-chaos-test-for-apiworker-node-loss-under-load"></a>
+
 ### V4.4.09 — Add chaos test for API/worker node loss under load
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -39225,6 +38387,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4410-add-chaos-test-for-cachebroker-degradation"></a>
+
 ### V4.4.10 — Add chaos test for cache/broker degradation
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -39425,6 +38589,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 
 ---
 
+<a id="v4411-add-chaos-test-for-database-shard-impairment"></a>
+
 ### V4.4.11 — Add chaos test for database shard impairment
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -39624,6 +38790,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4412-add-cost-per-million-requestsconnections-model"></a>
+
 ### V4.4.12 — Add cost-per-million-requests/connections model
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -39821,6 +38989,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4413-publish-v4-multi-regionhyperscale-evidence-report"></a>
+
 ### V4.4.13 — Publish V4 multi-region/hyperscale evidence report
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region
@@ -40018,6 +39188,8 @@ Stop and return `Needs Architect Decision: [specific decision]` if:
 **FAIL — do not hand to a builder yet.** This conversion supplies the full Serviq/Linear issue structure and preserves the source requirements, but the compact roadmap does not consistently freeze exact edit paths, complete contracts, numeric limits, dependency evidence, or manual QA. Resolve every marked decision and re-run the intake checklist before changing this status to builder-ready.
 
 ---
+<a id="v4414-run-independent-releasesecurity-architecture-review"></a>
+
 ### V4.4.14 — Run independent release/security architecture review
 
 > **Milestone:** Phase 4 — V4 Hyperscale & Multi-Region

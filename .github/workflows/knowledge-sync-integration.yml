@@ -142,17 +142,31 @@ jobs:
 
   knowledge-sync-gate:
     name: Knowledge Sync Integration Gate
-    needs: postgres-redpanda-s3
+    needs: [changes, postgres-redpanda-s3]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Evaluate gate status
         run: |
-          if [ "${{ needs.postgres-redpanda-s3.result }}" = "success" ] || [ "${{ needs.postgres-redpanda-s3.result }}" = "skipped" ]; then
-            echo "Gate passed. Underlying integration job was either successful or safely skipped."
-            exit 0
-          else
-            echo "Gate failed. Underlying integration job failed or was cancelled."
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "Gate failed. Path classification did not succeed."
             exit 1
           fi
+
+          if [ "${{ needs.changes.outputs.should_run }}" = "true" ]; then
+            if [ "${{ needs.postgres-redpanda-s3.result }}" = "success" ]; then
+              echo "Gate passed. Required integration job succeeded."
+              exit 0
+            fi
+            echo "Gate failed. Required integration job did not succeed."
+            exit 1
+          fi
+
+          if [ "${{ needs.changes.outputs.should_run }}" = "false" ] && [ "${{ needs.postgres-redpanda-s3.result }}" = "skipped" ]; then
+            echo "Gate passed. Integration paths were not changed and the heavyweight job was safely skipped."
+            exit 0
+          fi
+
+          echo "Gate failed. Classifier output or integration job state was unexpected."
+          exit 1

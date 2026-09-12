@@ -1,0 +1,5 @@
+# Exact historical Gitleaks fingerprint for the synthetic S3 object-key fixture
+# `tenants/t/knowledge/s/raw/o`. This value is an object-storage test key, not a
+# credential. Keep the suppression fingerprint-specific rather than weakening
+# the generic-api-key rule or excluding the test file.
+db8b971ba8b1543468c785849ce66ae5bb0fbd21:services/worker/tests/test_object_storage_cleanup.py:generic-api-key:73

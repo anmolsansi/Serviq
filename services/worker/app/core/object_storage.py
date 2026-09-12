@@ -26,17 +26,25 @@ class ObjectNotFoundError(ObjectStorageError):
 
 
 class RawObjectStorage(Protocol):
-    """Minimal raw-object boundary consumed by knowledge jobs."""
+    """Minimal raw-object boundary consumed by durable knowledge jobs."""
 
     async def put_bytes(self, key: str, data: bytes, *, content_type: str) -> None: ...
 
     async def get_bytes(self, key: str) -> bytes: ...
+
+    async def exists(self, key: str) -> bool: ...
+
+    async def delete_object(self, key: str) -> None: ...
 
 
 class _S3Client(Protocol):
     def put_object(self, **kwargs: Any) -> dict[str, Any]: ...
 
     def get_object(self, **kwargs: Any) -> dict[str, Any]: ...
+
+    def head_object(self, **kwargs: Any) -> dict[str, Any]: ...
+
+    def delete_object(self, **kwargs: Any) -> dict[str, Any]: ...
 
 
 class _S3Session(Protocol):
@@ -99,6 +107,31 @@ class S3RawObjectStorage:
         if not isinstance(data, bytes):
             raise ObjectStorageError
         return data
+
+    async def exists(self, key: str) -> bool:
+        return await asyncio.to_thread(self._exists_sync, key)
+
+    def _exists_sync(self, key: str) -> bool:
+        _validate_key(key)
+        try:
+            self._client.head_object(Bucket=self._bucket, Key=key)
+        except ClientError as exc:
+            if _is_not_found(exc):
+                return False
+            raise ObjectStorageError from None
+        except BotoCoreError:
+            raise ObjectStorageError from None
+        return True
+
+    async def delete_object(self, key: str) -> None:
+        await asyncio.to_thread(self._delete_object_sync, key)
+
+    def _delete_object_sync(self, key: str) -> None:
+        _validate_key(key)
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=key)
+        except (BotoCoreError, ClientError):
+            raise ObjectStorageError from None
 
 
 def build_object_storage(

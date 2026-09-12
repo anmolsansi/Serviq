@@ -45,3 +45,15 @@ def test_non_postgresql_database_scheme_fails_without_leaking_url() -> None:
 
     assert str(error.value) == "DATABASE_URL must use the PostgreSQL scheme"
     assert sentinel not in str(error.value)
+
+
+def test_async_session_requires_greenlet() -> None:
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    async def run_session() -> None:
+        async with AsyncSession():
+            pass
+
+    asyncio.run(run_session())

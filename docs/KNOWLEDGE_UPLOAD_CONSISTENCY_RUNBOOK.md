@@ -2,11 +2,12 @@
 
 ## Purpose
 
-This runbook covers V1.3.04A durable cleanup obligations created by failed or interrupted file-backed knowledge uploads.
+This runbook covers the durable cleanup obligations created by failed or interrupted file-backed knowledge uploads and the V1.3.04D worker scheduler that now reconciles them automatically.
 
 Authoritative contracts:
 
 - `docs/architecture-decisions/ADR-018-durable-knowledge-upload-consistency.md`
+- `docs/architecture-decisions/ADR-028-worker-owned-knowledge-upload-cleanup-scheduler.md`
 - `docs/contract-changes/CCR-006-durable-knowledge-upload-cleanup-intent.md`
 
 The tenant-facing knowledge-source API does not expose this cleanup state or raw object keys.
@@ -81,15 +82,29 @@ tenants/{tenantId}/knowledge/{sourceId}/raw/{objectId}
 4. Inspect status and retry timing before any storage call.
 5. Never delete an object for a `referenced` cleanup.
 
+## Automatic worker reconciliation
+
+`services/worker/app/jobs/knowledge_upload_cleanup.py` is the production caller for due cleanup work. It runs inside the normal durable worker `TaskGroup` alongside outbox publication and knowledge-sync consumption.
+
+Every poll processes a bounded batch. Due `prepared` and `pending` rows are selected with `FOR UPDATE SKIP LOCKED`, so multiple worker processes can share the same table without intentionally claiming the same due row in one claim window.
+
+The claim transaction is short. It validates the durable identifiers and exact generated key, increments the attempt counter, changes the row to `pending`, and advances `next_attempt_at` before object-storage I/O. The transaction then closes. HEAD/exists and DELETE happen only after that commit, so a slow storage dependency does not hold a PostgreSQL row lock.
+
+If the worker crashes after a claim, no in-memory recovery record is required. The advanced `next_attempt_at` remains in PostgreSQL and a later worker can recover the obligation once that deadline becomes due.
+
+A key mismatch is exhausted without any storage call. `referenced`, `succeeded`, and `exhausted` rows are not selected as due work.
+
 ## Reconciliation behavior
 
 ### Confirmed PUT succeeded, source DB transaction failed
 
 The request tries to arm the row `pending`, due in 30 seconds, then performs one immediate idempotent DELETE outside the DB transaction.
 
-If that delete succeeds, the row is best-effort marked `succeeded`. If the DB update fails, later replay can safely delete an already-absent object again.
+If that delete succeeds, the row is best-effort marked `succeeded`. If the DB update fails, later worker replay can safely delete an already-absent object again.
 
 If DELETE fails, the durable row remains `pending` or, if PostgreSQL was unavailable during the arm, remains `prepared` and becomes due at its original preparation deadline.
+
+When the row becomes due, the worker claims it, performs the idempotent delete outside the claim transaction, and records the terminal result in a new short transaction.
 
 ### Generic PUT error or ambiguous result
 
@@ -119,24 +134,27 @@ after attempt 3 failure: exhausted
 
 A stale `prepared` row first becomes due at its stored 15-minute deadline and then uses the same three-attempt bounded budget.
 
-The implementation claims work in a short row-locked PostgreSQL transaction, increments the attempt counter, and advances `next_attempt_at` before storage I/O. HEAD and DELETE are performed only after the transaction is closed.
+The worker advances the retry lease before storage I/O. This is also the crash-recovery boundary: a claimed item is not immediately available to another worker while the first worker may still be performing the storage operation.
 
-## Manual replay
+## Reservation and quota behavior
 
-V1.3.04A provides the internal reconciliation function but deliberately does not add a new public route, broker topic, or always-on worker deployment. V1.3.06 may schedule this durable state through the general outbox/worker design.
+A cleanup-linked `knowledge_upload_reservations` row remains charged while raw-object ownership is unresolved.
 
-For local/test or an approved operator tool, invoke the internal cleanup service with:
+The worker releases that reservation only after a safe terminal cleanup success. Existing request/source persistence logic also releases the reservation when the uploaded object becomes a normal referenced source.
 
-- trusted tenant ID;
-- cleanup ID;
-- architecture-owned `ObjectStorage` adapter;
-- normal database session.
+A cleanup that becomes `exhausted` keeps its reservation. This is deliberate. An unresolved possible raw object must not disappear from source/byte accounting merely because automated cleanup ran out of attempts.
 
-Never accept a raw object key from an operator/client as the replay input. The service retrieves the key through the tenant-scoped cleanup row and regenerates the typed key before deletion.
+## Manual replay and operator intervention
+
+Routine due cleanup no longer requires manual invocation. The durable worker scheduler is the normal production path.
+
+Manual intervention is still appropriate for an `exhausted` obligation or controlled local/test diagnosis. Use only reviewed trusted tooling and resolve the cleanup by trusted tenant ID plus cleanup ID. Never accept an operator-supplied raw object key as the destructive input.
+
+Do not manually reset attempt counters or requeue an exhausted record without an approved recovery decision. The current scheduler deliberately does not auto-requeue or purge exhausted rows.
 
 ## Exhausted cleanup
 
-`exhausted` is the V1.3.04A DLQ-equivalent state.
+`exhausted` is the V1 cleanup DLQ-equivalent state.
 
 When an item reaches `exhausted`:
 
@@ -145,9 +163,9 @@ When an item reaches `exhausted`:
 3. verify storage health and database health;
 4. use reviewed trusted tooling to determine whether the raw object exists;
 5. do not modify/delete a `knowledge_sources` row as part of cleanup unless a separate approved recovery contract requires it;
-6. keep the exhausted record until an operator-reviewed recovery path resolves it.
+6. keep the exhausted record and its unresolved quota reservation until an operator-reviewed recovery path resolves it.
 
-V1.10.09 may consume the status/count contract for DLQ operations. This ticket does not create that UI.
+V1.10.09 may consume the status/count contract for DLQ operations. V1.3.04D does not create that UI.
 
 ## Failure-injection QA
 
@@ -167,26 +185,37 @@ Use only local/test infrastructure and synthetic content.
    - Expected: request fails, no source row commits, object may remain, cleanup is durably `pending` with bounded retry.
 6. **Source DB failure + retry-arm DB failure + DELETE failure**
    - Expected: request fails and the original `prepared` cleanup still exists with its stale-preparation deadline.
-7. **Replay idempotency**
-   - Delete once, replay again.
-   - Expected: terminal success is a no-op and does not leak the key.
-8. **Foreign tenant**
-   - Replay a cleanup ID using another tenant.
-   - Expected: safe unavailable/denial result and no storage action.
+7. **Worker success replay**
+   - Seed a due `pending` cleanup plus synthetic object and reservation.
+   - Expected: worker deletes the object, marks cleanup `succeeded`, and releases the reservation.
+8. **Restart recovery**
+   - Let a due ambiguous `prepared` row consume one failed observation, stop that work unit, make the object visible, and invoke a fresh database session after the persisted deadline.
+   - Expected: the fresh work unit uses only durable state, deletes the object, and completes cleanup.
 9. **Retry exhaustion**
-   - Force storage failure for all three reconciliation attempts.
-   - Expected: attempt count reaches 3, status becomes `exhausted`, `next_attempt_at` clears, and operator counts include the row.
-10. **Safe logs**
-   - Capture cleanup logs.
-   - Expected: full generated object key, document body, filename, and credentials are absent.
+   - Keep an ambiguous object absent for all three reconciliation attempts.
+   - Expected: attempt count reaches 3, status becomes `exhausted`, `next_attempt_at` clears, and the reservation remains charged.
+10. **Key mismatch**
+    - Persist an object key that does not match the generated tenant/source/object identity.
+    - Expected: worker exhausts the obligation without making a storage call.
+11. **Replay idempotency**
+    - Delete once, replay again through a terminal state.
+    - Expected: terminal state is not selected as new due work and no key is exposed.
+12. **Foreign tenant**
+    - Attempt to resolve a cleanup under another tenant through trusted test/operator boundaries.
+    - Expected: safe unavailable/denial result and no storage action.
+13. **Safe logs**
+    - Capture cleanup logs around synthetic failures.
+    - Expected: full generated object key, document body, filename, credentials, endpoints, and raw infrastructure exception text are absent.
+
+The permanent `Knowledge Quota Integration` workflow now runs the worker cleanup integration suite against real PostgreSQL and the repository's S3-compatible storage service with synthetic fixture data.
 
 ## Migration and rollback
 
 Migration `20260824_0010` is additive.
 
-Before downgrade:
+Before a database downgrade:
 
-1. stop new V1.3.04A upload traffic or otherwise prevent new cleanup-intent creation;
+1. stop new upload traffic and the cleanup worker or otherwise prevent new cleanup-intent/claim activity;
 2. count `prepared`, `pending`, and `exhausted` rows;
 3. resolve all unresolved obligations through approved trusted recovery;
 4. verify the unresolved count is zero;
@@ -194,7 +223,7 @@ Before downgrade:
 
 The migration refuses to drop `knowledge_upload_cleanups` while any `prepared`, `pending`, or `exhausted` row exists.
 
-Rolling application code back to OPE-303's store-first compensation behavior reintroduces the audited orphan risk and is not a routine recovery step.
+Rolling only the V1.3.04D scheduler code back requires no migration, but it stops automatic recovery and recreates the original unscheduled-cleanup operational gap. Existing durable rows remain in PostgreSQL for later replay. Rolling application code all the way back to OPE-303's store-first compensation behavior reintroduces the audited orphan risk and is not a routine recovery step.
 
 ## Retention
 
@@ -202,7 +231,7 @@ Rolling application code back to OPE-303's store-first compensation behavior rei
 - `exhausted`: retain until operator-reviewed recovery resolves it.
 - `referenced`/`succeeded`: eligible for a later purge after 14 days.
 
-V1.3.04A does not implement the purge job.
+V1.3.04D does not implement the purge job.
 
 ## Evidence to retain
 

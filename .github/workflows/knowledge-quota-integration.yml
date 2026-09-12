@@ -13,6 +13,12 @@ on:
       - 'services/api/tests/support/tenant_isolation.py'
       - 'services/api/pyproject.toml'
       - 'services/api/uv.lock'
+      - 'services/worker/app/core/object_storage.py'
+      - 'services/worker/app/jobs/knowledge_upload_cleanup.py'
+      - 'services/worker/app/main.py'
+      - 'services/worker/tests/integration/test_knowledge_upload_cleanup.py'
+      - 'services/worker/pyproject.toml'
+      - 'services/worker/uv.lock'
       - 'infra/docker/compose.yml'
   push:
     branches: [main]
@@ -27,6 +33,12 @@ on:
       - 'services/api/tests/support/tenant_isolation.py'
       - 'services/api/pyproject.toml'
       - 'services/api/uv.lock'
+      - 'services/worker/app/core/object_storage.py'
+      - 'services/worker/app/jobs/knowledge_upload_cleanup.py'
+      - 'services/worker/app/main.py'
+      - 'services/worker/tests/integration/test_knowledge_upload_cleanup.py'
+      - 'services/worker/pyproject.toml'
+      - 'services/worker/uv.lock'
       - 'infra/docker/compose.yml'
 
 permissions:
@@ -64,6 +76,7 @@ jobs:
       SERVIQ_VALKEY_INTEGRATION: "1"
       SERVIQ_OBJECT_STORAGE_INTEGRATION: "1"
       SERVIQ_KNOWLEDGE_QUOTA_REAL_STACK: "1"
+      SERVIQ_KNOWLEDGE_CLEANUP_INTEGRATION: "1"
       SERVIQ_ENV: test
       SERVIQ_PUBLIC_BASE_URL: http://localhost:3000
       SERVIQ_API_BASE_URL: http://localhost:8000
@@ -99,10 +112,15 @@ jobs:
         with:
           version: '0.12.9'
           enable-cache: true
-          cache-dependency-glob: services/api/uv.lock
+          cache-dependency-glob: |
+            services/api/uv.lock
+            services/worker/uv.lock
 
       - name: Install frozen API environment
         run: cd services/api && uv sync --frozen
+
+      - name: Install frozen worker environment
+        run: cd services/worker && uv sync --frozen
 
       - name: Start local S3-compatible storage
         run: docker compose -f infra/docker/compose.yml up -d object-storage
@@ -129,6 +147,11 @@ jobs:
             tests/integration/test_knowledge_upload_rate_limit_valkey.py \
             tests/integration/test_knowledge_quota_real_stack.py \
             tests/integration/test_object_storage_integration.py
+
+      - name: Run durable cleanup recovery evidence
+        run: |
+          cd services/worker
+          uv run pytest tests/integration/test_knowledge_upload_cleanup.py
 
       - name: Stop local S3-compatible storage
         if: always()

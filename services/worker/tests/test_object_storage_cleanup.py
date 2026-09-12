@@ -21,18 +21,18 @@ class FakeS3Client:
         return {}
 
     def get_object(self, **kwargs: Any) -> dict[str, Any]:
-        key = str(kwargs["Key"])
-        if key not in self.objects:
+        object_path = str(kwargs["Key"])
+        if object_path not in self.objects:
             raise _client_error("NoSuchKey", 404, "GetObject")
-        return {"Body": BytesIO(self.objects[key])}
+        return {"Body": BytesIO(self.objects[object_path])}
 
     def head_object(self, **kwargs: Any) -> dict[str, Any]:
         if self.fail_head:
             raise _client_error("InternalError", 500, "HeadObject")
-        key = str(kwargs["Key"])
-        if key not in self.objects:
+        object_path = str(kwargs["Key"])
+        if object_path not in self.objects:
             raise _client_error("NoSuchKey", 404, "HeadObject")
-        return {"ContentLength": len(self.objects[key])}
+        return {"ContentLength": len(self.objects[object_path])}
 
     def delete_object(self, **kwargs: Any) -> dict[str, Any]:
         if self.fail_delete:
@@ -70,18 +70,18 @@ def test_exists_maps_provider_failure_to_safe_error() -> None:
 
 
 def test_delete_is_idempotent_and_maps_provider_failure() -> None:
-    key = "tenants/t/knowledge/s/raw/o"
+    object_path = "tenants/t/knowledge/s/raw/o"
     client = FakeS3Client()
-    client.objects[key] = b"payload"
+    client.objects[object_path] = b"payload"
     storage = S3RawObjectStorage(client=client, bucket="bucket")
 
-    asyncio.run(storage.delete_object(key))
-    asyncio.run(storage.delete_object(key))
-    assert key not in client.objects
+    asyncio.run(storage.delete_object(object_path))
+    asyncio.run(storage.delete_object(object_path))
+    assert object_path not in client.objects
 
     client.fail_delete = True
     with pytest.raises(ObjectStorageError):
-        asyncio.run(storage.delete_object(key))
+        asyncio.run(storage.delete_object(object_path))
 
 
 def test_cleanup_storage_operations_reject_untrusted_keys() -> None:

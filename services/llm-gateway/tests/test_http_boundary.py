@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
+from starlette.types import Message, Receive, Scope, Send
 
 import app.http_boundary as http_boundary
 from app.connectivity import _INTERNAL_TOKEN_ENV
@@ -113,24 +116,58 @@ def test_declared_oversize_body_is_rejected_before_parsing(
 
 
 def test_streamed_body_limit_does_not_trust_understated_content_length(
-    auth_headers: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(_INTERNAL_TOKEN_ENV, "test-token")
     monkeypatch.setattr(http_boundary, "MAX_INTERNAL_REQUEST_BODY_BYTES", 128)
-    body = ("x" * 256).encode()
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/internal/v1/embeddings",
+        "raw_path": b"/internal/v1/embeddings",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"authorization", b"Bearer test-token"),
+            (b"content-type", b"application/json"),
+            (b"content-length", b"1"),
+        ],
+        "client": ("test", 50000),
+        "server": ("test", 80),
+        "extensions": {},
+        "state": {},
+    }
+    incoming: list[Message] = [
+        {
+            "type": "http.request",
+            "body": b"x" * 256,
+            "more_body": False,
+        }
+    ]
+    response_statuses: list[int] = []
 
-    response = client.post(
-        "/internal/v1/embeddings",
-        headers={
-            **auth_headers,
-            "Content-Type": "application/json",
-            "Content-Length": "1",
-        },
-        content=body,
-    )
+    async def receive() -> Message:
+        return incoming.pop(0)
 
-    assert response.status_code == 413
-    assert response.json()["detail"]["code"] == "REQUEST_BODY_TOO_LARGE"
+    async def send(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            response_statuses.append(int(message["status"]))
+
+    async def downstream(
+        child_scope: Scope,
+        child_receive: Receive,
+        child_send: Send,
+    ) -> None:
+        del child_scope, child_send
+        await child_receive()
+
+    middleware = http_boundary.InternalGatewayBoundaryMiddleware(downstream)
+    asyncio.run(middleware(scope, receive, send))
+
+    assert response_statuses == [413]
 
 
 def test_unauthorized_request_wins_over_body_size_rejection(

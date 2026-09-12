@@ -27,11 +27,14 @@ from app.modules.knowledge.errors import (
     KnowledgeStorageQuotaExceededError,
     KnowledgeUploadConcurrencyLimitedError,
 )
+from app.modules.knowledge.multipart import open_knowledge_upload_form
 from app.modules.knowledge.schemas import KnowledgeSourceCreateRequest, KnowledgeSourceView
 from app.modules.knowledge.service import (
     create_file_source,
     create_source,
     list_sources,
+    prepare_file_upload_admission,
+    release_file_upload_admission,
     start_source_sync,
 )
 from app.modules.knowledge.storage import get_knowledge_object_storage
@@ -177,32 +180,48 @@ async def _create_file_knowledge_source(
             retry_after_seconds=retry_after,
         )
 
+    storage = get_knowledge_object_storage()
+    admission = None
+    service_owns_admission = False
     try:
-        form = await request.form(max_files=1, max_fields=3, max_part_size=25 * 1024 * 1024)
-        allowed = {"sourceType", "name", "accessScope", "file"}
-        has_invalid_fields = set(form.keys()) != allowed or any(
-            len(form.getlist(key)) != 1 for key in allowed
-        )
-        if has_invalid_fields:
-            raise KnowledgeUploadValidationError("Multipart fields are invalid.")
-
-        upload = form.get("file")
-        if not isinstance(upload, UploadFile):
-            raise KnowledgeUploadValidationError("Exactly one file upload is required.")
-        source_type = parse_file_source_type(form.get("sourceType"))
-        name = validate_name(form.get("name"))
-        access_scope = validate_access_scope(form.get("accessScope"))
-
-        source = await create_file_source(
+        # Authorize and consume a source/concurrency slot before the multipart parser
+        # can spool file bytes. Byte quota is finalized after exact validation.
+        admission = await prepare_file_upload_admission(
             session,
-            storage=get_knowledge_object_storage(),
+            storage=storage,
             user_id=user_id,
             tenant_id=tenant_id,
-            source_type=source_type,
-            name=name,
-            access_scope=access_scope,
-            upload=upload,
         )
+
+        async with open_knowledge_upload_form(request) as form:
+            allowed = {"sourceType", "name", "accessScope", "file"}
+            has_invalid_fields = set(form.keys()) != allowed or any(
+                len(form.getlist(key)) != 1 for key in allowed
+            )
+            if has_invalid_fields:
+                raise KnowledgeUploadValidationError("Multipart fields are invalid.")
+
+            upload = form.get("file")
+            if not isinstance(upload, UploadFile):
+                raise KnowledgeUploadValidationError("Exactly one file upload is required.")
+            source_type = parse_file_source_type(form.get("sourceType"))
+            name = validate_name(form.get("name"))
+            access_scope = validate_access_scope(form.get("accessScope"))
+
+            # From this point the service owns reservation cleanup. It either releases
+            # the unlinked admission or binds it to durable cleanup before any PUT.
+            service_owns_admission = True
+            source = await create_file_source(
+                session,
+                storage=storage,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                source_type=source_type,
+                name=name,
+                access_scope=access_scope,
+                upload=upload,
+                admission=admission,
+            )
     except KnowledgeSourceForbiddenError:
         return _forbidden()
     except KnowledgeUploadTooLargeError:
@@ -232,6 +251,13 @@ async def _create_file_knowledge_source(
             "OBJECT_STORAGE_UNAVAILABLE",
             "Knowledge file storage is unavailable.",
         )
+    finally:
+        if admission is not None and not service_owns_admission:
+            await release_file_upload_admission(
+                session,
+                tenant_id=tenant_id,
+                admission=admission,
+            )
     return SuccessEnvelope(data=source)
 
 

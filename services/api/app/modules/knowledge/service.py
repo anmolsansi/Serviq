@@ -27,7 +27,9 @@ from app.modules.knowledge.errors import (
 )
 from app.modules.knowledge.models import KnowledgeSource
 from app.modules.knowledge.quota import (
+    KnowledgeUploadReservationClaim,
     assert_source_capacity,
+    finalize_file_upload_reservation,
     reconcile_legacy_file_sizes,
     release_unlinked_reservation,
     reserve_file_upload,
@@ -146,6 +148,46 @@ async def start_source_sync(
         return _to_view(source)
 
 
+async def prepare_file_upload_admission(
+    session: AsyncSession,
+    *,
+    storage: ObjectStorage,
+    user_id: UUID,
+    tenant_id: UUID,
+) -> KnowledgeUploadReservationClaim:
+    """Authorize and reserve source/concurrency capacity before multipart parsing."""
+
+    await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+    # Permission resolution performs reads and therefore opens an implicit SQLAlchemy
+    # transaction. Close it before reconciliation/reservation transactions below.
+    await session.rollback()
+
+    # Existing unknown file sizes must be reconciled before accepting another source.
+    # Storage HEAD calls occur outside the tenant-locking quota transaction.
+    await reconcile_legacy_file_sizes(session, storage=storage, tenant_id=tenant_id)
+    return await reserve_file_upload(
+        session,
+        tenant_id=tenant_id,
+        source_id=uuid4(),
+        reserved_bytes=0,
+    )
+
+
+async def release_file_upload_admission(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    admission: KnowledgeUploadReservationClaim,
+) -> None:
+    """Best-effort release for an admission that never reached cleanup binding."""
+
+    await _best_effort_release_unlinked_admission(
+        session,
+        tenant_id=tenant_id,
+        admission=admission,
+    )
+
+
 async def create_file_source(
     session: AsyncSession,
     *,
@@ -156,26 +198,31 @@ async def create_file_source(
     name: str,
     access_scope: Literal["customer", "internal"],
     upload: UploadFile,
+    admission: KnowledgeUploadReservationClaim,
 ) -> KnowledgeSourceView:
-    """Create a quota-reserved file source without allowing an untracked raw object."""
+    """Create one file source from a pre-parser admission reservation."""
 
-    await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
-    # Permission resolution performs reads and therefore opens an implicit SQLAlchemy
-    # transaction. Close it before the explicit durability transactions below.
-    await session.rollback()
-    validated = await validate_upload(upload, source_type=source_type)
+    try:
+        # Re-check permission after body parsing so a revoked membership cannot finish
+        # an upload that was admitted earlier in a slow request.
+        await _require_permission(session, user_id=user_id, tenant_id=tenant_id)
+        await session.rollback()
+        validated = await validate_upload(upload, source_type=source_type)
+        reservation = await finalize_file_upload_reservation(
+            session,
+            tenant_id=tenant_id,
+            admission=admission,
+            reserved_bytes=validated.size,
+        )
+    except Exception:
+        await _best_effort_release_unlinked_admission(
+            session,
+            tenant_id=tenant_id,
+            admission=admission,
+        )
+        raise
 
-    # Migration 0011 intentionally does not perform network I/O. Existing file rows
-    # are measured through typed HEAD calls here before new bytes can be admitted.
-    await reconcile_legacy_file_sizes(session, storage=storage, tenant_id=tenant_id)
-
-    source_id = uuid4()
-    reservation = await reserve_file_upload(
-        session,
-        tenant_id=tenant_id,
-        source_id=source_id,
-        reserved_bytes=validated.size,
-    )
+    source_id = reservation.source_id
     object_id = uuid4()
     cleanup_id = uuid4()
     key = knowledge_raw_key(
@@ -280,6 +327,25 @@ async def create_file_source(
         raise
 
     return view
+
+
+async def _best_effort_release_unlinked_admission(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    admission: KnowledgeUploadReservationClaim,
+) -> None:
+    """Release only a pre-cleanup reservation; lease expiry remains crash fallback."""
+
+    try:
+        await session.rollback()
+        await release_unlinked_reservation(
+            session,
+            tenant_id=tenant_id,
+            reservation_id=admission.reservation_id,
+        )
+    except Exception:
+        await session.rollback()
 
 
 async def _best_effort_failed_upload_cleanup(

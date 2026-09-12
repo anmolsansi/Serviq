@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from math import ceil
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -23,6 +24,7 @@ from app.modules.knowledge.errors import (
     KnowledgeStorageQuotaExceededError,
     KnowledgeUploadConcurrencyLimitedError,
 )
+from app.modules.knowledge.models import KnowledgeUploadReservation
 from app.modules.knowledge.repository import (
     add_upload_reservation,
     delete_expired_unlinked_upload_reservations,
@@ -224,7 +226,7 @@ async def reserve_file_upload(
     reserved_bytes: int,
     now: datetime | None = None,
 ) -> KnowledgeUploadReservationClaim:
-    """Atomically reserve source, byte, and concurrency capacity for one validated upload."""
+    """Atomically reserve source, byte, and concurrency capacity for one upload."""
 
     if not 0 <= reserved_bytes <= MAX_KNOWLEDGE_FILE_BYTES:
         raise ValueError("Reserved upload bytes are outside the approved file-size boundary.")
@@ -306,6 +308,90 @@ async def reserve_file_upload(
         source_id=source_id,
         reserved_bytes=reserved_bytes,
         lease_expires_at=lease_expires_at,
+    )
+
+
+async def finalize_file_upload_reservation(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    admission: KnowledgeUploadReservationClaim,
+    reserved_bytes: int,
+    now: datetime | None = None,
+) -> KnowledgeUploadReservationClaim:
+    """Replace a live zero-byte admission hold with the exact validated file bytes."""
+
+    if not 0 <= reserved_bytes <= MAX_KNOWLEDGE_FILE_BYTES:
+        raise ValueError("Reserved upload bytes are outside the approved file-size boundary.")
+    if admission.reserved_bytes != 0:
+        raise ValueError("Upload admission must start with a zero-byte reservation.")
+
+    current = now or datetime.now(UTC)
+    async with session.begin():
+        await lock_tenant_for_knowledge_quota(session, tenant_id=tenant_id)
+        reclaimed = await delete_expired_unlinked_upload_reservations(
+            session,
+            tenant_id=tenant_id,
+            now=current,
+        )
+        unknown = await list_unknown_file_source_sizes(session, tenant_id=tenant_id)
+        if unknown:
+            raise KnowledgeQuotaUnavailableError
+
+        result = await session.execute(
+            select(KnowledgeUploadReservation)
+            .where(
+                KnowledgeUploadReservation.tenant_id == tenant_id,
+                KnowledgeUploadReservation.id == admission.reservation_id,
+            )
+            .with_for_update()
+        )
+        reservation = result.scalar_one_or_none()
+        if (
+            reservation is None
+            or reservation.source_id != admission.source_id
+            or reservation.cleanup_id is not None
+            or reservation.reserved_bytes != 0
+            or reservation.lease_expires_at <= current
+        ):
+            _safe_log(
+                "knowledge_quota_admission_invalid",
+                tenant_id=tenant_id,
+                outcome="expired_or_missing",
+            )
+            raise KnowledgeQuotaUnavailableError
+
+        usage = _usage_from_row(
+            await get_knowledge_quota_usage(session, tenant_id=tenant_id, now=current)
+        )
+        if usage.charged_bytes + reserved_bytes > KNOWLEDGE_STORED_BYTE_LIMIT:
+            _safe_log(
+                "knowledge_quota_rejected",
+                tenant_id=tenant_id,
+                outcome="byte_limit",
+                charged_bytes=usage.charged_bytes,
+                requested_bytes=reserved_bytes,
+                byte_limit=KNOWLEDGE_STORED_BYTE_LIMIT,
+            )
+            raise KnowledgeStorageQuotaExceededError
+
+        reservation.reserved_bytes = reserved_bytes
+        reservation.updated_at = current
+        await session.flush()
+
+    _safe_log(
+        "knowledge_quota_admission_finalized",
+        tenant_id=tenant_id,
+        outcome="finalized",
+        reservation_id=str(admission.reservation_id),
+        reserved_bytes=reserved_bytes,
+        reclaimed_reservations=reclaimed,
+    )
+    return KnowledgeUploadReservationClaim(
+        reservation_id=admission.reservation_id,
+        source_id=admission.source_id,
+        reserved_bytes=reserved_bytes,
+        lease_expires_at=admission.lease_expires_at,
     )
 
 

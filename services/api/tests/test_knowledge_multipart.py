@@ -149,6 +149,9 @@ def test_upload_form_context_closes_parsed_file() -> None:
 
 def test_malformed_multipart_maps_to_safe_validation_error() -> None:
     async def scenario() -> None:
+        async def receive() -> Message:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
         request = Request(
             {
                 "type": "http",
@@ -162,7 +165,7 @@ def test_malformed_multipart_maps_to_safe_validation_error() -> None:
                 "client": ("127.0.0.1", 1234),
                 "server": ("test", 80),
             },
-            lambda: None,  # type: ignore[arg-type]
+            receive,
         )
         with pytest.raises(KnowledgeUploadValidationError):
             await parse_knowledge_upload_form(request)

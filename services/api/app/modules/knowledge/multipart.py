@@ -30,7 +30,7 @@ class _KnowledgeMultipartParser(MultiPartParser):
     def __init__(
         self,
         headers: Headers,
-        stream: AsyncGenerator[bytes, None],
+        stream: AsyncGenerator[bytes],
         *,
         max_files: int | float,
         max_fields: int | float,
@@ -59,7 +59,7 @@ class _KnowledgeMultipartParser(MultiPartParser):
         super().on_part_data(data, start, end)
 
 
-async def _bounded_request_stream(request: Request) -> AsyncGenerator[bytes, None]:
+async def _bounded_request_stream(request: Request) -> AsyncGenerator[bytes]:
     received = 0
     async for chunk in request.stream():
         received += len(chunk)
@@ -82,7 +82,9 @@ async def parse_knowledge_upload_form(request: Request) -> FormData:
     try:
         return await parser.parse()
     except _KnowledgeMultipartTooLarge:
-        raise KnowledgeUploadTooLargeError("Uploaded knowledge file exceeds the V1 limit.") from None
+        raise KnowledgeUploadTooLargeError(
+            "Uploaded knowledge file exceeds the V1 limit."
+        ) from None
     except MultiPartException:
         raise KnowledgeUploadValidationError("Multipart fields are invalid.") from None
 

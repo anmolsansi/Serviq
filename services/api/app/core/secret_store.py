@@ -89,7 +89,7 @@ class LocalEncryptedSecretStore:
             raise SecretDecryptionError
         try:
             plaintext = self._fernet.decrypt(ciphertext.encode("ascii")).decode("utf-8")
-        except (InvalidToken, UnicodeDecodeError, ValueError):
+        except InvalidToken, UnicodeDecodeError, ValueError:
             raise SecretDecryptionError from None
         return SecretStr(plaintext)
 
@@ -118,7 +118,7 @@ class LocalEncryptedSecretStore:
             return {"version": 1, "records": {}}
         try:
             payload = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        except OSError, UnicodeDecodeError, json.JSONDecodeError:
             raise SecretDecryptionError from None
         if not isinstance(payload, dict) or payload.get("version") != 1:
             raise SecretDecryptionError

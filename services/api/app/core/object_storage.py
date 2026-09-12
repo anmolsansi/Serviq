@@ -98,10 +98,7 @@ class EvaluationObjectKey:
 
 
 ObjectStorageKey = (
-    KnowledgeRawObjectKey
-    | KnowledgeNormalizedObjectKey
-    | ExportObjectKey
-    | EvaluationObjectKey
+    KnowledgeRawObjectKey | KnowledgeNormalizedObjectKey | ExportObjectKey | EvaluationObjectKey
 )
 
 
@@ -213,7 +210,7 @@ class S3ObjectStorage:
                 ContentType=normalized_content_type,
                 Metadata=safe_metadata,
             )
-        except (BotoCoreError, ClientError):
+        except BotoCoreError, ClientError:
             raise ObjectStorageError from None
 
     def get_object(self, key: ObjectStorageKey) -> StoredObject:

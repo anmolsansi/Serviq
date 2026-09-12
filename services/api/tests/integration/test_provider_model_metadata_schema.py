@@ -196,12 +196,11 @@ def test_provider_and_model_metadata_schema_constraints() -> None:
             )
 
             async with engine.connect() as connection:
+
                 def inspect_columns(sync_connection: Connection) -> set[str]:
                     return {
                         column["name"]
-                        for column in inspect(sync_connection).get_columns(
-                            "provider_connections"
-                        )
+                        for column in inspect(sync_connection).get_columns("provider_connections")
                     }
 
                 columns = await connection.run_sync(inspect_columns)

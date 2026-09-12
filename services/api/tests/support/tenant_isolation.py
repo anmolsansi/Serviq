@@ -134,10 +134,7 @@ async def cleanup_tenant_isolation_fixture(
     # cleanup cannot silently discard possible raw-object obligations. Test fixtures
     # explicitly own their synthetic reservations and may remove them first.
     await session.execute(
-        text(
-            "DELETE FROM knowledge_upload_reservations "
-            "WHERE tenant_id IN (:tenant_a, :tenant_b)"
-        ),
+        text("DELETE FROM knowledge_upload_reservations WHERE tenant_id IN (:tenant_a, :tenant_b)"),
         f.__dict__,
     )
     await session.execute(

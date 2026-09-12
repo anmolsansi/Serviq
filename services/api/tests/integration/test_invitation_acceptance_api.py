@@ -610,9 +610,7 @@ def test_invitation_acceptance_security_and_atomicity(
                         session,
                         user_id=ids["rollback_user"],
                         identity=_identity("rollback@example.com"),
-                        request=InvitationAcceptRequest.model_validate(
-                            {"token": rollback_token}
-                        ),
+                        request=InvitationAcceptRequest.model_validate({"token": rollback_token}),
                     )
 
             async with session_factory() as session:

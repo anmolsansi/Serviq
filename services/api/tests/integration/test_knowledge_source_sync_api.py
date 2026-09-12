@@ -65,15 +65,9 @@ async def _seed_source(
     status: str = "ready",
     sync_version: int = 0,
 ) -> None:
-    source_uri = (
-        "https://docs.example.com/help"
-        if source_type in {"url", "sitemap"}
-        else None
-    )
+    source_uri = "https://docs.example.com/help" if source_type in {"url", "sitemap"} else None
     object_key = (
-        "knowledge/test/source/raw/file.txt"
-        if source_type not in {"url", "sitemap"}
-        else None
+        "knowledge/test/source/raw/file.txt" if source_type not in {"url", "sitemap"} else None
     )
     await session.execute(
         text(
@@ -178,15 +172,11 @@ def test_source_sync_contract_and_tenant_isolation() -> None:
                 assert synced_data["lastSyncedAt"] is None
                 assert synced_data["lastErrorCode"] is None
 
-                file_synced = await client.post(
-                    f"/api/v1/knowledge-sources/{file_id}/sync"
-                )
+                file_synced = await client.post(f"/api/v1/knowledge-sources/{file_id}/sync")
                 assert file_synced.status_code == 202
                 assert file_synced.json()["data"]["syncVersion"] == 1
 
-                disabled = await client.post(
-                    f"/api/v1/knowledge-sources/{disabled_id}/sync"
-                )
+                disabled = await client.post(f"/api/v1/knowledge-sources/{disabled_id}/sync")
                 assert disabled.status_code == 409
                 assert disabled.json() == {
                     "error": {
@@ -195,15 +185,11 @@ def test_source_sync_contract_and_tenant_isolation() -> None:
                     }
                 }
 
-                missing = await client.post(
-                    f"/api/v1/knowledge-sources/{uuid4()}/sync"
-                )
+                missing = await client.post(f"/api/v1/knowledge-sources/{uuid4()}/sync")
                 assert missing.status_code == 404
                 assert missing.json()["error"]["code"] == "KNOWLEDGE_SOURCE_NOT_FOUND"
 
-                foreign = await client.post(
-                    f"/api/v1/knowledge-sources/{foreign_id}/sync"
-                )
+                foreign = await client.post(f"/api/v1/knowledge-sources/{foreign_id}/sync")
                 assert foreign.status_code == 404
                 assert foreign.json() == missing.json()
 
@@ -255,10 +241,7 @@ def test_source_sync_contract_and_tenant_isolation() -> None:
                 disabled_events = int(
                     (
                         await session.execute(
-                            text(
-                                "SELECT count(*) FROM outbox_events "
-                                "WHERE aggregate_id=:id"
-                            ),
+                            text("SELECT count(*) FROM outbox_events WHERE aggregate_id=:id"),
                             {"id": str(disabled_id)},
                         )
                     ).scalar_one()
@@ -285,9 +268,7 @@ def test_source_sync_contract_and_tenant_isolation() -> None:
                 transport=transport,
                 base_url="http://test",
             ) as client:
-                denied = await client.post(
-                    f"/api/v1/knowledge-sources/{url_id}/sync"
-                )
+                denied = await client.post(f"/api/v1/knowledge-sources/{url_id}/sync")
                 assert denied.status_code == 403
                 assert denied.json()["error"]["code"] == "FORBIDDEN"
         finally:
@@ -349,14 +330,18 @@ def test_concurrent_source_sync_allocates_distinct_versions() -> None:
                 ).scalar_one()
                 assert version == 9
                 event_versions = (
-                    await session.execute(
-                        text(
-                            "SELECT (payload->>'syncVersion')::int "
-                            "FROM outbox_events WHERE aggregate_id=:id ORDER BY 1"
-                        ),
-                        {"id": str(source_id)},
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT (payload->>'syncVersion')::int "
+                                "FROM outbox_events WHERE aggregate_id=:id ORDER BY 1"
+                            ),
+                            {"id": str(source_id)},
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 assert event_versions == [8, 9]
         finally:
             _clear_overrides()
@@ -404,9 +389,7 @@ def test_source_sync_rolls_back_when_outbox_staging_fails(
                 transport=transport,
                 base_url="http://test",
             ) as client:
-                response = await client.post(
-                    f"/api/v1/knowledge-sources/{source_id}/sync"
-                )
+                response = await client.post(f"/api/v1/knowledge-sources/{source_id}/sync")
             assert response.status_code == 500
 
             async with session_factory() as session:
@@ -425,10 +408,7 @@ def test_source_sync_rolls_back_when_outbox_staging_fails(
                 count = int(
                     (
                         await session.execute(
-                            text(
-                                "SELECT count(*) FROM outbox_events "
-                                "WHERE aggregate_id=:id"
-                            ),
+                            text("SELECT count(*) FROM outbox_events WHERE aggregate_id=:id"),
                             {"id": str(source_id)},
                         )
                     ).scalar_one()

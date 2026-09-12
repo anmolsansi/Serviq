@@ -480,9 +480,7 @@ def test_provider_connectivity_route_persistence_security_and_isolation(
                 assert error_code is None
 
                 # A provider owned by another tenant is indistinguishable from absent.
-                foreign = await client.post(
-                    f"/api/v1/providers/{ids['foreign_provider']}/test"
-                )
+                foreign = await client.post(f"/api/v1/providers/{ids['foreign_provider']}/test")
                 assert foreign.status_code == 404
                 assert foreign.json()["error"]["code"] == "PROVIDER_NOT_FOUND"
 
@@ -510,17 +508,20 @@ def test_provider_connectivity_route_persistence_security_and_isolation(
             assert RAW_PROVIDER_DETAIL not in caplog.text
             async with session_factory() as session:
                 stored_codes = (
-                    await session.execute(
-                        text(
-                            "SELECT last_error_code FROM provider_connections "
-                            "WHERE tenant_id=:tenant"
-                        ),
-                        {"tenant": ids["tenant_a"]},
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT last_error_code FROM provider_connections "
+                                "WHERE tenant_id=:tenant"
+                            ),
+                            {"tenant": ids["tenant_a"]},
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
             assert all(
-                code is None or RAW_PROVIDER_DETAIL not in str(code)
-                for code in stored_codes
+                code is None or RAW_PROVIDER_DETAIL not in str(code) for code in stored_codes
             )
         finally:
             _clear_overrides()

@@ -291,9 +291,7 @@ def test_cleanup_replay_is_idempotent_tenant_safe_and_bounded(
                 assert attempt_2.attempt_count == 2
                 row = (
                     await session.execute(
-                        text(
-                            "SELECT next_attempt_at FROM knowledge_upload_cleanups WHERE id=:id"
-                        ),
+                        text("SELECT next_attempt_at FROM knowledge_upload_cleanups WHERE id=:id"),
                         {"id": retry_cleanup_id},
                     )
                 ).one()

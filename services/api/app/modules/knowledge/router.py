@@ -106,7 +106,7 @@ async def create_knowledge_source(
 
     try:
         request = KnowledgeSourceCreateRequest.model_validate(await http_request.json())
-    except (ValidationError, ValueError, TypeError):
+    except ValidationError, ValueError, TypeError:
         return _error(422, "VALIDATION_ERROR", "Knowledge source request is invalid.")
 
     try:

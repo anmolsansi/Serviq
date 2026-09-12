@@ -361,12 +361,8 @@ def test_model_configuration_crud_validation_authorization_and_reference_protect
                 assert duplicate.json()["error"]["code"] == "MODEL_ALIAS_CONFLICT"
 
                 for payload in (
-                    _create_payload(
-                        ids["provider_active"], alias="   ", upstream_model="model"
-                    ),
-                    _create_payload(
-                        ids["provider_active"], alias="x" * 81, upstream_model="model"
-                    ),
+                    _create_payload(ids["provider_active"], alias="   ", upstream_model="model"),
+                    _create_payload(ids["provider_active"], alias="x" * 81, upstream_model="model"),
                     _create_payload(
                         ids["provider_active"], alias="blank-upstream", upstream_model="   "
                     ),
@@ -477,9 +473,7 @@ def test_model_configuration_crud_validation_authorization_and_reference_protect
                 # active status. Re-enabling against that provider is not.
                 async with session_factory() as session, session.begin():
                     await session.execute(
-                        text(
-                            "UPDATE provider_connections SET status='invalid' WHERE id=:id"
-                        ),
+                        text("UPDATE provider_connections SET status='invalid' WHERE id=:id"),
                         {"id": ids["provider_alt"]},
                     )
                 disabled = await client.patch(
@@ -543,16 +537,11 @@ def test_model_configuration_crud_validation_authorization_and_reference_protect
                     )
                 referenced_delete = await client.delete(f"/api/v1/models/{generation_id}")
                 assert referenced_delete.status_code == 409
-                assert (
-                    referenced_delete.json()["error"]["code"]
-                    == "MODEL_CONFIGURATION_IN_USE"
-                )
+                assert referenced_delete.json()["error"]["code"] == "MODEL_CONFIGURATION_IN_USE"
 
                 async with session_factory() as session, session.begin():
                     await session.execute(
-                        text(
-                            "DELETE FROM model_configuration_references WHERE reference_id=:id"
-                        ),
+                        text("DELETE FROM model_configuration_references WHERE reference_id=:id"),
                         {"id": reference_id},
                     )
                 deleted = await client.delete(f"/api/v1/models/{generation_id}")

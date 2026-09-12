@@ -1,0 +1,305 @@
+name: Temporary V1.3.04D Build Guide updater
+
+on:
+  push:
+    branches:
+      - fix/v1.0.28-sqlalchemy-asyncio-dependencies
+    paths:
+      - '.github/workflows/temp-update-build-guide-v1304d.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-build-guide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/v1.0.28-sqlalchemy-asyncio-dependencies
+
+      - name: Update cumulative Build Guide safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/SERVIQ_BUILD_GUIDE.md")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  """The running knowledge worker publishes durable outbox events and consumes URL/file
+sync work. It stores fetched content and creates a document plus a durable parse
+event. The source remains `syncing`: no parse consumer persists normalized output,
+invokes the chunker, indexes vectors, or makes the source ready. PDF/Markdown/text/
+HTML normalization and heading-aware chunking are implemented pure libraries.
+Sitemap registration exists, but its sync currently fails as unsupported.
+""",
+                  """The running knowledge worker publishes durable outbox events, consumes URL/file
+sync work, and continuously reconciles due failed-upload cleanup obligations. It
+stores fetched content and creates a document plus a durable parse event. The source
+remains `syncing`: no parse consumer persists normalized output, invokes the chunker,
+indexes vectors, or makes the source ready. PDF/Markdown/text/HTML normalization and
+heading-aware chunking are implemented pure libraries. Sitemap registration exists,
+but its sync currently fails as unsupported.
+""",
+              ),
+              (
+                  """The audit also identified four runtime/operational gaps: frozen API/worker installs
+omit `greenlet` on macOS arm64; file byte checks happen after multipart spooling;
+gateway 422 validation responses can echo raw embedding input; and the durable
+upload cleanup sweep has no scheduled runtime caller. The current source retains
+these findings for implementation in the canonical backlog. Main branch protection
+is still absent, tracked by existing GitHub issue #205.
+""",
+                  """The September 12 audit identified several runtime/operational gaps. The current
+implementation branch resolves the portable async SQLAlchemy dependency gap
+(V1.0.28), private gateway validation reflection/body-boundary gap (V1.3.11A), and
+the missing durable upload-cleanup runtime caller (V1.3.04D). File byte/concurrency
+admission still happens after multipart spooling (V1.3.04C), and main branch
+protection is still absent under existing GitHub issue #205. These remaining gaps
+must not be treated as resolved by the cleanup work.
+""",
+              ),
+              (
+                  """The default worker runs the outbox publisher and sync consumer. It stops at the
+durable parse handoff; the transformation libraries are not yet called by a
+parse/index pipeline. Local Compose and CI/security infrastructure exist.
+""",
+                  """The default worker runs the outbox publisher, the knowledge-sync consumer, and the
+bounded durable upload-cleanup scheduler. It still stops at the durable parse
+handoff; the transformation libraries are not yet called by a parse/index pipeline.
+Local Compose and CI/security infrastructure exist.
+""",
+              ),
+              (
+                  """Continue from the existing foundation. Fix the proven async-dependency and gateway
+validation defects; enforce GitHub #205; freeze the session/principal contract.
+Connect automatic upload cleanup, bounded raw-object lifecycle and parse persistence
+before V1.3.13. V1.3.12 can use ADR-027's 1536 dimensions but still needs an exact
+vector index/operator and safe migration contract.
+""",
+                  """Continue from the existing foundation. The current implementation branch resolves
+the proven async-dependency, private-gateway validation, and automatic failed-upload
+cleanup-caller defects. GitHub #205, the session/principal contract, pre-spool
+multipart admission, URL raw-object accounting, and parse persistence remain open
+work. Complete the ingestion/index handoff before V1.3.13. V1.3.12 can use
+ADR-027's 1536 dimensions but still needs an exact vector index/operator and safe
+migration contract.
+""",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"Expected exactly one Build Guide match, found {count}: {old[:80]!r}"
+                  )
+              text = text.replace(old, new, 1)
+
+          marker = "# V1.3.04D — Worker-owned durable failed-upload cleanup runtime"
+          if marker in text:
+              raise SystemExit("V1.3.04D Build Guide section already exists")
+
+          section = r'''
+
+---
+
+# V1.3.04D — Worker-owned durable failed-upload cleanup runtime
+
+## What problem this closes
+
+File-backed knowledge uploads already had a durable PostgreSQL cleanup state machine,
+including `prepared`, `pending`, `referenced`, `succeeded`, and `exhausted` states.
+The API could perform immediate best-effort cleanup after a failed request, but the
+audited system had no production process continuously replaying obligations that
+survived request failure or process restart. A failed DELETE, an ambiguous object
+PUT, or a process crash could therefore leave a durable cleanup record waiting with
+no normal runtime caller.
+
+V1.3.04D closes that caller gap. It does not change the public knowledge-source API
+or create a second cleanup contract.
+
+## Why the worker owns cleanup
+
+The durable worker already owns background work that must survive API request and
+process lifetimes. The cleanup scheduler therefore runs in `services/worker`, next
+to outbox publication and knowledge-sync consumption.
+
+Two tempting alternatives were rejected. Running cleanup from FastAPI lifespan
+would make recovery depend on API process availability. Importing API source modules
+directly into the worker would couple two independently packaged Python services.
+A new Kafka cleanup topic was also unnecessary because PostgreSQL already contains
+the durable source of truth and retry schedule.
+
+ADR-028 records this ownership decision:
+
+```text
+docs/architecture-decisions/ADR-028-worker-owned-knowledge-upload-cleanup-scheduler.md
+```
+
+## Where the implementation lives
+
+The production reconciler is:
+
+```text
+services/worker/app/jobs/knowledge_upload_cleanup.py
+```
+
+Worker composition is:
+
+```text
+services/worker/app/main.py
+```
+
+The worker's existing S3-compatible boundary now exposes only the two additional
+operations cleanup needs:
+
+```text
+exists(key)
+delete_object(key)
+```
+
+Those methods live in:
+
+```text
+services/worker/app/core/object_storage.py
+```
+
+No object-list or arbitrary-prefix deletion capability was added.
+
+## How one cleanup cycle works
+
+Each poll selects only a bounded number of due `prepared` or `pending` rows. The
+query uses PostgreSQL `FOR UPDATE SKIP LOCKED`, allowing more than one worker process
+to share the cleanup table without deliberately claiming the same due row in the
+same claim window.
+
+For each row, the worker reconstructs the only valid raw-object key from the stored
+tenant, source, and object UUIDs:
+
+```text
+tenants/{tenantId}/knowledge/{sourceId}/raw/{objectId}
+```
+
+If the persisted key does not exactly match that generated identity, the obligation
+is exhausted without touching object storage. This prevents a corrupted cleanup row
+from becoming an arbitrary delete primitive.
+
+Inside the short claim transaction the worker increments the attempt counter,
+changes the row to `pending`, and advances `next_attempt_at`. The transaction then
+commits before any object-storage network call. A slow or unavailable storage
+service therefore does not keep a PostgreSQL row lock open.
+
+For an ambiguous PUT outcome, the worker first performs a metadata-only HEAD/exists
+check. A missing object or unavailable HEAD is not treated as proof that cleanup is
+complete. It consumes one bounded observation attempt. A visible object is deleted
+through the idempotent storage operation. After confirmed cleanup, a new short
+transaction marks the obligation `succeeded` and releases its matching tenant-scoped
+`knowledge_upload_reservations` row.
+
+After three unresolved reconciliation attempts, the obligation becomes `exhausted`.
+Its reservation stays charged because Serviq still cannot prove that the possible
+raw object is gone. `exhausted` is therefore operator-visible durable state rather
+than silent quota forgiveness.
+
+## Restart and concurrency behavior
+
+The retry lease is persisted before storage I/O. If a worker crashes after claiming
+an item, another worker does not need any in-memory handoff. Once the stored
+`next_attempt_at` becomes due, a later process can recover the same obligation from
+PostgreSQL.
+
+Terminal `referenced`, `succeeded`, and `exhausted` rows are not selected as new due
+work. A successfully referenced source is therefore never intentionally deleted by
+the scheduler.
+
+## Logging and privacy
+
+Cleanup logs use stable event names, cleanup/tenant IDs, attempt counts, outcomes,
+and aggregate batch counts. They do not include object keys, filenames, upload
+bodies, bucket names, storage endpoints, credentials, or raw infrastructure
+exception text. Loop-level infrastructure failure uses a fixed safe log event and
+retries on the next poll.
+
+## How it is tested
+
+Unit coverage verifies the new storage HEAD/delete boundary, missing-object behavior,
+idempotent deletion, provider failure normalization, key validation, worker loop
+cancellation, process composition, and secret-safe failure logging.
+
+The existing `Knowledge Quota Integration` workflow now also installs the worker and
+runs:
+
+```text
+services/worker/tests/integration/test_knowledge_upload_cleanup.py
+```
+
+against real PostgreSQL and the repository's S3-compatible storage service. The
+integration suite proves:
+
+- a due pending cleanup deletes the synthetic orphan and releases its reservation;
+- a stale ambiguous `prepared` obligation records a retry instead of false success;
+- a fresh database session can recover that obligation after the persisted deadline,
+  demonstrating restart recovery without process memory;
+- three unresolved observations become `exhausted` while quota remains held;
+- a mismatched generated object key exhausts safely without a storage delete.
+
+Normal PR validation still requires Ruff, strict mypy, the complete test suite,
+Compose validation, PostgreSQL migration/integration, object-storage integration,
+live Keycloak validation, Security, Knowledge Sync, Knowledge Quota, and Outbox
+Publisher workflows. V1.3.04D is not complete merely because the scheduler file
+exists.
+
+## Operational use
+
+Routine cleanup does not require a tenant-facing endpoint or an operator to call a
+function manually. Running the normal Serviq worker starts the cleanup loop with the
+other durable jobs.
+
+For diagnosis and failure-injection instructions, use:
+
+```text
+docs/KNOWLEDGE_UPLOAD_CONSISTENCY_RUNBOOK.md
+```
+
+Only trusted internal tooling should inspect or recover an exhausted obligation.
+Do not accept a user/operator supplied raw object key as the destructive input.
+
+## Rollback and compatibility
+
+V1.3.04D adds no database migration and changes no public request/response contract.
+The scheduler can be removed from worker composition without a schema rollback, but
+doing so recreates the original operational gap: unresolved rows remain durable and
+stop recovering automatically.
+
+The existing API request-time cleanup remains as a fast path. The worker is the
+long-lived recovery path.
+
+## What remains intentionally unresolved
+
+This ticket does not solve V1.3.04C pre-parser multipart admission. Large multipart
+file parts can still be spooled before Serviq's file-byte/concurrency checks run.
+It also does not add V1.3.07A URL raw-version byte accounting/recovery, parse-event
+consumption/index handoff, automatic requeue of `exhausted` cleanup, retention purge,
+or a new cleanup operations UI. Those remain separate contracts and tickets.
+'''
+
+          path.write_text(text.rstrip() + section + "\n", encoding="utf-8")
+          PY
+
+      - name: Commit permanent documentation and remove helper
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-update-build-guide-v1304d.yml
+          git add docs/SERVIQ_BUILD_GUIDE.md
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m "docs(knowledge): explain durable cleanup runtime [37/40] (#225)"
+          git push origin HEAD:fix/v1.0.28-sqlalchemy-asyncio-dependencies

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
-from starlette.datastructures import FormData
+from starlette.datastructures import FormData, Headers
 from starlette.formparsers import MultiPartException, MultiPartParser
 from starlette.requests import Request
 
@@ -27,8 +27,23 @@ class _KnowledgeMultipartTooLarge(MultiPartException):
 class _KnowledgeMultipartParser(MultiPartParser):
     """Starlette multipart parser with an explicit streamed file-byte ceiling."""
 
-    def __init__(self, *args: object, max_file_bytes: int, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+    def __init__(
+        self,
+        headers: Headers,
+        stream: AsyncGenerator[bytes, None],
+        *,
+        max_files: int | float,
+        max_fields: int | float,
+        max_part_size: int,
+        max_file_bytes: int,
+    ) -> None:
+        super().__init__(
+            headers,
+            stream,
+            max_files=max_files,
+            max_fields=max_fields,
+            max_part_size=max_part_size,
+        )
         self._max_file_bytes = max_file_bytes
         self._current_file_bytes = 0
 
@@ -37,14 +52,14 @@ class _KnowledgeMultipartParser(MultiPartParser):
         super().on_part_begin()
 
     def on_part_data(self, data: bytes, start: int, end: int) -> None:
-        if self._current_part.file is not None:  # noqa: SLF001 - pinned Starlette parser hook
+        if self._current_part.file is not None:
             self._current_file_bytes += end - start
             if self._current_file_bytes > self._max_file_bytes:
                 raise _KnowledgeMultipartTooLarge("Knowledge upload file exceeded the V1 limit.")
         super().on_part_data(data, start, end)
 
 
-async def _bounded_request_stream(request: Request) -> AsyncIterator[bytes]:
+async def _bounded_request_stream(request: Request) -> AsyncGenerator[bytes, None]:
     received = 0
     async for chunk in request.stream():
         received += len(chunk)

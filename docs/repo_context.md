@@ -218,7 +218,7 @@ vulnerabilities in the audited main run. Green CI is not deployed acceptance.
 - Durable failed-upload cleanup now has a worker-owned runtime scheduler (V1.3.04D resolved); URL fetch bytes still lack equivalent accounting/recovery (V1.3.07A).
 - Private gateway validation is redacted and authenticated before body parsing
   (V1.3.11A resolved); real semantic embedding transport remains V1.3.11B.
-- Main has no branch protection/rulesets; reuse GitHub #205 (V1.0.29).
+- Main enforces branch protection, required status checks, and conditional integration gates (V1.0.29 resolved).
 - Local encrypted secret storage uses file replacement plus an in-process lock.
   Production multi-process secret storage and rotation require a decision.
 - Source-specific runbooks exist; comprehensive telemetry, privacy/retention,

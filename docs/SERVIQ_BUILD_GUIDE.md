@@ -35,9 +35,9 @@ The September 12 audit identified several runtime/operational gaps. The current
 implementation branch resolves the portable async SQLAlchemy dependency gap
 (V1.0.28), private gateway validation reflection/body-boundary gap (V1.3.11A), and
 the missing durable upload-cleanup runtime caller (V1.3.04D). File byte/concurrency
-admission still happens after multipart spooling (V1.3.04C), and main branch
-protection is still absent under existing GitHub issue #205. These remaining gaps
-must not be treated as resolved by the cleanup work.
+admission still happens after multipart spooling (V1.3.04C). The main branch
+protection gap (GitHub issue #205 / V1.0.29) is now resolved with required
+status checks and conditional integration gates.
 
 ### Running and checking the current foundation
 

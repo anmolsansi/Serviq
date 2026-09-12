@@ -240,7 +240,7 @@ def test_fourth_concurrent_upload_is_rejected_before_body_receive(
                 )
             assert isinstance(response, JSONResponse)
             assert response.status_code == 429
-            payload = json.loads(response.body)
+            payload = json.loads(bytes(response.body))
             assert payload["error"]["code"] == "KNOWLEDGE_UPLOAD_CONCURRENCY_LIMITED"
             assert not body_received
 

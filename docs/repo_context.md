@@ -15,10 +15,11 @@ uses synthetic delivery and payment/refund data and must not move real money.
 
 The API registers functional domain routers but lacks the authentication/session
 composition that populates their trusted principal dependencies. The worker
-publishes outbox events and consumes knowledge sync work through durable parse
-handoff. Normalization and chunking are pure libraries awaiting activation.
-Embeddings have a private fake-only gateway route. All three web apps are static
-scaffolds. A successful library test or metadata record is not end-to-end acceptance.
+publishes outbox events, consumes knowledge sync work through durable parse handoff,
+and now continuously reconciles durable failed-upload cleanup obligations.
+Normalization and chunking are pure libraries awaiting activation. Embeddings have
+a private fake-only gateway route. All three web apps are static scaffolds. A
+successful library test or metadata record is not end-to-end acceptance.
 
 ## Stack and folder map
 
@@ -42,7 +43,7 @@ Manifest/config evidence: root and app `package.json`, `.nvmrc`, service
 | `services/api/app/modules` | Organizations, workforce, tenancy, invitations, members, providers, knowledge, health |
 | `services/api/alembic/versions` | 12 migrations through `20260902_0012` outbox |
 | `services/worker/app/consumers` | Knowledge sync and retry-topic consumer |
-| `services/worker/app/jobs` | Outbox publisher and knowledge fetch/document/parse-handoff job |
+| `services/worker/app/jobs` | Outbox publisher, knowledge fetch/document/parse handoff, and durable upload-cleanup reconciliation |
 | `services/worker/app/core` | Fetch/normalization/chunking/storage/broker/config primitives |
 | `services/llm-gateway/app` | C-4 models, provider generation adapters, connectivity and fake embedding routes |
 | `packages/contracts/src` | Shared API/auth/event contract foundations |
@@ -79,7 +80,8 @@ Reuse these boundaries:
 - `services/api/app/modules/tenancy/service.py`: active membership and effective permissions.
 - `services/api/app/core/rate_limits.py`: shared Valkey limiters, not provider-owned copies.
 - `services/api/app/core/object_storage.py`: typed tenant/source keys and object operations.
-- `services/api/app/modules/knowledge/cleanup.py`: bounded durable cleanup replay.
+- `services/api/app/modules/knowledge/cleanup.py`: request-time and deterministic cleanup replay semantics.
+- `services/worker/app/jobs/knowledge_upload_cleanup.py`: production bounded cleanup scheduler/reconciler using the same durable table contract.
 - `services/worker/app/core/public_knowledge_fetch.py`: bounded SSRF-safe fetch.
 - `services/worker/app/core/knowledge_normalization.py`: pure immutable segments.
 - `services/worker/app/core/knowledge_chunking.py`: pure deterministic chunk/provenance policy.
@@ -158,8 +160,16 @@ uses manual offsets, bounded retry delays and DLQ. It fetches URL/file bytes and
 commits a versioned document plus parse event. It keeps the source `syncing` until
 later indexing succeeds. Sitemap sync is deliberately unsupported (ADR-023).
 
-Upload durability/quota primitives exist, but the cleanup sweep is unscheduled;
-pre-parser resource admission and URL raw-version accounting are missing.
+Failed upload cleanup is now an active worker responsibility. The worker claims a
+bounded due batch from `knowledge_upload_cleanups` with `FOR UPDATE SKIP LOCKED`,
+advances the durable attempt/lease before object-storage I/O, regenerates the exact
+tenant/source/object key, handles ambiguous PUT outcomes with HEAD before DELETE,
+and records success/retry/exhaustion in short follow-up transactions. Confirmed
+terminal cleanup releases the matching reservation; unresolved/exhausted work
+continues to hold quota. Restart recovery depends only on durable `next_attempt_at`
+state, not process memory. Pre-parser multipart resource admission and URL raw-version
+accounting remain missing (V1.3.04C / V1.3.07A).
+
 V1.3.09A explicitly owns parse-event consumption/persistence/index handoff.
 ADR-024/025 normalizers and ADR-026 chunker must be reused, not reimplemented.
 
@@ -184,6 +194,9 @@ Run one Python test from its service: `uv run pytest tests/test_database.py`.
 Real integration tests require the named `SERVIQ_*_INTEGRATION=1` switches and
 actual services. Test fixtures use synthetic values; do not enable integrations
 against a shared database. API tenancy helpers live in `tests/support/tenant_isolation.py`.
+For durable cleanup specifically, `SERVIQ_KNOWLEDGE_CLEANUP_INTEGRATION=1` enables
+`services/worker/tests/integration/test_knowledge_upload_cleanup.py` in the existing
+Knowledge Quota Integration workflow with real PostgreSQL and S3-compatible storage.
 
 The current audit ran 315 passing tests and 84 locally skipped infrastructure tests,
 web lint/typecheck and all Ruff/mypy checks. Four root Vitest smoke/config tests
@@ -192,18 +205,17 @@ are real frontend tests; Playwright only lists zero tests. `make e2e` and
 for all three apps; default Turbopack builds were environment-blocked.
 
 Current-main CI and Security passed, including PostgreSQL migrations, object
-storage and six live Keycloak validator tests. Worker/quota integration evidence
-is from earlier path-filtered PR runs, not rerun on this main SHA. Dependency
-audits found no known vulnerabilities in this run. See the audit for exact links
-and limits; green CI is not deployed acceptance.
+storage and six live Keycloak validator tests. The V1.3.04D implementation branch
+additionally passed the dedicated real PostgreSQL + S3 cleanup recovery evidence;
+full exact-head CI/Security remains the merge gate. Dependency audits found no known
+vulnerabilities in the audited main run. Green CI is not deployed acceptance.
 
 ## Landmines, unknowns and next work
 
 - Explicit `sqlalchemy[asyncio]` dependency ensures greenlet is available across all environments including macOS arm64 (V1.0.28 resolved).
 - Workforce auth primitives are not wired into requests (V1.1.16).
 - Multipart parsing precedes file-byte/concurrency enforcement (V1.3.04C).
-- Upload cleanup lacks a runtime scheduler; URL fetch bytes lack equivalent
-  accounting/recovery (V1.3.04D / V1.3.07A).
+- Durable failed-upload cleanup now has a worker-owned runtime scheduler (V1.3.04D resolved); URL fetch bytes still lack equivalent accounting/recovery (V1.3.07A).
 - Private gateway validation is redacted and authenticated before body parsing
   (V1.3.11A resolved); real semantic embedding transport remains V1.3.11B.
 - Main has no branch protection/rulesets; reuse GitHub #205 (V1.0.29).

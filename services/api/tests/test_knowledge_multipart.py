@@ -84,7 +84,7 @@ def test_parser_stops_oversized_file_and_closes_tempfile() -> None:
         boundary = "serviq-boundary"
         body = _multipart_body(boundary=boundary, file_bytes=b"12345")
 
-        async def stream() -> AsyncGenerator[bytes, None]:
+        async def stream() -> AsyncGenerator[bytes]:
             yield body
 
         tempfile = SpooledTemporaryFile[bytes]()

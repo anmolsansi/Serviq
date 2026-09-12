@@ -13,6 +13,7 @@ from app.schemas import MAX_EMBEDDING_INPUT_CHARS
 
 client = TestClient(app)
 _INPUT_SENTINEL = "raw-private-knowledge-must-not-leak"
+_SECRET_SENTINEL = "provider-secret-must-not-leak"
 
 
 @pytest.fixture
@@ -50,6 +51,33 @@ def test_validation_error_redacts_rejected_embedding_input(
         }
     }
     assert _INPUT_SENTINEL not in response.text
+
+
+def test_validation_error_redacts_rejected_provider_secret(
+    auth_headers: dict[str, str],
+) -> None:
+    rejected_secret = _SECRET_SENTINEL + ("x" * 4096)
+
+    response = client.post(
+        "/internal/v1/provider-connectivity-test",
+        headers=auth_headers,
+        json={
+            "tenantId": "00000000-0000-0000-0000-000000000011",
+            "provider": "openai",
+            "apiKey": rejected_secret,
+            "correlationId": "v1.3.11a-secret-redaction-test",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "code": "INVALID_REQUEST",
+            "message": "Request validation failed.",
+        }
+    }
+    assert _SECRET_SENTINEL not in response.text
+    assert rejected_secret not in response.text
 
 
 def test_unauthorized_malformed_body_is_rejected_before_validation(

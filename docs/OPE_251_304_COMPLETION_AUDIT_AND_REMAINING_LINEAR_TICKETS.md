@@ -1,5 +1,13 @@
 # Serviq OPE-251–OPE-304 Completion Audit and Remaining Linear Backlog
 
+> **Historical audit:** The counts and current-state claims below are the 2026-08-22
+> snapshot. For the refreshed 2026-09-12 audit at `3e1b9aa`, use
+> [SYSTEM_AUDIT_2026-09-12.md](SYSTEM_AUDIT_2026-09-12.md),
+> [repo_context.md](repo_context.md), and the
+> [canonical remaining inventory](SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md).
+> Do not recreate the completed tickets below or use this historical test count
+> as current release evidence.
+
 > Audited 2026-08-22 against local/remote `main` commit `258d189`, live
 > Linear, live GitHub pull requests and workflow runs, the codebase knowledge
 > graph, current tests, repository specifications, and the supplied staged

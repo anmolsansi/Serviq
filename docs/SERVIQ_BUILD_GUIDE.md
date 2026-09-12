@@ -1,5 +1,93 @@
 # Serviq — Plain-Language Product and Build Guide
 
+## Current application status — audited 2026-09-12
+
+At `main` commit `3e1b9aa`, Serviq has tested backend building blocks, but a
+customer cannot yet complete a support conversation. All three web pages are
+scaffolds. The detailed evidence and 50 audit checks are in
+[the system audit](SYSTEM_AUDIT_2026-09-12.md); the current engineering map is
+[repo_context.md](repo_context.md), and the reconciled work inventory is
+[SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md](SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md).
+
+The running knowledge worker publishes durable outbox events and consumes URL/file
+sync work. It stores fetched content and creates a document plus a durable parse
+event. The source remains `syncing`: no parse consumer persists normalized output,
+invokes the chunker, indexes vectors, or makes the source ready. PDF/Markdown/text/
+HTML normalization and heading-aware chunking are implemented pure libraries.
+Sitemap registration exists, but its sync currently fails as unsupported.
+
+The embedding gateway uses a deterministic fake at `POST /internal/v1/embeddings`.
+ADR-027 freezes `serviq-embedding-v1`, 1536 dimensions, 100 inputs per request and
+32,000 characters per input. These hash-derived vectors exercise contracts; they
+do not provide semantic search. Vector indexing, real embeddings, retrieval,
+customer sessions/messages/SSE, the agent, tools/policy/approval, human inbox,
+analytics/privacy and usable product screens remain development work.
+
+Authentication requires special care: the OIDC validator and tenant/permission
+services exist, but `services/api/app/main.py` does not populate the trusted
+request state consumed by `app/core/principal.py`. API tests inject that state
+through dependency overrides. Live Keycloak tests prove token validation, not
+browser login or an authenticated API journey. V1.1.16 now tracks this missing
+connection; V1.9.02 must consume its server session contract.
+
+The audit also identified four runtime/operational gaps: frozen API/worker installs
+omit `greenlet` on macOS arm64; file byte checks happen after multipart spooling;
+gateway 422 validation responses can echo raw embedding input; and the durable
+upload cleanup sweep has no scheduled runtime caller. The current source retains
+these findings for implementation in the canonical backlog. Main branch protection
+is still absent, tracked by existing GitHub issue #205.
+
+### Running and checking the current foundation
+
+Use the repository toolchain: Node `24.18.0` (`.nvmrc`), Python 3.14, pnpm
+`10.15.0`, and the committed lockfiles. CI uses Python `3.14.6` and uv `0.12.9`.
+Select pnpm explicitly with `corepack prepare pnpm@10.15.0 --activate`, then run
+`make setup`. Noninteractive dependency refreshes can use `CI=true make setup`.
+Do not accept an unexpected package-manager-generated policy change as a source
+change. The audit removed transient pnpm and Next.js generated-file edits.
+
+`make dev` starts infrastructure only; application processes need separate terminals.
+Provide reviewed local environment values using `.env.example` and
+`infra/docker/.env.example`; do not assume service `load_settings` reads a dotenv
+file. Set `KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD` for Compose. Start the API on 8000,
+gateway on 8100, and each web app on a separate port:
+
+```sh
+# From the repository root, one command per terminal after exporting local settings:
+cd services/api && uv run uvicorn app.main:app --reload --port 8000
+cd services/llm-gateway && uv run uvicorn app.main:app --reload --port 8100
+pnpm --filter @serviq/client-console dev --port 3000
+pnpm --filter @serviq/customer-web dev --port 3001
+pnpm --filter @serviq/platform-console dev --port 3002
+```
+
+Use another port for the client console when the optional Grafana profile occupies
+3000. The Compose Redpanda profile advertises `redpanda:9092` inside its Docker
+network and publishes no host Kafka port. A host worker needs a deliberately
+configured reachable broker/listener; the integration workflows demonstrate a
+separate loopback-advertised test broker. Starting `make dev` alone does not provide
+that host-worker connection. Default Keycloak also needs realm/client configuration;
+the test realm is mounted only by the dedicated integration harness.
+
+For quality checks run `make lint`, `make typecheck`, and `make test`. For individual
+Python suites, run `uv run pytest -o addopts='' -q -ra` within that service.
+Local results were 315 passed and 84 skipped: API 87/76, worker 120/8, gateway
+104/0, frontend 4/0. Playwright configuration lists zero browser tests;
+`make e2e` and `make load-test` intentionally fail. Docker was unavailable locally,
+so no local database migration or real infrastructure test is claimed.
+
+Current-main CI separately passed PostgreSQL migration/integration, object storage
+and live Keycloak checks; Security passed. Local production dependency audits found
+no known vulnerabilities. Default Turbopack builds were blocked by subprocess port
+binding in the execution environment; all three apps built with
+`pnpm --filter './apps/*' exec next build --webpack`. That alternate compiler result
+does not certify the default build command. No staging deployment, browser support
+journey, load result, backup/restore or production rollback was verified.
+
+The sections below explain individual ticket boundaries and design intent. Their
+historical validation counts do not override this current audit. A completed
+library ticket does not imply that its downstream application flow is complete.
+
 **Purpose of this document**  
 This is the single, cumulative explanation of what we are building in Serviq, what we have already changed in the codebase, how the pieces fit together, why each technical decision exists, and what those decisions improve.
 
@@ -996,55 +1084,30 @@ This is why we separate application surfaces and why the architecture already de
 
 ## 37. Already created in the repository
 
-At this stage, the actual implementation includes the project/tooling foundation and the three frontend application shells.
+As of 2026-09-12, the repository includes the monorepo and three web scaffolds,
+FastAPI services, twelve database migrations, workforce OIDC/RBAC services,
+organization/invitation/member APIs, provider/model management, file/URL knowledge
+admission, durable upload intents/quotas, transactional outbox publication and
+URL/file sync fetching. Pure normalizers and the deterministic chunker are complete;
+the internal embedding route uses the ADR-027 fake profile.
 
-The following concepts are already represented in code/configuration:
-
-- pnpm monorepo workspace;
-- Node environment definition;
-- Git ignore rules;
-- editor formatting rules;
-- Client Console application shell;
-- Customer Web application shell;
-- Platform Console application shell;
-- strict TypeScript configuration;
-- Next.js App Router foundations;
-- lint configuration;
-- Tailwind/PostCSS setup;
-- minimal layouts and placeholder pages;
-- product decision records for the first reference demo.
-
----
+The default worker runs the outbox publisher and sync consumer. It stops at the
+durable parse handoff; the transformation libraries are not yet called by a
+parse/index pipeline. Local Compose and CI/security infrastructure exist.
 
 ## 38. Not implemented yet
 
-The existence of an application folder does **not** mean the corresponding product is finished.
+The missing work includes the actual workforce HTTP session/principal handoff,
+normalized-output persistence, semantic embeddings, vector indexing/retrieval,
+customer sessions/conversations/SSE, bounded agent execution, synthetic tools,
+policy/confirmation/approval, human inbox, analytics/privacy, product UIs and
+application telemetry. The current audit also records resource/privacy/portability
+fixes and unenforced merge checks.
 
-We have not yet implemented the major runtime systems, including:
-
-- authentication;
-- tenant creation;
-- role-based permissions;
-- databases;
-- customer/order/delivery synthetic data services;
-- real support chat;
-- AI model routing;
-- RAG knowledge ingestion;
-- retrieval;
-- agent state machine;
-- policy engine;
-- confirmation and approval flows;
-- human support inbox;
-- analytics;
-- audit UI;
-- observability stack;
-- CI/CD pipeline;
-- Docker local environment;
-- production cloud infrastructure.
-
-Those are future tickets.
-
-This distinction is important because the project documentation should never imply that a capability exists merely because its architectural place has been designed.
+See the status section at the start of this guide for current test evidence and
+[SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md](SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md)
+for the full 201-record implementation backlog. Completed scaffolds and helper
+libraries are not evidence that those user journeys work.
 
 ---
 
@@ -1124,54 +1187,17 @@ Authentication, AI, data, policies, and integrations now have known application 
 
 ## 42. Immediate engineering direction
 
-The next foundation work will gradually turn these empty shells into a functioning platform.
+Continue from the existing foundation. Fix the proven async-dependency and gateway
+validation defects; enforce GitHub #205; freeze the session/principal contract.
+Connect automatic upload cleanup, bounded raw-object lifecycle and parse persistence
+before V1.3.13. V1.3.12 can use ADR-027's 1536 dimensions but still needs an exact
+vector index/operator and safe migration contract.
 
-A sensible progression is:
-
-```text
-Project foundation
-    |
-    v
-Local development environment
-    |
-    v
-Backend/API foundation
-    |
-    v
-Database + migrations
-    |
-    v
-Authentication + tenants + permissions
-    |
-    v
-Synthetic demo data
-    |
-    v
-Knowledge ingestion + retrieval
-    |
-    v
-LLM gateway
-    |
-    v
-Agent runtime
-    |
-    v
-Tools + policy engine
-    |
-    v
-Customer chat
-    |
-    v
-Human support console
-    |
-    v
-Analytics + audit + observability
-    |
-    v
-Load testing + production hardening
-```
-
-This is intentionally incremental. We want every layer to be testable before placing more complexity on top of it.
+Next prove a complete tenant-isolated ingestion-to-retrieval path, then add the
+customer conversation, agent, policy/tool, human-support and UI layers. A semantic
+benchmark requires real approved embeddings; deterministic fake vectors remain
+useful only for contract tests. Operational acceptance, load, privacy and recovery
+must be demonstrated before V1 release and before beginning V2 scope.
 
 ---
 
@@ -6462,7 +6488,7 @@ Future crawl scheduling, per-source rate policy, robots/terms evaluation, sitema
 **Implementation PR:** #195  
 **Architecture decision:** `docs/architecture-decisions/ADR-021-transactional-outbox-and-source-sync-command.md`
 
-V1.3.06 adds the durable producer-side boundary for knowledge synchronization. `POST /api/v1/knowledge-sources/{sourceId}/sync` reuses trusted workforce/tenant resolution and `knowledge.sources.manage`, accepts no product body, and returns HTTP 202 after the command commits. Missing and cross-tenant sources return the same 404, disabled sources return `409 KNOWLEDGE_SOURCE_DISABLED`, and existing permission failure remains 403.
+V1.3.06 adds the durable producer-side boundary for knowledge synchronization. `POST /api/v1/knowledge-sources/{sourceId}/sync` requires the trusted workforce/tenant dependencies and `knowledge.sources.manage` (the HTTP session composition still needs V1.1.16), accepts no product body, and returns HTTP 202 after the command commits. Missing and cross-tenant sources return the same 404, disabled sources return `409 KNOWLEDGE_SOURCE_DISABLED`, and existing permission failure remains 403.
 
 The command locks the tenant-scoped source with PostgreSQL `SELECT ... FOR UPDATE`. Under that row lock it increments `sync_version` exactly once, sets `status=syncing`, clears `last_error_code`, preserves `last_synced_at`, updates `updated_at`, and inserts one `serviq.knowledge.sync.v1` event in the same transaction. Concurrent accepted requests therefore serialize into distinct versions such as N+1 and N+2. If event persistence fails, the source mutation rolls back with it.
 
@@ -6614,7 +6640,7 @@ Parser failures become a Serviq-owned `KnowledgeNormalizationError` with a stabl
 
 The error message remains generic. Upstream parser exception text and raw document text are not embedded in Serviq errors or parser logs. This matters because knowledge files can contain customer information, internal procedures, secrets, or other sensitive business text.
 
-### Tests being added
+### Normalization test coverage
 
 The focused suite covers:
 
@@ -6660,7 +6686,7 @@ V1.3.08 does not add:
 
 ### Completion gate
 
-This section describes the current V1.3.08 implementation boundary, not a completed release. Before the ticket is reconciled as done, the worker lockfile must be current, the focused and full worker Ruff/mypy/pytest gates must pass on Python 3.14, repository CI and Security must pass, Staff Engineer review must have no open Critical or High finding, the final PR diff must stay inside the ticket allowlist, and the PR must be merged. The guide should then be updated with the final PR/merge and CI/Security evidence rather than silently treating branch code as production-complete.
+V1.3.08 is present on audited main `3e1b9aa`, and Linear OPE-315 is Done. The refreshed worker suite passed (120 tests, 8 infrastructure skips), Ruff/mypy passed, and current-main CI/Security passed. This completes the pure parser slice; durable parse consumption and persistence remain V1.3.09A, and production release acceptance remains separate.
 
 ---
 
@@ -6727,6 +6753,8 @@ ADR-027 explicitly freezes the internal alias `serviq-embedding-v1`, an exact ve
 The gateway boundary exposes this via a new internal route `POST /internal/v1/embeddings`, protected by the existing internal bearer token boundary. It accepts only the `serviq-embedding-v1` alias; undocumented aliases are rejected.
 
 The implementation relies solely on a new `FakeLLMAdapter` that generates deterministic 1536-dimensional vectors based on the input text. No real vendor network calls or credentials are required. This ensures repeatable CI and testing without claiming semantic quality. The system is designed to fail closed: batch size mismatches or provider errors will return safe `PROVIDER_UNAVAILABLE` errors, avoiding leakage of partial vectors, raw text, or upstream exceptions.
+
+The 2026-09-12 audit found raw input reflected in default 422 validation responses. V1.3.11A records this privacy-contract defect; passing existing tests does not close it.
 
 Implementation PR #222 merged the deterministic gateway adapter. The final V1.3.11 closeout state on main passed repository CI and Security. Real provider integrations (OpenAI, Anthropic, Gemini, OpenRouter), vector indexing, retrieval, and worker orchestrations remain explicitly out of scope for this step.
 Why this ticket exists

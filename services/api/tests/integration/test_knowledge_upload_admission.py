@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from starlette.requests import Request
+from starlette.types import Message
 
 from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
@@ -23,8 +25,6 @@ from app.modules.knowledge.quota import (
     release_unlinked_reservation,
     reserve_file_upload,
 )
-from starlette.requests import Request
-from starlette.types import Message
 from tests.support.tenant_isolation import (
     TenantIsolationFixture,
     cleanup_tenant_isolation_fixture,
@@ -191,16 +191,13 @@ def test_fourth_concurrent_upload_is_rejected_before_body_receive(
                 await seed_tenant_isolation_fixture(session, fixture)
                 seeded = True
 
-            claims = []
             async with session_factory() as session:
                 for _ in range(3):
-                    claims.append(
-                        await reserve_file_upload(
-                            session,
-                            tenant_id=fixture.tenant_a,
-                            source_id=uuid4(),
-                            reserved_bytes=0,
-                        )
+                    await reserve_file_upload(
+                        session,
+                        tenant_id=fixture.tenant_a,
+                        source_id=uuid4(),
+                        reserved_bytes=0,
                     )
 
             body_received = False
@@ -241,6 +238,7 @@ def test_fourth_concurrent_upload_is_rejected_before_body_receive(
                     tenant_id=fixture.tenant_a,
                     upload_rate_limiter=_AlwaysAllowLimiter(),
                 )
+            assert isinstance(response, JSONResponse)
             assert response.status_code == 429
             payload = json.loads(response.body)
             assert payload["error"]["code"] == "KNOWLEDGE_UPLOAD_CONCURRENCY_LIMITED"

@@ -13,6 +13,7 @@ from app.core.broker import KafkaEventPublisher
 from app.core.config import load_settings
 from app.core.database import create_database_engine, create_database_session_factory
 from app.core.object_storage import build_object_storage
+from app.jobs.knowledge_upload_cleanup import run_knowledge_upload_cleanup_loop
 from app.jobs.outbox_publisher import publish_due_batch
 
 _IDLE_POLL_SECONDS = 1.0
@@ -30,7 +31,7 @@ async def _run_outbox_publisher(
 
 
 async def run_worker() -> None:
-    """Run durable outbox publication and knowledge-sync consumption together."""
+    """Run durable publication, cleanup reconciliation, and sync consumption together."""
 
     settings = load_settings()
     engine = create_database_engine(settings)
@@ -46,9 +47,12 @@ async def run_worker() -> None:
     try:
         async with asyncio.TaskGroup() as group:
             group.create_task(_run_outbox_publisher(session_factory, publisher))
+            group.create_task(
+                run_knowledge_upload_cleanup_loop(session_factory, storage)
+            )
             group.create_task(knowledge_sync_consumer.run_forever())
     finally:
-        # TaskGroup has stopped both jobs before any shared runtime boundary closes.
+        # TaskGroup has stopped every job before shared runtime boundaries close.
         knowledge_sync_consumer.close()
         publisher.close()
         await engine.dispose()

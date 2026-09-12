@@ -192,8 +192,7 @@ and limits; green CI is not deployed acceptance.
 
 ## Landmines, unknowns and next work
 
-- Plain SQLAlchemy dependency omits greenlet on macOS arm64; current frozen local
-  AsyncSession operations fail even though Linux CI passes (V1.0.28).
+- Explicit `sqlalchemy[asyncio]` dependency ensures greenlet is available across all environments including macOS arm64 (V1.0.28 resolved).
 - Workforce auth primitives are not wired into requests (V1.1.16).
 - Multipart parsing precedes file-byte/concurrency enforcement (V1.3.04C).
 - Upload cleanup lacks a runtime scheduler; URL fetch bytes lack equivalent

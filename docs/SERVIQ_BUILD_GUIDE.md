@@ -1429,7 +1429,7 @@ The goal is that someone can start at the top of this document months from now a
 
 **What changed on the implementation branch:** `services/api` now contains the proposed Python 3.14 FastAPI foundation. `app/main.py` exposes only `FastAPI(title="Serviq API")`. Architecture-owned core placeholders exist for config, errors, logging, auth, tenancy, idempotency, and rate limits; modules/contracts boundaries, Ruff, strict mypy, pytest, a smoke test, and `uv.lock` are included.
 
-**Dependency result:** Python 3.14 resolved successfully with FastAPI 0.140.13 and compatible Pydantic 2.x, SQLAlchemy 2.x, Alembic, Uvicorn, and dev tooling. No frozen dependency was silently downgraded.
+**Dependency result:** Python 3.14 resolved successfully with FastAPI 0.140.13 and compatible Pydantic 2.x, SQLAlchemy `[asyncio]` 2.x, Alembic, Uvicorn, and dev tooling. No frozen dependency was silently downgraded.
 
 **Why this matters:** every V1 REST module needs one predictable ASGI service root and common tooling before database/auth/feature work begins.
 

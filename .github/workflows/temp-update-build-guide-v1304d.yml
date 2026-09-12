@@ -21,7 +21,9 @@ jobs:
           ref: fix/v1.0.28-sqlalchemy-asyncio-dependencies
 
       - name: Update cumulative Build Guide safely
-        run: python scripts/temp_update_build_guide_v1304d.py
+        run: |
+          python scripts/temp_update_build_guide_v1304d.py
+          python -c 'from pathlib import Path; p=Path("docs/SERVIQ_BUILD_GUIDE.md"); p.write_text(p.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")'
 
       - name: Commit permanent documentation and remove helpers
         run: |

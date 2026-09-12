@@ -5,7 +5,7 @@ from io import BytesIO
 from typing import Any
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
 from app.core.object_storage import ObjectStorageError, S3RawObjectStorage
 

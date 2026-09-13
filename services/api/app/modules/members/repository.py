@@ -98,9 +98,7 @@ async def lock_organization(
     """Serialize member mutations for one tenant, including last-owner decisions."""
 
     result = await session.execute(
-        select(Organization)
-        .where(Organization.id == tenant_id)
-        .with_for_update()
+        select(Organization).where(Organization.id == tenant_id).with_for_update()
     )
     return result.scalar_one_or_none()
 

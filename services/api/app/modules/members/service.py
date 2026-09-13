@@ -56,10 +56,7 @@ async def list_members(
         offset=offset,
     )
     return tuple(
-        [
-            await _membership_view(session, membership=membership)
-            for membership in memberships
-        ]
+        [await _membership_view(session, membership=membership) for membership in memberships]
     )
 
 
@@ -184,7 +181,4 @@ def _to_view(
 
 
 def _contains_owner(roles: tuple[Role, ...]) -> bool:
-    return any(
-        role.tenant_id is None and role.is_system and role.key == "owner"
-        for role in roles
-    )
+    return any(role.tenant_id is None and role.is_system and role.key == "owner" for role in roles)

@@ -90,9 +90,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    reservations = op.get_bind().execute(
-        sa.text("SELECT count(*) FROM knowledge_upload_reservations")
-    ).scalar_one()
+    reservations = (
+        op.get_bind()
+        .execute(sa.text("SELECT count(*) FROM knowledge_upload_reservations"))
+        .scalar_one()
+    )
     if int(reservations) != 0:
         raise RuntimeError(
             "Cannot downgrade 20260828_0011 while knowledge upload reservations exist. "

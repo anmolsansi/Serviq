@@ -57,9 +57,7 @@ def test_postgres_quota_reservations_are_atomic_and_tenant_scoped() -> None:
                 return_exceptions=True,
             )
             claims = [
-                result
-                for result in results
-                if isinstance(result, KnowledgeUploadReservationClaim)
+                result for result in results if isinstance(result, KnowledgeUploadReservationClaim)
             ]
             rejected = [
                 result
@@ -196,16 +194,12 @@ def test_postgres_quota_reservations_are_atomic_and_tenant_scoped() -> None:
                 async with session_factory() as session, session.begin():
                     await session.execute(
                         text(
-                            "DELETE FROM knowledge_upload_reservations "
-                            "WHERE tenant_id IN (:a, :b)"
+                            "DELETE FROM knowledge_upload_reservations WHERE tenant_id IN (:a, :b)"
                         ),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )
                     await session.execute(
-                        text(
-                            "DELETE FROM knowledge_sources "
-                            "WHERE tenant_id IN (:a, :b)"
-                        ),
+                        text("DELETE FROM knowledge_sources WHERE tenant_id IN (:a, :b)"),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )
                     await cleanup_tenant_isolation_fixture(session, fixture)

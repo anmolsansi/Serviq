@@ -365,9 +365,13 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert stored.token_hash == token_hash
                 assert plaintext_token != stored.token_hash
                 delta = stored.expires_at - stored.created_at
-                assert timedelta(days=6, hours=23, minutes=59) < delta < timedelta(
-                    days=7,
-                    minutes=1,
+                assert (
+                    timedelta(days=6, hours=23, minutes=59)
+                    < delta
+                    < timedelta(
+                        days=7,
+                        minutes=1,
+                    )
                 )
 
             assert plaintext_token not in caplog.text
@@ -399,9 +403,7 @@ def test_invitation_create_list_revoke_security_matrix(
             _install_overrides(session_factory, ids["foreign"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 foreign_list = await client.get(_collection_path(ids["tenant_a"]))
-                foreign_revoke = await client.delete(
-                    _item_path(ids["tenant_a"], created_id)
-                )
+                foreign_revoke = await client.delete(_item_path(ids["tenant_a"], created_id))
                 assert foreign_list.status_code == 404
                 assert foreign_revoke.status_code == 404
 
@@ -415,14 +417,9 @@ def test_invitation_create_list_revoke_security_matrix(
                 assert plaintext_token not in revoked.text
                 assert token_hash not in revoked.text
 
-                repeated_revoke = await client.delete(
-                    _item_path(ids["tenant_a"], created_id)
-                )
+                repeated_revoke = await client.delete(_item_path(ids["tenant_a"], created_id))
                 assert repeated_revoke.status_code == 409
-                assert (
-                    repeated_revoke.json()["error"]["code"]
-                    == "INVITATION_LIFECYCLE_CONFLICT"
-                )
+                assert repeated_revoke.json()["error"]["code"] == "INVITATION_LIFECYCLE_CONFLICT"
 
                 accepted_id = uuid4()
                 expired_id = uuid4()
@@ -442,22 +439,12 @@ def test_invitation_create_list_revoke_security_matrix(
                         status="pending",
                     )
 
-                accepted_revoke = await client.delete(
-                    _item_path(ids["tenant_a"], accepted_id)
-                )
-                expired_revoke = await client.delete(
-                    _item_path(ids["tenant_a"], expired_id)
-                )
+                accepted_revoke = await client.delete(_item_path(ids["tenant_a"], accepted_id))
+                expired_revoke = await client.delete(_item_path(ids["tenant_a"], expired_id))
                 assert accepted_revoke.status_code == 409
                 assert expired_revoke.status_code == 409
-                assert (
-                    accepted_revoke.json()["error"]["code"]
-                    == "INVITATION_LIFECYCLE_CONFLICT"
-                )
-                assert (
-                    expired_revoke.json()["error"]["code"]
-                    == "INVITATION_LIFECYCLE_CONFLICT"
-                )
+                assert accepted_revoke.json()["error"]["code"] == "INVITATION_LIFECYCLE_CONFLICT"
+                assert expired_revoke.json()["error"]["code"] == "INVITATION_LIFECYCLE_CONFLICT"
         finally:
             _clear_overrides()
             async with session_factory() as session, session.begin():

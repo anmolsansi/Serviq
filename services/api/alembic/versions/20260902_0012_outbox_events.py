@@ -80,9 +80,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    unresolved = op.get_bind().execute(
-        sa.text("SELECT count(*) FROM outbox_events WHERE status <> 'published'")
-    ).scalar_one()
+    unresolved = (
+        op.get_bind()
+        .execute(sa.text("SELECT count(*) FROM outbox_events WHERE status <> 'published'"))
+        .scalar_one()
+    )
     if int(unresolved) != 0:
         raise RuntimeError(
             "Cannot downgrade 20260902_0012 while unpublished outbox obligations exist. "

@@ -117,7 +117,7 @@ async def reconcile_legacy_file_sizes(
                 source_id=source_id,
             )
             metadata = await run_in_threadpool(storage.head, key)
-        except (ObjectStorageError, ValueError, TypeError):
+        except ObjectStorageError, ValueError, TypeError:
             _safe_log(
                 "knowledge_quota_legacy_reconciliation_failed",
                 tenant_id=tenant_id,
@@ -196,9 +196,7 @@ async def assert_source_capacity(
         tenant_id=tenant_id,
         now=now,
     )
-    usage = _usage_from_row(
-        await get_knowledge_quota_usage(session, tenant_id=tenant_id, now=now)
-    )
+    usage = _usage_from_row(await get_knowledge_quota_usage(session, tenant_id=tenant_id, now=now))
     if usage.charged_sources >= KNOWLEDGE_SOURCE_LIMIT:
         _safe_log(
             "knowledge_quota_rejected",

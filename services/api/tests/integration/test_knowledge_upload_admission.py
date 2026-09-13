@@ -160,8 +160,7 @@ def test_zero_byte_admission_finalizes_exact_bytes_and_rejects_over_quota() -> N
                 async with session_factory() as session, session.begin():
                     await session.execute(
                         text(
-                            "DELETE FROM knowledge_upload_reservations "
-                            "WHERE tenant_id IN (:a, :b)"
+                            "DELETE FROM knowledge_upload_reservations WHERE tenant_id IN (:a, :b)"
                         ),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )
@@ -257,8 +256,7 @@ def test_fourth_concurrent_upload_is_rejected_before_body_receive(
                 async with session_factory() as session, session.begin():
                     await session.execute(
                         text(
-                            "DELETE FROM knowledge_upload_reservations "
-                            "WHERE tenant_id IN (:a, :b)"
+                            "DELETE FROM knowledge_upload_reservations WHERE tenant_id IN (:a, :b)"
                         ),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )

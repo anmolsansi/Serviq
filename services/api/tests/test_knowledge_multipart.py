@@ -25,19 +25,23 @@ from app.modules.knowledge.uploads import (
 
 def _multipart_body(*, boundary: str, file_bytes: bytes = b"safe") -> bytes:
     return (
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="sourceType"\r\n\r\n'
-        "text\r\n"
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="name"\r\n\r\n'
-        "Upload\r\n"
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="accessScope"\r\n\r\n'
-        "customer\r\n"
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="file"; filename="upload.txt"\r\n'
-        "Content-Type: text/plain\r\n\r\n"
-    ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="sourceType"\r\n\r\n'
+            "text\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="name"\r\n\r\n'
+            "Upload\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="accessScope"\r\n\r\n'
+            "customer\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="upload.txt"\r\n'
+            "Content-Type: text/plain\r\n\r\n"
+        ).encode()
+        + file_bytes
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
 
 
 def _request_for_chunks(*, boundary: str, chunks: list[bytes]) -> tuple[Request, list[Message]]:

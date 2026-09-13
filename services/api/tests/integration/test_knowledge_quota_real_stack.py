@@ -106,23 +106,16 @@ def test_legacy_file_size_reconciliation_uses_real_postgres_and_s3_before_reserv
                 async with session_factory() as session, session.begin():
                     await session.execute(
                         text(
-                            "DELETE FROM knowledge_upload_reservations "
-                            "WHERE tenant_id IN (:a, :b)"
+                            "DELETE FROM knowledge_upload_reservations WHERE tenant_id IN (:a, :b)"
                         ),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )
                     await session.execute(
-                        text(
-                            "DELETE FROM knowledge_upload_cleanups "
-                            "WHERE tenant_id IN (:a, :b)"
-                        ),
+                        text("DELETE FROM knowledge_upload_cleanups WHERE tenant_id IN (:a, :b)"),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )
                     await session.execute(
-                        text(
-                            "DELETE FROM knowledge_sources "
-                            "WHERE tenant_id IN (:a, :b)"
-                        ),
+                        text("DELETE FROM knowledge_sources WHERE tenant_id IN (:a, :b)"),
                         {"a": fixture.tenant_a, "b": fixture.tenant_b},
                     )
                     await cleanup_tenant_isolation_fixture(session, fixture)

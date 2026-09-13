@@ -69,9 +69,7 @@ async def list_membership_role_ids(
     membership_id: UUID,
 ) -> frozenset[UUID]:
     result = await session.execute(
-        select(MembershipRole.role_id).where(
-            MembershipRole.membership_id == membership_id
-        )
+        select(MembershipRole.role_id).where(MembershipRole.membership_id == membership_id)
     )
     return frozenset(result.scalars().all())
 

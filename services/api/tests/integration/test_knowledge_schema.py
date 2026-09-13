@@ -175,9 +175,7 @@ def test_knowledge_schema_constraints_full_text_search_and_vector_deferral() -> 
             async with session_factory() as session, session.begin():
                 sync_version = (
                     await session.execute(
-                        text(
-                            "SELECT sync_version FROM knowledge_sources WHERE id = :id"
-                        ),
+                        text("SELECT sync_version FROM knowledge_sources WHERE id = :id"),
                         {"id": source_id},
                     )
                 ).scalar_one()
@@ -365,9 +363,7 @@ def test_knowledge_schema_constraints_full_text_search_and_vector_deferral() -> 
                         )
                     )
                 ).all()
-                index_definitions = {
-                    str(row.indexname): str(row.indexdef) for row in indexes
-                }
+                index_definitions = {str(row.indexname): str(row.indexdef) for row in indexes}
                 assert "ix_knowledge_chunks_tsv" in index_definitions
                 assert "USING gin" in index_definitions["ix_knowledge_chunks_tsv"]
                 assert all(
@@ -376,17 +372,21 @@ def test_knowledge_schema_constraints_full_text_search_and_vector_deferral() -> 
                 )
 
                 source_columns = (
-                    await session.execute(
-                        text(
-                            """
+                    (
+                        await session.execute(
+                            text(
+                                """
                             SELECT column_name
                             FROM information_schema.columns
                             WHERE table_schema = current_schema()
                               AND table_name = 'knowledge_sources'
                             """
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 forbidden_credential_columns = {
                     "api_key",
                     "credential",

@@ -106,15 +106,19 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    unresolved = op.get_bind().execute(
-        sa.text(
-            """
+    unresolved = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                """
             SELECT count(*)
             FROM knowledge_upload_cleanups
             WHERE status IN ('prepared', 'pending', 'exhausted')
             """
+            )
         )
-    ).scalar_one()
+        .scalar_one()
+    )
     if int(unresolved) != 0:
         raise RuntimeError(
             "Cannot downgrade 20260824_0010 while unresolved knowledge upload "

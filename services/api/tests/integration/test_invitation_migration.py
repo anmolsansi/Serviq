@@ -159,9 +159,7 @@ def test_schema_has_hash_only_and_expected_fk_indexes() -> None:
         assert ("invited_by_user_id",) in invitation_fk_columns
         assert ("accepted_by_user_id",) in invitation_fk_columns
 
-        role_fk_columns = {
-            tuple(fk["constrained_columns"]) for fk in snapshot["role_foreign_keys"]
-        }
+        role_fk_columns = {tuple(fk["constrained_columns"]) for fk in snapshot["role_foreign_keys"]}
         assert role_fk_columns == {("invitation_id",), ("role_id",)}
 
     asyncio.run(run())

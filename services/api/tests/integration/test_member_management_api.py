@@ -240,19 +240,16 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
                 first_items = first_page.json()["data"]
                 assert len(first_items) == 2
                 assert all(
-                    "oidc_subject" not in item and "oidcSubject" not in item
-                    for item in first_items
+                    "oidc_subject" not in item and "oidcSubject" not in item for item in first_items
                 )
                 assert all(
-                    "oidc_issuer" not in item and "oidcIssuer" not in item
-                    for item in first_items
+                    "oidc_issuer" not in item and "oidcIssuer" not in item for item in first_items
                 )
 
                 second_page = await client.get(list_url, params={"limit": 100, "offset": 2})
                 assert second_page.status_code == 200
                 all_a_ids = {
-                    item["membershipId"]
-                    for item in first_items + second_page.json()["data"]
+                    item["membershipId"] for item in first_items + second_page.json()["data"]
                 }
                 assert str(ids["member_membership_b"]) not in all_a_ids
                 assert {
@@ -264,8 +261,7 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
                 } == all_a_ids
 
                 patch_url = (
-                    f"/api/v1/organizations/{ids['tenant_a']}/members/"
-                    f"{ids['member_membership_a']}"
+                    f"/api/v1/organizations/{ids['tenant_a']}/members/{ids['member_membership_a']}"
                 )
                 valid_role = await client.patch(
                     patch_url,
@@ -314,16 +310,13 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
                 )
                 assert foreign_member.status_code == 404
 
-                foreign_list = await client.get(
-                    f"/api/v1/organizations/{ids['tenant_b']}/members"
-                )
+                foreign_list = await client.get(f"/api/v1/organizations/{ids['tenant_b']}/members")
                 assert foreign_list.status_code == 404
 
                 # Remove the owner role from one of two active owners. The requested
                 # global admin role is assignable, leaving exactly one active owner.
                 owner2_url = (
-                    f"/api/v1/organizations/{ids['tenant_a']}/members/"
-                    f"{ids['owner2_membership_a']}"
+                    f"/api/v1/organizations/{ids['tenant_a']}/members/{ids['owner2_membership_a']}"
                 )
                 remove_one_owner = await client.patch(
                     owner2_url,
@@ -332,8 +325,7 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
                 assert remove_one_owner.status_code == 200
 
                 last_owner_url = (
-                    f"/api/v1/organizations/{ids['tenant_a']}/members/"
-                    f"{ids['owner_membership_a']}"
+                    f"/api/v1/organizations/{ids['tenant_a']}/members/{ids['owner_membership_a']}"
                 )
                 suspend_last = await client.patch(last_owner_url, json={"status": "suspended"})
                 assert suspend_last.status_code == 409
@@ -348,18 +340,14 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
             # Admin has the same frozen management capability.
             _install_overrides(session_factory, user_id=ids["admin_a"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                admin_list = await client.get(
-                    f"/api/v1/organizations/{ids['tenant_a']}/members"
-                )
+                admin_list = await client.get(f"/api/v1/organizations/{ids['tenant_a']}/members")
                 assert admin_list.status_code == 200
 
             # An ordinary tenant role cannot manage members even though the user has
             # an active membership in the organization.
             _install_overrides(session_factory, user_id=ids["ordinary_a"])
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                denied_list = await client.get(
-                    f"/api/v1/organizations/{ids['tenant_a']}/members"
-                )
+                denied_list = await client.get(f"/api/v1/organizations/{ids['tenant_a']}/members")
                 assert denied_list.status_code == 403
                 denied_patch = await client.patch(
                     (
@@ -372,17 +360,21 @@ def test_member_management_tenant_scope_roles_and_last_owner() -> None:
 
             async with session_factory() as session:
                 role_rows = (
-                    await session.execute(
-                        text(
-                            """
+                    (
+                        await session.execute(
+                            text(
+                                """
                             SELECT mr.role_id
                             FROM membership_roles mr
                             WHERE mr.membership_id=:membership_id
                             """
-                        ),
-                        {"membership_id": ids["member_membership_a"]},
+                            ),
+                            {"membership_id": ids["member_membership_a"]},
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 assert role_rows == [ids["qa_a"]]
                 last_owner_status = await session.scalar(
                     text("SELECT status FROM memberships WHERE id=:id"),

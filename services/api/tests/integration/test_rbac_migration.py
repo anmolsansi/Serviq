@@ -69,9 +69,7 @@ def _schema_snapshot(connection: Connection) -> dict[str, Any]:
             column["name"]: column for column in inspector.get_columns("memberships")
         },
         "membership_fks": inspector.get_foreign_keys("memberships"),
-        "membership_indexes": {
-            index["name"] for index in inspector.get_indexes("memberships")
-        },
+        "membership_indexes": {index["name"] for index in inspector.get_indexes("memberships")},
     }
 
 
@@ -104,6 +102,7 @@ def test_rbac_schema_remains_present_and_invitation_fk_is_completed() -> None:
         assert invitation_fk["options"].get("ondelete") == "SET NULL"
 
     asyncio.run(run())
+
 
 def test_duplicate_tenant_slug_is_rejected() -> None:
     async def scenario(connection: AsyncConnection) -> None:

@@ -256,9 +256,10 @@ def test_provider_crud_secret_safety_compensation_and_tenant_isolation(
                     )
                     assert isinstance(secret_ref, str)
                     assert KEY_ONE not in secret_ref
-                    assert secret_store.get_secret(
-                        ids["tenant_a"], secret_ref
-                    ).get_secret_value() == KEY_ONE
+                    assert (
+                        secret_store.get_secret(ids["tenant_a"], secret_ref).get_secret_value()
+                        == KEY_ONE
+                    )
 
                 persisted = secret_path.read_text(encoding="utf-8")
                 assert KEY_ONE not in persisted
@@ -334,9 +335,10 @@ def test_provider_crud_secret_safety_compensation_and_tenant_isolation(
                 )
                 assert replacement_conflict.status_code == 409
                 assert _record_count(secret_path) == before_duplicate_records
-                assert secret_store.get_secret(
-                    ids["tenant_a"], secret_ref
-                ).get_secret_value() == KEY_ONE
+                assert (
+                    secret_store.get_secret(ids["tenant_a"], secret_ref).get_secret_value()
+                    == KEY_ONE
+                )
 
                 replacement = await client.patch(
                     f"/api/v1/providers/{provider_id}",
@@ -351,9 +353,10 @@ def test_provider_crud_secret_safety_compensation_and_tenant_isolation(
                     )
                 assert isinstance(replacement_ref, str)
                 assert replacement_ref != secret_ref
-                assert secret_store.get_secret(
-                    ids["tenant_a"], replacement_ref
-                ).get_secret_value() == KEY_THREE
+                assert (
+                    secret_store.get_secret(ids["tenant_a"], replacement_ref).get_secret_value()
+                    == KEY_THREE
+                )
                 with pytest.raises(SecretNotFoundError):
                     secret_store.get_secret(ids["tenant_a"], secret_ref)
 

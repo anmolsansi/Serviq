@@ -89,7 +89,7 @@ class HttpProviderConnectivityGateway:
 
         try:
             parsed = _GatewayResponse.model_validate(response.json())
-        except (ValueError, ValidationError):
+        except ValueError, ValidationError:
             return ProviderConnectivityOutcome(ok=False, error_code="PROVIDER_UNAVAILABLE")
 
         if parsed.ok and parsed.error_code is None:

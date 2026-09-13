@@ -142,27 +142,34 @@ def _settings(
 
 
 def test_object_key_helpers_match_frozen_layouts_exactly() -> None:
-    assert knowledge_raw_key(
-        tenant_id=TENANT_ID,
-        source_id=SOURCE_ID,
-        object_id=OBJECT_ID,
-    ).value == f"tenants/{TENANT_ID}/knowledge/{SOURCE_ID}/raw/{OBJECT_ID}"
+    assert (
+        knowledge_raw_key(
+            tenant_id=TENANT_ID,
+            source_id=SOURCE_ID,
+            object_id=OBJECT_ID,
+        ).value
+        == f"tenants/{TENANT_ID}/knowledge/{SOURCE_ID}/raw/{OBJECT_ID}"
+    )
     assert knowledge_normalized_key(
         tenant_id=TENANT_ID,
         source_id=SOURCE_ID,
         document_id=DOCUMENT_ID,
         version=7,
-    ).value == (
-        f"tenants/{TENANT_ID}/knowledge/{SOURCE_ID}/normalized/{DOCUMENT_ID}/7"
+    ).value == (f"tenants/{TENANT_ID}/knowledge/{SOURCE_ID}/normalized/{DOCUMENT_ID}/7")
+    assert (
+        export_key(
+            tenant_id=TENANT_ID,
+            export_id=EXPORT_ID,
+        ).value
+        == f"tenants/{TENANT_ID}/exports/{EXPORT_ID}"
     )
-    assert export_key(
-        tenant_id=TENANT_ID,
-        export_id=EXPORT_ID,
-    ).value == f"tenants/{TENANT_ID}/exports/{EXPORT_ID}"
-    assert evaluation_key(
-        tenant_id=TENANT_ID,
-        evaluation_run_id=EVALUATION_RUN_ID,
-    ).value == f"tenants/{TENANT_ID}/evaluation/{EVALUATION_RUN_ID}"
+    assert (
+        evaluation_key(
+            tenant_id=TENANT_ID,
+            evaluation_run_id=EVALUATION_RUN_ID,
+        ).value
+        == f"tenants/{TENANT_ID}/evaluation/{EVALUATION_RUN_ID}"
+    )
 
 
 def test_keys_are_tenant_scoped_and_do_not_accept_user_paths() -> None:

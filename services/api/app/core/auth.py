@@ -107,7 +107,7 @@ async def _fetch_oidc_json(url: str) -> dict[str, Any]:
             payload = response.json()
     except AuthenticationError:
         raise
-    except (httpx.HTTPError, ValueError):
+    except httpx.HTTPError, ValueError:
         raise AuthenticationError from None
 
     if not isinstance(payload, dict):
@@ -236,7 +236,7 @@ class WorkforceOidcValidator:
             registry.validate(claims)
         except AuthenticationError:
             raise
-        except (JoseError, KeyError, TypeError, ValueError):
+        except JoseError, KeyError, TypeError, ValueError:
             raise AuthenticationError from None
 
         subject = claims.get("sub")

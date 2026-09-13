@@ -190,7 +190,7 @@ def _parse_decision(
     try:
         allowed = int(cast(int | bytes | str, result[0])) == 1
         retry_after = int(cast(int | bytes | str, result[1]))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise unavailable() from None
 
     return RateLimitDecision(

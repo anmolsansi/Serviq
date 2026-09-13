@@ -62,9 +62,7 @@ def test_tenant_isolation_harness_covers_organization_and_membership_attacks() -
 
             _install_overrides(session_factory, fixture.owner_a)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                member_list = await client.get(
-                    f"/api/v1/organizations/{fixture.tenant_a}/members"
-                )
+                member_list = await client.get(f"/api/v1/organizations/{fixture.tenant_a}/members")
                 assert member_list.status_code == 200
                 assert_list_excludes_foreign(
                     member_list.json()["data"],
@@ -72,9 +70,7 @@ def test_tenant_isolation_harness_covers_organization_and_membership_attacks() -
                     id_of=lambda item: UUID(item["membershipId"]),
                 )
 
-                foreign_org_get = await client.get(
-                    f"/api/v1/organizations/{fixture.tenant_b}"
-                )
+                foreign_org_get = await client.get(f"/api/v1/organizations/{fixture.tenant_b}")
                 assert_foreign_resource_hidden(foreign_org_get.status_code)
 
                 async with session_factory() as session:
@@ -121,13 +117,9 @@ def test_tenant_isolation_harness_covers_organization_and_membership_attacks() -
             # globally privileged. Tenant B's owner must be equally unable to see A.
             _install_overrides(session_factory, fixture.owner_b)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                reverse_get = await client.get(
-                    f"/api/v1/organizations/{fixture.tenant_a}"
-                )
+                reverse_get = await client.get(f"/api/v1/organizations/{fixture.tenant_a}")
                 assert_foreign_resource_hidden(reverse_get.status_code)
-                reverse_list = await client.get(
-                    f"/api/v1/organizations/{fixture.tenant_b}/members"
-                )
+                reverse_list = await client.get(f"/api/v1/organizations/{fixture.tenant_b}/members")
                 assert reverse_list.status_code == 200
                 assert_list_excludes_foreign(
                     reverse_list.json()["data"],

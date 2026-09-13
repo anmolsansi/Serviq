@@ -1,0 +1,166 @@
+name: V1.1.16 Docs Patch
+
+on:
+  push:
+    branches:
+      - fix/v1.1.16-session-context-completion
+    paths:
+      - .v1116-doc-patch-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/v1.1.16-session-context-completion
+
+      - name: Patch cumulative documentation in place
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          guide_path = Path("docs/SERVIQ_BUILD_GUIDE.md")
+          guide = guide_path.read_text(encoding="utf-8")
+
+          old_status = """Authentication requires special care: the OIDC validator and tenant/permission
+          services exist, but `services/api/app/main.py` does not populate the trusted
+          request state consumed by `app/core/principal.py`. API tests inject that state
+          through dependency overrides. Live Keycloak tests prove token validation, not
+          browser login or an authenticated API journey. V1.1.16 now tracks this missing
+          connection; V1.9.02 must consume its server session contract.
+          """.replace("          ", "")
+
+          new_status = """Workforce authentication now has a real request-composition boundary. V1.1.16
+          uses Authorization Code + PKCE, keeps an opaque workforce session in Valkey, and
+          restores the verified internal user plus an optional server-owned active tenant
+          before protected route dependencies run. Tenant authority is not accepted from
+          `X-Serviq-Tenant-ID`, query parameters, or arbitrary business payloads. The
+          authenticated tenant-switch endpoint revalidates active membership before changing
+          session context, and state-changing auth operations use a session-bound CSRF token.
+          V1.9.02 still owns the client-console UI that consumes this backend contract.
+          """.replace("          ", "")
+
+          if old_status not in guide:
+              raise SystemExit("Expected V1.1.16 current-status paragraph was not found")
+          guide = guide.replace(old_status, new_status, 1)
+
+          optional_replacements = {
+              "HTTP session composition still needs V1.1.16":
+                  "HTTP session composition is supplied by V1.1.16; V1.9.02 consumes that backend contract",
+              "Workforce auth primitives are not wired into requests (V1.1.16).":
+                  "Workforce browser sessions are wired into trusted request state (V1.1.16 backend boundary resolved).",
+          }
+          for old, new in optional_replacements.items():
+              guide = guide.replace(old, new)
+
+          marker = "## V1.1.16 — Workforce sessions and trusted API request context"
+          if marker not in guide:
+              insertion = """
+
+          ## V1.1.16 — Workforce sessions and trusted API request context
+
+          V1.1.16 closes the backend authentication-composition gap found by the September
+          12 audit. The implementation deliberately reuses the existing FastAPI API, OIDC
+          validator, workforce mapper, tenancy service, PostgreSQL memberships, and Valkey.
+          It does not add a new identity service or database migration.
+
+          The login flow uses Authorization Code + PKCE S256. The browser receives only an
+          HttpOnly `serviq_session` cookie. The matching Valkey record owns the internal
+          workforce user ID, verified OIDC identity fields, optional active tenant ID, and a
+          random CSRF token. `WorkforceSessionContextMiddleware` restores those values into
+          the trusted request state read by `app/core/principal.py` before protected route
+          dependencies execute.
+
+          Tenant selection is server-owned. If login finds exactly one active membership,
+          that tenant can be selected automatically. Zero or multiple memberships leave the
+          tenant unset. `POST /auth/tenant` accepts a target tenant UUID only as a switch
+          request, validates the user/tenant pair through the authoritative tenancy service,
+          then updates the server-side session while preserving its remaining TTL. A forged
+          `X-Serviq-Tenant-ID` header cannot change authorization context. Tenant-scoped
+          services continue to re-check current membership and effective permissions in
+          PostgreSQL, so the session is routing context rather than permission authority.
+
+          Browser-facing auth endpoints are:
+
+          ```text
+          GET  /auth/login?redirect_uri=<same-origin client URL>
+          GET  /auth/callback?code=<oidc-code>&state=<one-time-state>
+          GET  /auth/session
+          POST /auth/tenant       {"tenantId":"<uuid>"}
+          POST /auth/logout
+          ```
+
+          `GET /auth/session` returns only browser-safe state: `userId`, email,
+          `displayName`, `activeTenantId`, and `csrfToken`. It does not return the opaque
+          session ID or OIDC token. Live-session tenant switch and logout require the
+          session-bound token in `X-Serviq-CSRF-Token`. Post-login redirects must match the
+          exact scheme, hostname, and effective port of `SERVIQ_PUBLIC_BASE_URL`; host-prefix
+          lookalikes and malformed/non-HTTP redirects fail closed.
+
+          Missing, expired, or malformed session records are unauthenticated. If Valkey is
+          unavailable while a session must be read, the API returns stable
+          `503 SESSION_STORE_UNAVAILABLE` with `Retry-After: 5`. Requests without a session
+          cookie, such as health checks, do not perform a session read. Old V1.1.16 session
+          records that do not contain the required CSRF field are invalid and users simply
+          reauthenticate. Rollback is code-only because no durable schema changed.
+
+          HTTP-level regression coverage lives in
+          `services/api/tests/test_workforce_session_context.py`. It exercises the real ASGI
+          session-to-principal boundary without overriding the principal dependencies and
+          covers missing/expired sessions, forged tenant-header resistance, valid and invalid
+          tenant switches, CSRF, redirect validation, and session-store outage behavior.
+          ADR-030 freezes the full security/rollback decision; ADR-009 remains the provider
+          tenant-context contract.
+          """.replace("          ", "")
+
+              anchor = "\n### Running and checking the current foundation\n"
+              if anchor not in guide:
+                  raise SystemExit("Build-guide current-status anchor was not found")
+              guide = guide.replace(anchor, insertion + anchor, 1)
+
+          guide_path.write_text(guide, encoding="utf-8")
+
+          audit_path = Path("docs/SYSTEM_AUDIT_2026-09-12.md")
+          audit = audit_path.read_text(encoding="utf-8")
+          audit_marker = "## 2026-09-13 addendum — V1.1.16 resolution"
+          if audit_marker not in audit:
+              audit += """
+
+          ---
+
+          ## 2026-09-13 addendum — V1.1.16 resolution
+
+          The V1.1.16 / P1 authentication-composition finding above is resolved at the
+          backend boundary by GitHub issue #230 and its implementation PR. Authorization
+          Code + PKCE now creates an opaque Valkey workforce session; HTTP middleware restores
+          the verified internal user/identity and optional server-owned active tenant before
+          protected principal dependencies run. `X-Serviq-Tenant-ID` is not an authorization
+          input. Tenant switching revalidates active membership before session mutation,
+          state-changing auth operations use a session-bound CSRF token, redirect validation
+          is exact-origin, and session-store failure is a stable fail-closed 503.
+
+          The addendum does not rewrite the September 12 evidence: that audit correctly
+          described the repository state at the time. V1.9.02 still owns the client-console
+          login/session/tenant-switch UI, and no deployed browser journey is claimed by the
+          backend follow-up. See ADR-030, `docs/repo_context.md`, and the cumulative Build
+          Guide for the current runtime contract.
+          """.replace("          ", "")
+              audit_path.write_text(audit, encoding="utf-8")
+          PY
+
+      - name: Commit documentation and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "serviq-doc-bot"
+          git config user.email "serviq-doc-bot@users.noreply.github.com"
+          git rm .github/workflows/v1116-doc-patch.yml .v1116-doc-patch-trigger
+          git add docs/SERVIQ_BUILD_GUIDE.md docs/SYSTEM_AUDIT_2026-09-12.md
+          git commit -m "docs(auth): reconcile V1.1.16 build guide and audit [38-39/42] (#230)"
+          git push origin HEAD:fix/v1.1.16-session-context-completion

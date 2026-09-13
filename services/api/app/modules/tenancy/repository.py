@@ -25,6 +25,24 @@ async def find_membership(
     return result.scalar_one_or_none()
 
 
+async def list_active_tenant_ids_for_user(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+) -> tuple[UUID, ...]:
+    """Return active tenant memberships for one trusted workforce user."""
+
+    result = await session.execute(
+        select(Membership.tenant_id)
+        .where(
+            Membership.user_id == user_id,
+            Membership.status == "active",
+        )
+        .order_by(Membership.tenant_id)
+    )
+    return tuple(result.scalars().all())
+
+
 async def find_membership_for_update(
     session: AsyncSession,
     *,

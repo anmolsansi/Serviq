@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for V1.1.16.
+Accepted for V1.1.16 backend completion. Tracked by GitHub issue #230 and PR #231.
 
 ## Context
 

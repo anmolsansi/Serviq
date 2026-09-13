@@ -1,7 +1,8 @@
 # Serviq Repository Context
 
-> Audited 2026-09-12 at `main` / `origin/main`
+> System-audit baseline: 2026-09-12 at `main` commit
 > `3e1b9aa0a9b6d38238d844a1eeb96aaa89365a02`.
+> Authentication/session context updated for V1.1.16 on 2026-09-13.
 > [System audit and evidence](SYSTEM_AUDIT_2026-09-12.md) ·
 > [Build Guide](SERVIQ_BUILD_GUIDE.md) ·
 > [Canonical backlog](SERVIQ_REMAINING_LINEAR_TICKETS_FULL.md).
@@ -13,13 +14,15 @@ Workforce/tenant/provider/knowledge foundations exist; the customer support,
 agent, tool/policy/approval and human-support product journeys do not. The demo
 uses synthetic delivery and payment/refund data and must not move real money.
 
-The API registers functional domain routers but lacks the authentication/session
-composition that populates their trusted principal dependencies. The worker
-publishes outbox events, consumes knowledge sync work through durable parse handoff,
-and now continuously reconciles durable failed-upload cleanup obligations.
-Normalization and chunking are pure libraries awaiting activation. Embeddings have
-a private fake-only gateway route. All three web apps are static scaffolds. A
-successful library test or metadata record is not end-to-end acceptance.
+The API now composes an opaque Valkey-backed workforce browser session into the
+trusted principal state consumed by protected route dependencies. PKCE login,
+server-owned active-tenant selection, membership-validated tenant switching,
+session-bound CSRF protection, and safe session-store failure behavior form that
+boundary. The worker publishes outbox events, consumes knowledge sync work through
+durable parse handoff, and continuously reconciles durable failed-upload cleanup
+obligations. Normalization and chunking are pure libraries awaiting activation.
+Embeddings have a private fake-only gateway route. All three web apps are static
+scaffolds. A successful library test or metadata record is not end-to-end acceptance.
 
 ## Stack and folder map
 
@@ -39,8 +42,8 @@ Manifest/config evidence: root and app `package.json`, `.nvmrc`, service
 | `apps/client-console/src/app` | Workforce operations scaffold; not `apps/tenant-console` |
 | `apps/customer-web/src/app` | End-customer scaffold |
 | `apps/platform-console/src/app` | Platform operator scaffold |
-| `services/api/app/core` | Auth/principal/config/database/storage/secrets/error primitives |
-| `services/api/app/modules` | Organizations, workforce, tenancy, invitations, members, providers, knowledge, health |
+| `services/api/app/core` | Auth/principal/session/config/database/storage/secrets/error primitives |
+| `services/api/app/modules` | Organizations, workforce, tenancy, auth, invitations, members, providers, knowledge, health |
 | `services/api/alembic/versions` | 12 migrations through `20260902_0012` outbox |
 | `services/worker/app/consumers` | Knowledge sync and retry-topic consumer |
 | `services/worker/app/jobs` | Outbox publisher, knowledge fetch/document/parse handoff, and durable upload-cleanup reconciliation |
@@ -70,14 +73,23 @@ all three page components currently render a heading and explanatory scaffold te
 Reuse these boundaries:
 
 - `services/api/app/core/api.py`: strict `SuccessEnvelope` and `ErrorEnvelope`.
-- `services/api/app/core/http_errors.py`: stable authentication/core/validation errors.
+- `services/api/app/core/http_errors.py`: stable authentication/session/CSRF/validation errors.
 - `services/api/app/core/database.py`: one async engine/session pattern with explicit
   transaction ownership; repositories receive `AsyncSession`.
 - `services/api/app/core/auth.py`: OIDC metadata/JWKS cache and RS256 validation.
-- `services/api/app/core/principal.py`: trusted request-state readers; **not middleware**.
+- `services/api/app/core/session.py`: one-time PKCE state plus opaque, server-owned
+  workforce sessions in Valkey. The session record owns verified identity fields,
+  optional active tenant and the session-bound CSRF token.
+- `services/api/app/modules/auth/middleware.py`: restores valid workforce session
+  state before protected route dependencies execute and fails closed on session-store outage.
+- `services/api/app/core/principal.py`: trusted request-state readers populated by
+  the session middleware for authenticated workforce requests.
+- `services/api/app/modules/auth/router.py`: PKCE login/callback, browser-safe session
+  read, membership-validated tenant switch and logout contracts.
 - `services/api/app/modules/workforce/service.py`: verified identity → internal user,
   including disabled-user rejection and concurrent insert recovery.
-- `services/api/app/modules/tenancy/service.py`: active membership and effective permissions.
+- `services/api/app/modules/tenancy/service.py`: active membership and effective permissions;
+  also selects a default active tenant only when exactly one active membership exists.
 - `services/api/app/core/rate_limits.py`: shared Valkey limiters, not provider-owned copies.
 - `services/api/app/core/object_storage.py`: typed tenant/source keys and object operations.
 - `services/api/app/modules/knowledge/cleanup.py`: request-time and deterministic cleanup replay semantics.
@@ -91,18 +103,46 @@ Reuse these boundaries:
 
 ## Authentication and API style
 
-The intended workforce browser flow is Authorization Code + PKCE with provider
-tokens kept server-side (`ARCHITECTURE.md`, workforce login/session section).
-Existing `WorkforceOidcValidator` checks issuer/audience/signature/expiry and exposes
-only approved identity fields. Membership and permission services use server-owned
-identity rather than trusting tenant/permission JWT claims.
+Workforce browser authentication uses Authorization Code + PKCE S256. A successful
+callback validates the access token through `WorkforceOidcValidator`, maps the
+verified identity to the internal workforce user, and creates an opaque
+`serviq_session` cookie whose state lives only in Valkey. Provider access tokens,
+session IDs, and permission authority are not returned in the browser session view.
 
-**Composition gap:** no production caller writes `serviq_user_id`,
-`serviq_workforce_identity` or `serviq_tenant_id` on request state. `app/main.py`
-only installs error handlers and routers. Route tests override principal dependencies;
-Keycloak integration tests call the validator directly. V1.1.16 owns the missing
-session/principal handoff. Do not add a user-controlled identity header to make
-protected routes work. Customer and platform trust surfaces remain unimplemented.
+For each request carrying that cookie, `WorkforceSessionContextMiddleware` restores
+`serviq_user_id` and `serviq_workforce_identity` from the server-side record. It
+restores `serviq_tenant_id` only when an active tenant was previously selected.
+If login finds exactly one active membership, that tenant may be selected
+unambiguously. Zero or multiple active memberships leave the tenant unset.
+
+The client is not allowed to select authorization context by sending
+`X-Serviq-Tenant-ID`, a query parameter, or an arbitrary business payload. Use
+`POST /auth/tenant` with the live session's `X-Serviq-CSRF-Token`; the API validates
+the requested user/tenant pair through the authoritative membership service before
+updating the server-side session. Session replacement preserves the original TTL.
+The selected tenant is routing context, not cached permission authority. Tenant-
+scoped services continue to revalidate active membership and effective capability
+in PostgreSQL. ADR-009 and ADR-030 freeze this boundary.
+
+Browser auth endpoints:
+
+```text
+GET  /auth/login?redirect_uri=<same-origin client URL>
+GET  /auth/callback?code=<oidc-code>&state=<one-time-state>
+GET  /auth/session
+POST /auth/tenant       body: {"tenantId":"<uuid>"}
+POST /auth/logout
+```
+
+`GET /auth/session` returns only browser-safe user/session state: `userId`, email,
+`displayName`, `activeTenantId`, and `csrfToken`. Live-session tenant switch and
+logout are state-changing cookie-authenticated operations and require
+`X-Serviq-CSRF-Token`. Post-login redirects must match the exact scheme, hostname,
+and effective port of `SERVIQ_PUBLIC_BASE_URL`; host-prefix lookalikes fail closed.
+Missing/expired/malformed session records behave as unauthenticated. Valkey session-
+store unavailability returns stable `503 SESSION_STORE_UNAVAILABLE` with
+`Retry-After: 5`; it is not downgraded to anonymous success or leaked as a 500.
+Requests without a session cookie, such as health checks, do not perform a session read.
 
 Public route families at `/api/v1`: organizations; organization invitations and
 members; invitation acceptance; provider connections and connectivity tests;
@@ -113,29 +153,19 @@ not the complete broker/storage/gateway/ingestion journey.
 The API success shape is `{"data": ...}` and safe errors use
 `{"error":{"code":"...","message":"..."}}`, with optional field errors.
 List routes currently return arrays inside `data`; do not invent a universal
-pagination cursor. Example from the isolated principal diagnostic:
-
-```http
-GET /api/v1/organizations
-Authorization: Bearer <synthetic test value>
-
-HTTP/1.1 401 Unauthorized
-{"error":{"code":"UNAUTHENTICATED","message":"Authentication required."}}
-```
-
-That probe replaced only the DB dependency to isolate missing authentication
-composition; the unmodified local arm64 app instead hit the greenlet-related 500.
-It is not a successful authenticated API example.
+pagination cursor. HTTP-level V1.1.16 regression tests exercise real session
+composition without overriding the principal dependencies, including forged tenant
+headers, CSRF, membership-rejected tenant switches, exact-origin redirects, and
+session-store outage behavior.
 
 Gateway routes are `POST /internal/v1/provider-connectivity-test` and
-`POST /internal/v1/embeddings`. Private body requests now cross a shared ASGI
-boundary that validates `LLM_GATEWAY_INTERNAL_TOKEN` before FastAPI parses the
-body, enforces a finite transport-body cap using both declared and received bytes,
-and replaces Pydantic/FastAPI validation details with a fixed input-safe 422 shape.
-Route-level token checks remain defense in depth. Gateway responses keep their
-service-specific shapes rather than the API envelope. Provider generation/streaming
-adapters exist, but no agent/generation HTTP journey is composed by
-`services/llm-gateway/app/main.py`.
+`POST /internal/v1/embeddings`. Private body requests cross a shared ASGI boundary
+that validates `LLM_GATEWAY_INTERNAL_TOKEN` before FastAPI parses the body, enforces
+a finite transport-body cap using both declared and received bytes, and replaces
+Pydantic/FastAPI validation details with a fixed input-safe 422 shape. Route-level
+token checks remain defense in depth. Gateway responses keep their service-specific
+shapes rather than the API envelope. Provider generation/streaming adapters exist,
+but no agent/generation HTTP journey is composed by `services/llm-gateway/app/main.py`.
 
 ## Data, jobs and lifecycle
 
@@ -160,7 +190,7 @@ uses manual offsets, bounded retry delays and DLQ. It fetches URL/file bytes and
 commits a versioned document plus parse event. It keeps the source `syncing` until
 later indexing succeeds. Sitemap sync is deliberately unsupported (ADR-023).
 
-Failed upload cleanup is now an active worker responsibility. The worker claims a
+Failed upload cleanup is an active worker responsibility. The worker claims a
 bounded due batch from `knowledge_upload_cleanups` with `FOR UPDATE SKIP LOCKED`,
 advances the durable attempt/lease before object-storage I/O, regenerates the exact
 tenant/source/object key, handles ambiguous PUT outcomes with HEAD before DELETE,
@@ -177,7 +207,7 @@ ADR-027 fixes alias `serviq-embedding-v1`, 1536 dimensions, at most 100 inputs,
 32,000 characters per input. Only `FakeLLMAdapter` implements the route. Its
 `provider=openai` field with `upstreamModel=serviq-fake-v1` does not represent a
 real OpenAI call. Real semantic transport and safe profile/reindex policy remain
-V1.3.11B. V1.3.11A now closes the input-validation privacy gap at the shared HTTP
+V1.3.11B. V1.3.11A closes the input-validation privacy gap at the shared HTTP
 boundary while preserving the fake adapter for deterministic tests. PR #222 is
 merged as `26784e7` for the original embedding profile.
 
@@ -198,24 +228,31 @@ For durable cleanup specifically, `SERVIQ_KNOWLEDGE_CLEANUP_INTEGRATION=1` enabl
 `services/worker/tests/integration/test_knowledge_upload_cleanup.py` in the existing
 Knowledge Quota Integration workflow with real PostgreSQL and S3-compatible storage.
 
-The current audit ran 315 passing tests and 84 locally skipped infrastructure tests,
+For V1.1.16 specifically, `services/api/tests/test_workforce_session_context.py`
+exercises the HTTP request boundary through ASGI rather than overriding trusted
+principal dependencies. Keep this distinction when adding new protected routes:
+unit tests may stub domain services, but at least one request-level auth test should
+prove the real opaque-session-to-request-state handoff.
+
+The 2026-09-12 audit ran 315 passing tests and 84 locally skipped infrastructure tests,
 web lint/typecheck and all Ruff/mypy checks. Four root Vitest smoke/config tests
 are real frontend tests; Playwright only lists zero tests. `make e2e` and
 `make load-test` intentionally fail. Alternate webpack production builds passed
 for all three apps; default Turbopack builds were environment-blocked.
 
-Current-main CI and Security passed, including PostgreSQL migrations, object
-storage and six live Keycloak validator tests. The V1.3.04D implementation branch
-additionally passed the dedicated real PostgreSQL + S3 cleanup recovery evidence;
-full exact-head CI/Security remains the merge gate. Dependency audits found no known
-vulnerabilities in the audited main run. Green CI is not deployed acceptance.
+CI and Security remain the merge authority. V1.1.16 does not add a database
+migration. Its rollback is code-only; incompatible session records can be discarded
+and users can reauthenticate. Green CI is not deployed acceptance, and the client-
+console UI that consumes `/auth/session` and `/auth/tenant` remains V1.9.02 work.
 
 ## Landmines, unknowns and next work
 
 - Explicit `sqlalchemy[asyncio]` dependency ensures greenlet is available across all environments including macOS arm64 (V1.0.28 resolved).
-- Workforce auth primitives are not wired into requests (V1.1.16).
+- Workforce browser sessions now compose trusted user/identity/tenant request state through server-owned Valkey sessions (V1.1.16 resolved at the backend boundary); the client-console shell remains V1.9.02.
+- Do not reintroduce `X-Serviq-Tenant-ID` as an authorization contract. Tenant switches must validate membership and mutate server-owned session state.
+- Existing pre-V1.1.16 session records without the required CSRF field are invalid and should reauthenticate; there is no durable-data migration.
 - Multipart parsing precedes file-byte/concurrency enforcement (V1.3.04C).
-- Durable failed-upload cleanup now has a worker-owned runtime scheduler (V1.3.04D resolved); URL fetch bytes still lack equivalent accounting/recovery (V1.3.07A).
+- Durable failed-upload cleanup has a worker-owned runtime scheduler (V1.3.04D resolved); URL fetch bytes still lack equivalent accounting/recovery (V1.3.07A).
 - Private gateway validation is redacted and authenticated before body parsing
   (V1.3.11A resolved); real semantic embedding transport remains V1.3.11B.
 - Main enforces branch protection, required status checks, and conditional integration gates (V1.0.29 resolved).
@@ -225,8 +262,8 @@ vulnerabilities in the audited main run. Green CI is not deployed acceptance.
   backup/restore, deployment and operating ownership are still missing.
 - V2–V4 are staged plans, not implemented capabilities or approved estimates.
 
-The live Linear project query returned 17 issues: 12 Done, 3 In Progress, 2 In
-Review. OPE-306/307 have implemented code and closed GitHub issues but remain
-In Progress; OPE-303/304/305 also remain nonterminal. The canonical file retains
-14 implemented records and 201 backlog records, including 10 audit follow-ups.
-No completion percentage should be inferred from these counts.
+The live Linear project query from the 2026-09-12 audit returned 17 issues: 12 Done,
+3 In Progress, 2 In Review. V1.1.16 is an audit follow-up identifier rather than a
+dedicated Linear issue; no duplicate Linear task should be invented for this fix.
+The canonical backlog remains the source for remaining implementation work and must
+be read together with current GitHub issue/PR evidence before inferring status.

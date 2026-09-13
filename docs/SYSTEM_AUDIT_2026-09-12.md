@@ -247,3 +247,23 @@ reassessed evidence scope; no skipped integration test became a passing check.
 | 48 | Reconcile implemented records/backlog counts | 14 implemented/201 backlog |
 | 49 | Define focused audit follow-ups and dependencies | 10 local candidate records |
 | 50 | Review documentation links/counts/diff and report limits | Final documentation review |
+
+
+---
+
+## 2026-09-13 addendum — V1.1.16 resolution
+
+The V1.1.16 / P1 authentication-composition finding above is resolved at the
+backend boundary by GitHub issue #230 and its implementation PR. Authorization
+Code + PKCE now creates an opaque Valkey workforce session; HTTP middleware restores
+the verified internal user/identity and optional server-owned active tenant before
+protected principal dependencies run. `X-Serviq-Tenant-ID` is not an authorization
+input. Tenant switching revalidates active membership before session mutation,
+state-changing auth operations use a session-bound CSRF token, redirect validation
+is exact-origin, and session-store failure is a stable fail-closed 503.
+
+The addendum does not rewrite the September 12 evidence: that audit correctly
+described the repository state at the time. V1.9.02 still owns the client-console
+login/session/tenant-switch UI, and no deployed browser journey is claimed by the
+backend follow-up. See ADR-030, `docs/repo_context.md`, and the cumulative Build
+Guide for the current runtime contract.

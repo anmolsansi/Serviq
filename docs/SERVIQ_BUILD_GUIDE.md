@@ -24,12 +24,14 @@ do not provide semantic search. Vector indexing, real embeddings, retrieval,
 customer sessions/messages/SSE, the agent, tools/policy/approval, human inbox,
 analytics/privacy and usable product screens remain development work.
 
-Authentication requires special care: the OIDC validator and tenant/permission
-services exist, but `services/api/app/main.py` does not populate the trusted
-request state consumed by `app/core/principal.py`. API tests inject that state
-through dependency overrides. Live Keycloak tests prove token validation, not
-browser login or an authenticated API journey. V1.1.16 now tracks this missing
-connection; V1.9.02 must consume its server session contract.
+Workforce authentication now has a real request-composition boundary. V1.1.16
+uses Authorization Code + PKCE, keeps an opaque workforce session in Valkey, and
+restores the verified internal user plus an optional server-owned active tenant
+before protected route dependencies run. Tenant authority is not accepted from
+`X-Serviq-Tenant-ID`, query parameters, or arbitrary business payloads. The
+authenticated tenant-switch endpoint revalidates active membership before changing
+session context, and state-changing auth operations use a session-bound CSRF token.
+V1.9.02 still owns the client-console UI that consumes this backend contract.
 
 The September 12 audit identified several runtime/operational gaps. The current
 implementation branch resolves the portable async SQLAlchemy dependency gap
@@ -38,6 +40,62 @@ the missing durable upload-cleanup runtime caller (V1.3.04D). File byte/concurre
 admission still happens after multipart spooling (V1.3.04C). The main branch
 protection gap (GitHub issue #205 / V1.0.29) is now resolved with required
 status checks and conditional integration gates.
+
+
+## V1.1.16 — Workforce sessions and trusted API request context
+
+V1.1.16 closes the backend authentication-composition gap found by the September
+12 audit. The implementation deliberately reuses the existing FastAPI API, OIDC
+validator, workforce mapper, tenancy service, PostgreSQL memberships, and Valkey.
+It does not add a new identity service or database migration.
+
+The login flow uses Authorization Code + PKCE S256. The browser receives only an
+HttpOnly `serviq_session` cookie. The matching Valkey record owns the internal
+workforce user ID, verified OIDC identity fields, optional active tenant ID, and a
+random CSRF token. `WorkforceSessionContextMiddleware` restores those values into
+the trusted request state read by `app/core/principal.py` before protected route
+dependencies execute.
+
+Tenant selection is server-owned. If login finds exactly one active membership,
+that tenant can be selected automatically. Zero or multiple memberships leave the
+tenant unset. `POST /auth/tenant` accepts a target tenant UUID only as a switch
+request, validates the user/tenant pair through the authoritative tenancy service,
+then updates the server-side session while preserving its remaining TTL. A forged
+`X-Serviq-Tenant-ID` header cannot change authorization context. Tenant-scoped
+services continue to re-check current membership and effective permissions in
+PostgreSQL, so the session is routing context rather than permission authority.
+
+Browser-facing auth endpoints are:
+
+```text
+GET  /auth/login?redirect_uri=<same-origin client URL>
+GET  /auth/callback?code=<oidc-code>&state=<one-time-state>
+GET  /auth/session
+POST /auth/tenant       {"tenantId":"<uuid>"}
+POST /auth/logout
+```
+
+`GET /auth/session` returns only browser-safe state: `userId`, email,
+`displayName`, `activeTenantId`, and `csrfToken`. It does not return the opaque
+session ID or OIDC token. Live-session tenant switch and logout require the
+session-bound token in `X-Serviq-CSRF-Token`. Post-login redirects must match the
+exact scheme, hostname, and effective port of `SERVIQ_PUBLIC_BASE_URL`; host-prefix
+lookalikes and malformed/non-HTTP redirects fail closed.
+
+Missing, expired, or malformed session records are unauthenticated. If Valkey is
+unavailable while a session must be read, the API returns stable
+`503 SESSION_STORE_UNAVAILABLE` with `Retry-After: 5`. Requests without a session
+cookie, such as health checks, do not perform a session read. Old V1.1.16 session
+records that do not contain the required CSRF field are invalid and users simply
+reauthenticate. Rollback is code-only because no durable schema changed.
+
+HTTP-level regression coverage lives in
+`services/api/tests/test_workforce_session_context.py`. It exercises the real ASGI
+session-to-principal boundary without overriding the principal dependencies and
+covers missing/expired sessions, forged tenant-header resistance, valid and invalid
+tenant switches, CSRF, redirect validation, and session-store outage behavior.
+ADR-030 freezes the full security/rollback decision; ADR-009 remains the provider
+tenant-context contract.
 
 ### Running and checking the current foundation
 
@@ -6493,7 +6551,7 @@ Future crawl scheduling, per-source rate policy, robots/terms evaluation, sitema
 **Implementation PR:** #195  
 **Architecture decision:** `docs/architecture-decisions/ADR-021-transactional-outbox-and-source-sync-command.md`
 
-V1.3.06 adds the durable producer-side boundary for knowledge synchronization. `POST /api/v1/knowledge-sources/{sourceId}/sync` requires the trusted workforce/tenant dependencies and `knowledge.sources.manage` (the HTTP session composition still needs V1.1.16), accepts no product body, and returns HTTP 202 after the command commits. Missing and cross-tenant sources return the same 404, disabled sources return `409 KNOWLEDGE_SOURCE_DISABLED`, and existing permission failure remains 403.
+V1.3.06 adds the durable producer-side boundary for knowledge synchronization. `POST /api/v1/knowledge-sources/{sourceId}/sync` requires the trusted workforce/tenant dependencies and `knowledge.sources.manage` (the HTTP session composition is supplied by V1.1.16; V1.9.02 consumes that backend contract), accepts no product body, and returns HTTP 202 after the command commits. Missing and cross-tenant sources return the same 404, disabled sources return `409 KNOWLEDGE_SOURCE_DISABLED`, and existing permission failure remains 403.
 
 The command locks the tenant-scoped source with PostgreSQL `SELECT ... FOR UPDATE`. Under that row lock it increments `sync_version` exactly once, sets `status=syncing`, clears `last_error_code`, preserves `last_synced_at`, updates `updated_at`, and inserts one `serviq.knowledge.sync.v1` event in the same transaction. Concurrent accepted requests therefore serialize into distinct versions such as N+1 and N+2. If event persistence fails, the source mutation rolls back with it.
 

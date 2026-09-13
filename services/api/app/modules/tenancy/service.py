@@ -12,6 +12,7 @@ from app.modules.tenancy.repository import (
     add_membership_role,
     find_membership,
     find_membership_for_update,
+    list_active_tenant_ids_for_user,
     list_effective_permission_keys,
     list_membership_role_ids,
 )
@@ -42,6 +43,19 @@ async def resolve_tenant_membership(
         status=membership.status,
         permissions=permissions,
     )
+
+
+async def resolve_default_active_tenant_id(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+) -> UUID | None:
+    """Select a tenant automatically only when exactly one active membership exists."""
+
+    tenant_ids = await list_active_tenant_ids_for_user(session, user_id=user_id)
+    if len(tenant_ids) == 1:
+        return tenant_ids[0]
+    return None
 
 
 async def activate_membership_from_invitation(

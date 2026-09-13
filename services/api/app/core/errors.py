@@ -1,6 +1,6 @@
 """Typed internal error boundary for API domain code.
 
-HTTP mapping remains owned by a later global exception-handler ticket. Errors in this
+HTTP mapping remains owned by the global exception-handler boundary. Errors in this
 module are safe, stable categories that internal services may raise without exposing
 provider/library details.
 """
@@ -28,3 +28,12 @@ class MissingTenantContextError(AuthorizationContextError):
 
     def __init__(self) -> None:
         super().__init__("Trusted tenant context is required.")
+
+
+class CsrfValidationError(RuntimeError):
+    """Raised when a cookie-authenticated state-changing request lacks valid CSRF proof."""
+
+    error_code = "CSRF_VALIDATION_FAILED"
+
+    def __init__(self) -> None:
+        super().__init__("CSRF validation failed.")

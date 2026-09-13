@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.core.http_errors import register_core_error_handlers
 from app.core.session import lifespan_session_store
+from app.modules.auth.middleware import WorkforceSessionContextMiddleware
 from app.modules.auth.router import router as auth_router
 from app.modules.health.router import router as health_router
 from app.modules.invitations.router import accept_router as invitation_accept_router
@@ -18,11 +19,16 @@ from app.modules.providers.router import router as providers_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    async with lifespan_session_store():
-        yield
+    async with lifespan_session_store() as session_store:
+        app.state.session_store = session_store
+        try:
+            yield
+        finally:
+            del app.state.session_store
 
 
 app = FastAPI(title="Serviq API", lifespan=lifespan)
+app.add_middleware(WorkforceSessionContextMiddleware)
 register_core_error_handlers(app)
 app.include_router(health_router)
 app.include_router(auth_router)

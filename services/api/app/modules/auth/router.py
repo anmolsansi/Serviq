@@ -101,11 +101,11 @@ def _validate_frontend_redirect_uri(
 
 def _session_view(session_data: WorkforceSessionData) -> WorkforceSessionView:
     return WorkforceSessionView(
-        user_id=session_data.user_id,
+        userId=session_data.user_id,
         email=session_data.email,
-        display_name=session_data.display_name,
-        active_tenant_id=session_data.active_tenant_id,
-        csrf_token=session_data.csrf_token,
+        displayName=session_data.display_name,
+        activeTenantId=session_data.active_tenant_id,
+        csrfToken=session_data.csrf_token,
     )
 
 

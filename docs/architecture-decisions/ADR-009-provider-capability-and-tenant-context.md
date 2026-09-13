@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for OPE-291.
+Accepted for OPE-291. The V1.1.16 runtime handoff is completed by ADR-030.
 
 ## Context
 
@@ -15,7 +15,7 @@ The frozen provider routes are `/api/v1/providers` rather than organization-ID r
 1. Introduce the dedicated capability key `ai.providers.manage` and grant it to the existing global Owner/Admin workforce roles in a reversible migration.
 2. Provider read and mutation routes require this capability in V1. The future complete AI Configuration Manager role must receive the same capability when that role is bootstrapped; OPE-291 does not create a partial AI Manager role whose other PRD permissions would be missing.
 3. Provider routes obtain tenant identity only from trusted server-owned request state through `require_tenant_id`. They do not accept a tenant ID in JSON, query parameters, or a client-trusted header.
-4. Until the organization-switch/tenant-context boundary is implemented, production requests without server-owned tenant context fail closed. Integration tests override the dependency with explicit tenant A/B values, matching Architecture's Phase 1 mocked-tenant-context allowance.
+4. ADR-030 implements the organization-switch/tenant-context boundary with an opaque server-side workforce session. The active tenant is selected only after membership validation and then restored into trusted request state. Requests without a server-owned active tenant continue to fail closed.
 
 ## Why not reuse `organization.settings.write`?
 
@@ -27,4 +27,4 @@ A partial AI Manager with only provider access would misrepresent the PRD becaus
 
 ## Security consequence
 
-Provider authorization remains capability-based and server-side. Tenant selection cannot be forged by placing another tenant UUID in the provider request. Missing trusted context is authentication/authorization failure, not a fallback to a default tenant.
+Provider authorization remains capability-based and server-side. Tenant selection cannot be forged by placing another tenant UUID in a provider request. Missing trusted context is authentication/authorization failure, not a fallback to a default tenant.

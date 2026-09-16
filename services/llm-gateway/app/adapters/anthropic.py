@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator, Callable
 from typing import cast
 
 from anthropic import (
-    AnthropicError,
     APIConnectionError,
     APIStatusError,
     APITimeoutError,
@@ -18,6 +17,7 @@ from anthropic import (
     PermissionDeniedError,
     RateLimitError,
     UnprocessableEntityError,
+    omit,
 )
 from anthropic.types import Message, MessageParam, OutputConfigParam, RawMessageStreamEvent
 from pydantic import JsonValue, TypeAdapter, ValidationError
@@ -165,39 +165,13 @@ async def _create_message(
     system: str | None,
     messages: list[MessageParam],
 ) -> Message:
-    output_config = _output_config(request) if request.response_schema else None
-    timeout = request.timeout_ms / 1000.0
-
-    if system is not None and output_config is not None:
-        return await client.messages.create(
-            model=context.upstream_model,
-            max_tokens=request.max_output_tokens,
-            messages=messages,
-            system=system,
-            output_config=output_config,
-            timeout=timeout,
-        )
-    if system is not None:
-        return await client.messages.create(
-            model=context.upstream_model,
-            max_tokens=request.max_output_tokens,
-            messages=messages,
-            system=system,
-            timeout=timeout,
-        )
-    if output_config is not None:
-        return await client.messages.create(
-            model=context.upstream_model,
-            max_tokens=request.max_output_tokens,
-            messages=messages,
-            output_config=output_config,
-            timeout=timeout,
-        )
     return await client.messages.create(
         model=context.upstream_model,
         max_tokens=request.max_output_tokens,
         messages=messages,
-        timeout=timeout,
+        system=system if system is not None else omit,
+        output_config=_output_config(request) if request.response_schema else omit,
+        timeout=request.timeout_ms / 1000.0,
     )
 
 
@@ -208,43 +182,14 @@ async def _create_stream(
     system: str | None,
     messages: list[MessageParam],
 ) -> AsyncIterator[RawMessageStreamEvent]:
-    output_config = _output_config(request) if request.response_schema else None
-    timeout = request.timeout_ms / 1000.0
-
-    if system is not None and output_config is not None:
-        return await client.messages.create(
-            model=context.upstream_model,
-            max_tokens=request.max_output_tokens,
-            messages=messages,
-            system=system,
-            output_config=output_config,
-            stream=True,
-            timeout=timeout,
-        )
-    if system is not None:
-        return await client.messages.create(
-            model=context.upstream_model,
-            max_tokens=request.max_output_tokens,
-            messages=messages,
-            system=system,
-            stream=True,
-            timeout=timeout,
-        )
-    if output_config is not None:
-        return await client.messages.create(
-            model=context.upstream_model,
-            max_tokens=request.max_output_tokens,
-            messages=messages,
-            output_config=output_config,
-            stream=True,
-            timeout=timeout,
-        )
     return await client.messages.create(
         model=context.upstream_model,
         max_tokens=request.max_output_tokens,
         messages=messages,
+        system=system if system is not None else omit,
+        output_config=_output_config(request) if request.response_schema else omit,
         stream=True,
-        timeout=timeout,
+        timeout=request.timeout_ms / 1000.0,
     )
 
 
@@ -388,11 +333,6 @@ def _normalize_anthropic_error(exc: Exception) -> GatewayProviderError:
         return GatewayProviderError(
             GatewayErrorCode.PROVIDER_UNAVAILABLE,
             "Anthropic is unavailable.",
-        )
-    if isinstance(exc, AnthropicError):
-        return GatewayProviderError(
-            GatewayErrorCode.PROVIDER_UNAVAILABLE,
-            "Anthropic request failed.",
         )
     return GatewayProviderError(
         GatewayErrorCode.PROVIDER_UNAVAILABLE,

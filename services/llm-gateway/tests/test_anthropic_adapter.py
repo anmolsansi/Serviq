@@ -9,6 +9,7 @@ from uuid import UUID
 import httpx
 import pytest
 from anthropic import (
+    AnthropicError,
     APIConnectionError,
     APITimeoutError,
     AsyncAnthropic,
@@ -286,6 +287,8 @@ def test_structured_stream_emits_provider_neutral_structured_delta() -> None:
 @pytest.mark.parametrize(
     ("exception", "expected_code"),
     [
+        (AnthropicError(f"raw {SECRET}"), GatewayErrorCode.PROVIDER_UNAVAILABLE),
+        (RuntimeError(f"raw {SECRET}"), GatewayErrorCode.PROVIDER_UNAVAILABLE),
         (
             AuthenticationError(
                 f"upstream auth body contains {SECRET}",

@@ -13,10 +13,10 @@ from openai import (
     AuthenticationError,
     BadRequestError,
     NotFoundError,
-    OpenAIError,
     PermissionDeniedError,
     RateLimitError,
     UnprocessableEntityError,
+    omit,
 )
 from openai.types.chat import (
     ChatCompletion,
@@ -151,19 +151,11 @@ async def _create_completion(
     context: AdapterContext,
     messages: list[ChatCompletionMessageParam],
 ) -> ChatCompletion:
-    if request.response_schema:
-        result = await client.chat.completions.create(
-            model=context.upstream_model,
-            messages=messages,
-            max_completion_tokens=request.max_output_tokens,
-            response_format=_response_format(request),
-            timeout=request.timeout_ms / 1000.0,
-        )
-        return result
     return await client.chat.completions.create(
         model=context.upstream_model,
         messages=messages,
         max_completion_tokens=request.max_output_tokens,
+        response_format=_response_format(request) if request.response_schema else omit,
         timeout=request.timeout_ms / 1000.0,
     )
 
@@ -174,26 +166,15 @@ async def _create_stream(
     context: AdapterContext,
     messages: list[ChatCompletionMessageParam],
 ) -> AsyncIterator[ChatCompletionChunk]:
-    if request.response_schema:
-        result = await client.chat.completions.create(
-            model=context.upstream_model,
-            messages=messages,
-            max_completion_tokens=request.max_output_tokens,
-            response_format=_response_format(request),
-            stream=True,
-            stream_options=_stream_options(),
-            timeout=request.timeout_ms / 1000.0,
-        )
-        return result
-    result = await client.chat.completions.create(
+    return await client.chat.completions.create(
         model=context.upstream_model,
         messages=messages,
         max_completion_tokens=request.max_output_tokens,
+        response_format=_response_format(request) if request.response_schema else omit,
         stream=True,
         stream_options=_stream_options(),
         timeout=request.timeout_ms / 1000.0,
     )
-    return result
 
 
 def _messages(request: GatewayRequest) -> list[ChatCompletionMessageParam]:
@@ -316,11 +297,6 @@ def _normalize_openai_error(exc: Exception) -> GatewayProviderError:
                 "OpenAI is unavailable.",
             )
         return _invalid_request("OpenAI rejected the request.")
-    if isinstance(exc, OpenAIError):
-        return GatewayProviderError(
-            GatewayErrorCode.PROVIDER_UNAVAILABLE,
-            "OpenAI request failed.",
-        )
     return GatewayProviderError(
         GatewayErrorCode.PROVIDER_UNAVAILABLE,
         "OpenAI request failed.",

@@ -15,6 +15,7 @@ from openai import (
     AuthenticationError,
     BadRequestError,
     InternalServerError,
+    OpenAIError,
     RateLimitError,
 )
 from pydantic import SecretStr
@@ -236,6 +237,8 @@ def test_stream_preserves_order_whitespace_and_terminal_metadata() -> None:
 @pytest.mark.parametrize(
     ("exception", "expected_code"),
     [
+        (OpenAIError(f"raw {SECRET}"), GatewayErrorCode.PROVIDER_UNAVAILABLE),
+        (RuntimeError(f"raw {SECRET}"), GatewayErrorCode.PROVIDER_UNAVAILABLE),
         (
             AuthenticationError(
                 f"upstream auth body contains {SECRET}",

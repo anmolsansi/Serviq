@@ -15,6 +15,7 @@ from openai import (
     AuthenticationError,
     BadRequestError,
     InternalServerError,
+    OpenAIError,
     RateLimitError,
 )
 from pydantic import SecretStr, ValidationError
@@ -327,6 +328,8 @@ def test_structured_stream_buffers_json_and_emits_provider_neutral_structure() -
 @pytest.mark.parametrize(
     ("exception", "expected_code"),
     [
+        (OpenAIError(f"raw {SECRET}"), GatewayErrorCode.PROVIDER_UNAVAILABLE),
+        (RuntimeError(f"raw {SECRET}"), GatewayErrorCode.PROVIDER_UNAVAILABLE),
         (
             AuthenticationError(
                 f"upstream auth body contains {SECRET}",

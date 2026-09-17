@@ -247,7 +247,10 @@ class WorkforceOidcValidator:
         *,
         metadata_cache: OidcMetadataCache | None = None,
     ) -> None:
-        self._issuer = validated_oidc_issuer_base(str(settings.oidc_issuer_url), settings.serviq_env)
+        self._issuer = validated_oidc_issuer_base(
+            str(settings.oidc_issuer_url),
+            settings.serviq_env,
+        )
         self._audience = settings.oidc_client_id
         self._metadata_cache = metadata_cache or OidcMetadataCache(
             issuer=self._issuer,

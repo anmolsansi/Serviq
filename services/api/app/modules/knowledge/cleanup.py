@@ -33,6 +33,16 @@ PUT_OUTCOME_AMBIGUOUS_ERROR_CODE = "OBJECT_STORAGE_PUT_OUTCOME_AMBIGUOUS"
 SOURCE_PERSISTENCE_ERROR_CODE = "KNOWLEDGE_SOURCE_PERSISTENCE_FAILED"
 KEY_MISMATCH_ERROR_CODE = "KNOWLEDGE_UPLOAD_CLEANUP_KEY_MISMATCH"
 
+_ALLOWED_CLEANUP_LOG_EVENTS = frozenset(
+    {
+        "knowledge_upload_cleanup_pending",
+        "knowledge_upload_cleanup_succeeded",
+        "knowledge_upload_cleanup_exhausted",
+    }
+)
+_ALLOWED_CLEANUP_STATUSES = frozenset({"pending", "succeeded", "exhausted"})
+_ALLOWED_CLEANUP_LOG_LEVELS = frozenset({logging.INFO, logging.WARNING, logging.ERROR})
+
 CleanupReplayOutcome = Literal[
     "not_due",
     "noop_referenced",
@@ -92,13 +102,21 @@ def _safe_log(
     status: str,
     attempt_count: int,
 ) -> None:
+    """Emit one fixed log message with closed-set structured labels."""
+
+    safe_level = level if level in _ALLOWED_CLEANUP_LOG_LEVELS else logging.WARNING
+    safe_event = (
+        event if event in _ALLOWED_CLEANUP_LOG_EVENTS else "knowledge_upload_cleanup_unknown"
+    )
+    safe_status = status if status in _ALLOWED_CLEANUP_STATUSES else "unknown"
     logger.log(
-        level,
-        event,
+        safe_level,
+        "knowledge_upload_cleanup_event",
         extra={
+            "cleanup_event": safe_event,
             "cleanup_id": str(cleanup_id),
             "tenant_id": str(tenant_id),
-            "cleanup_status": status,
+            "cleanup_status": safe_status,
             "cleanup_attempt_count": attempt_count,
         },
     )

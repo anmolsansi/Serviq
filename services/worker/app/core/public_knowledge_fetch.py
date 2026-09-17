@@ -166,6 +166,7 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
 
     def __init__(self, host: str, connect_ip: str, timeout: float) -> None:
         tls_context = ssl.create_default_context()
+        tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
         super().__init__(host, 443, timeout=timeout, context=tls_context)
         self._connect_ip = connect_ip
         self._connect_timeout = timeout

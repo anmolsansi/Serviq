@@ -26,12 +26,16 @@ from app.core.config import PlatformSettings, ServiqEnvironment
 from app.core.errors import AuthenticationError, MissingTenantContextError
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
-JsonFetcher = Callable[[str], Awaitable[dict[str, Any]]]
+JsonFetcher = Callable[[str, str], Awaitable[dict[str, Any]]]
 Clock = Callable[[], float]
 
 OIDC_METADATA_CACHE_TTL_SECONDS = 300.0
 OIDC_HTTP_TIMEOUT_SECONDS = 5.0
 OIDC_MAX_METADATA_BYTES = 1_000_000
+OIDC_DISCOVERY_RELATIVE_PATH = ".well-known/openid-configuration"
+OIDC_JWKS_RELATIVE_PATH = "protocol/openid-connect/certs"
+OIDC_TOKEN_RELATIVE_PATH = "protocol/openid-connect/token"
+OIDC_AUTH_RELATIVE_PATH = "protocol/openid-connect/auth"
 WORKFORCE_JWT_ALGORITHMS: tuple[str, ...] = ("RS256",)
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -94,13 +98,70 @@ class VerifiedWorkforceIdentity(BaseModel):
     display_name: str | None = None
 
 
-async def _fetch_oidc_json(url: str) -> dict[str, Any]:
-    """Fetch bounded OIDC JSON without redirects or leaking response details."""
+def validated_oidc_issuer_base(
+    issuer: str,
+    environment: ServiqEnvironment,
+) -> str:
+    """Validate and normalize the configured OIDC issuer before any outbound request.
+
+    Production-like environments require HTTPS. Local and test environments may
+    use HTTP only for an explicit loopback issuer. Userinfo, query strings, and
+    fragments are never accepted at this trust boundary.
+    """
+
+    try:
+        parsed = urlsplit(issuer)
+        port = parsed.port
+    except ValueError:
+        raise AuthenticationError from None
+
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise AuthenticationError
+
+    if parsed.scheme == "https":
+        if port not in (None, 443):
+            raise AuthenticationError
+    elif (
+        environment in {"local", "test"}
+        and parsed.scheme == "http"
+        and parsed.hostname in _LOOPBACK_HOSTS
+        and port in (None, 80, 8080)
+    ):
+        pass
+    else:
+        raise AuthenticationError
+
+    normalized_path = parsed.path.rstrip("/")
+    authority = parsed.hostname.casefold()
+    if ":" in authority and not authority.startswith("["):
+        authority = f"[{authority}]"
+    if port is not None and not (
+        parsed.scheme == "https" and port == 443 or parsed.scheme == "http" and port == 80
+    ):
+        authority = f"{authority}:{port}"
+    return f"{parsed.scheme}://{authority}{normalized_path}"
+
+
+async def _fetch_oidc_json(issuer_base: str, relative_path: str) -> dict[str, Any]:
+    """Fetch bounded OIDC JSON from one validated issuer using a relative endpoint."""
+
+    if relative_path not in {OIDC_DISCOVERY_RELATIVE_PATH, OIDC_JWKS_RELATIVE_PATH}:
+        raise AuthenticationError
 
     try:
         timeout = httpx.Timeout(OIDC_HTTP_TIMEOUT_SECONDS)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            response = await client.get(url, headers={"Accept": "application/json"})
+        async with httpx.AsyncClient(
+            base_url=f"{issuer_base}/",
+            timeout=timeout,
+            follow_redirects=False,
+        ) as client:
+            response = await client.get(relative_path, headers={"Accept": "application/json"})
             response.raise_for_status()
             if len(response.content) > OIDC_MAX_METADATA_BYTES:
                 raise AuthenticationError
@@ -113,19 +174,6 @@ async def _fetch_oidc_json(url: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise AuthenticationError
     return cast(dict[str, Any], payload)
-
-
-def _metadata_url_allowed(url: str, environment: ServiqEnvironment) -> bool:
-    parsed = urlsplit(url)
-    if parsed.username is not None or parsed.password is not None or parsed.fragment:
-        return False
-    if parsed.scheme == "https" and parsed.hostname:
-        return True
-    return (
-        environment in {"local", "test"}
-        and parsed.scheme == "http"
-        and parsed.hostname in _LOOPBACK_HOSTS
-    )
 
 
 def _as_key_set_serialization(payload: dict[str, Any]) -> KeySetSerialization:
@@ -149,8 +197,7 @@ class OidcMetadataCache:
         ttl_seconds: float = OIDC_METADATA_CACHE_TTL_SECONDS,
         clock: Clock = time.monotonic,
     ) -> None:
-        self._issuer = issuer.rstrip("/")
-        self._environment = environment
+        self._issuer = validated_oidc_issuer_base(issuer, environment)
         self._fetcher = fetcher
         self._ttl_seconds = min(max(ttl_seconds, 1.0), OIDC_METADATA_CACHE_TTL_SECONDS)
         self._clock = clock
@@ -171,21 +218,15 @@ class OidcMetadataCache:
                 return self._key_set
 
             try:
-                discovery_url = f"{self._issuer}/.well-known/openid-configuration"
-                if not _metadata_url_allowed(discovery_url, self._environment):
-                    raise AuthenticationError
-
-                discovery = await self._fetcher(discovery_url)
+                discovery = await self._fetcher(self._issuer, OIDC_DISCOVERY_RELATIVE_PATH)
                 if discovery.get("issuer") != self._issuer:
                     raise AuthenticationError
 
-                jwks_uri = discovery.get("jwks_uri")
-                if not isinstance(jwks_uri, str) or not _metadata_url_allowed(
-                    jwks_uri, self._environment
-                ):
+                expected_jwks_uri = f"{self._issuer}/{OIDC_JWKS_RELATIVE_PATH}"
+                if discovery.get("jwks_uri") != expected_jwks_uri:
                     raise AuthenticationError
 
-                jwks = await self._fetcher(jwks_uri)
+                jwks = await self._fetcher(self._issuer, OIDC_JWKS_RELATIVE_PATH)
                 key_set = KeySet.import_key_set(_as_key_set_serialization(jwks))
             except AuthenticationError:
                 raise
@@ -206,7 +247,7 @@ class WorkforceOidcValidator:
         *,
         metadata_cache: OidcMetadataCache | None = None,
     ) -> None:
-        self._issuer = str(settings.oidc_issuer_url).rstrip("/")
+        self._issuer = validated_oidc_issuer_base(str(settings.oidc_issuer_url), settings.serviq_env)
         self._audience = settings.oidc_client_id
         self._metadata_cache = metadata_cache or OidcMetadataCache(
             issuer=self._issuer,

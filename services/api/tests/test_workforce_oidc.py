@@ -7,7 +7,7 @@ import pytest
 from joserfc import jwt
 from joserfc.jwk import RSAKey
 
-from app.core.auth import OidcMetadataCache, WorkforceOidcValidator
+from app.core.auth import OidcMetadataCache, WorkforceOidcValidator, validated_oidc_issuer_base
 from app.core.config import PlatformSettings
 from app.core.errors import AuthenticationError
 
@@ -82,16 +82,17 @@ def _validator(
     calls = counter if counter is not None else []
     public_jwks = {"keys": [public_key.as_dict(private=False)]}
 
-    async def fetcher(url: str) -> dict[str, Any]:
+    async def fetcher(issuer_base: str, relative_path: str) -> dict[str, Any]:
+        url = f"{issuer_base}/{relative_path}"
         calls.append(url)
-        if url.endswith("/.well-known/openid-configuration"):
+        if relative_path == ".well-known/openid-configuration":
             discovery: dict[str, Any] = {"issuer": ISSUER, "jwks_uri": JWKS_URI}
             if discovery_mutator is not None:
                 discovery_mutator(discovery)
             return discovery
         if url == JWKS_URI:
             return public_jwks
-        raise AssertionError(f"Unexpected URL: {url}")
+        raise AssertionError(f"Unexpected OIDC endpoint: {relative_path}")
 
     cache = OidcMetadataCache(
         issuer=ISSUER,
@@ -188,6 +189,31 @@ def test_discovery_issuer_mismatch_fails_before_jwks_use() -> None:
 
     with pytest.raises(AuthenticationError):
         asyncio.run(validator.validate(_token(private_key, _claims())))
+
+
+def test_discovery_jwks_uri_cannot_redirect_metadata_fetch() -> None:
+    private_key = _rsa_key()
+    calls: list[str] = []
+
+    def mutate(discovery: dict[str, Any]) -> None:
+        discovery["jwks_uri"] = "https://attacker.example/keys"
+
+    validator = _validator(private_key, counter=calls, discovery_mutator=mutate)
+
+    with pytest.raises(AuthenticationError):
+        asyncio.run(validator.validate(_token(private_key, _claims())))
+
+    assert calls == [f"{ISSUER}/.well-known/openid-configuration"]
+
+
+def test_configured_oidc_issuer_requires_https_outside_local_or_test() -> None:
+    with pytest.raises(AuthenticationError):
+        validated_oidc_issuer_base("http://idp.example.com/realms/serviq", "production")
+
+    with pytest.raises(AuthenticationError):
+        validated_oidc_issuer_base("http://idp.example.com/realms/serviq", "test")
+
+    assert validated_oidc_issuer_base(ISSUER, "test") == ISSUER
 
 
 def test_unverified_email_is_preserved_as_profile_data_but_marked_unverified() -> None:

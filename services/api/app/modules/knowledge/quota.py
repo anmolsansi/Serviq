@@ -43,6 +43,34 @@ KNOWLEDGE_CONCURRENT_UPLOAD_LIMIT = 3
 KNOWLEDGE_UPLOAD_LEASE = timedelta(minutes=10)
 MAX_KNOWLEDGE_FILE_BYTES = 25 * 1024 * 1024
 
+_ALLOWED_QUOTA_LOG_EVENTS = frozenset(
+    {
+        "knowledge_quota_legacy_reconciliation_failed",
+        "knowledge_quota_legacy_reconciled",
+        "knowledge_quota_rejected",
+        "knowledge_quota_reservations_reclaimed",
+        "knowledge_quota_reserved",
+        "knowledge_quota_admission_invalid",
+        "knowledge_quota_admission_finalized",
+        "knowledge_quota_reservation_released",
+    }
+)
+_ALLOWED_QUOTA_OUTCOMES = frozenset(
+    {
+        "unavailable",
+        "invalid_size",
+        "reconciled",
+        "source_limit",
+        "reclaimed",
+        "byte_limit",
+        "concurrency_limit",
+        "reserved",
+        "expired_or_missing",
+        "finalized",
+        "unlinked_released",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class KnowledgeQuotaUsage:
@@ -71,11 +99,16 @@ class KnowledgeUploadReservationClaim:
 
 
 def _safe_log(event: str, *, tenant_id: UUID, outcome: str, **extra: int | str) -> None:
+    """Emit one fixed log message and allow only known structured event labels."""
+
+    safe_event = event if event in _ALLOWED_QUOTA_LOG_EVENTS else "knowledge_quota_unknown"
+    safe_outcome = outcome if outcome in _ALLOWED_QUOTA_OUTCOMES else "unknown"
     logger.info(
-        event,
+        "knowledge_quota_event",
         extra={
+            "quota_event": safe_event,
             "tenant_id": str(tenant_id),
-            "quota_outcome": outcome,
+            "quota_outcome": safe_outcome,
             **extra,
         },
     )

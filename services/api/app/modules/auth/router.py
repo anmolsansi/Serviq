@@ -14,7 +14,12 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.api import SuccessEnvelope
-from app.core.auth import WorkforceOidcValidator
+from app.core.auth import (
+    OIDC_AUTH_RELATIVE_PATH,
+    OIDC_TOKEN_RELATIVE_PATH,
+    WorkforceOidcValidator,
+    validated_oidc_issuer_base,
+)
 from app.core.config import PlatformSettings, load_settings
 from app.core.database import get_database_session
 from app.core.errors import AuthenticationError
@@ -126,7 +131,8 @@ async def login(
         AuthStateData(code_verifier=code_verifier, redirect_uri=safe_redirect_uri),
     )
 
-    auth_url = str(settings.oidc_issuer_url).rstrip("/") + "/protocol/openid-connect/auth"
+    issuer_base = validated_oidc_issuer_base(str(settings.oidc_issuer_url), settings.serviq_env)
+    auth_url = f"{issuer_base}/{OIDC_AUTH_RELATIVE_PATH}"
     query = httpx.QueryParams(
         {
             "client_id": settings.oidc_client_id,
@@ -164,12 +170,17 @@ async def callback(
         raise AuthenticationError
 
     auth_state = await session_store.consume_auth_state(state)
-    token_url = str(settings.oidc_issuer_url).rstrip("/") + "/protocol/openid-connect/token"
+    safe_redirect_uri = _validate_frontend_redirect_uri(auth_state.redirect_uri, settings)
+    issuer_base = validated_oidc_issuer_base(str(settings.oidc_issuer_url), settings.serviq_env)
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(
+        base_url=f"{issuer_base}/",
+        timeout=10.0,
+        follow_redirects=False,
+    ) as client:
         try:
             token_response = await client.post(
-                token_url,
+                OIDC_TOKEN_RELATIVE_PATH,
                 data={
                     "grant_type": "authorization_code",
                     "client_id": settings.oidc_client_id,
@@ -211,7 +222,7 @@ async def callback(
     )
     session_id = await session_store.create_session(session_data)
 
-    redirect = RedirectResponse(auth_state.redirect_uri)
+    redirect = RedirectResponse(safe_redirect_uri)
     cookie_settings = _get_cookie_settings(settings)
     redirect.set_cookie(
         SESSION_COOKIE_NAME,
